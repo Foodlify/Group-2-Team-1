@@ -1,0 +1,113 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────
+// USER
+// ─────────────────────────────────────────
+
+model User {
+  id         Int        @id @default(autoincrement())
+  name       String
+  email      String     @unique
+  customer   Customer?
+  cart       Cart?
+}
+
+// ─────────────────────────────────────────
+// CUSTOMER
+// ─────────────────────────────────────────
+
+model Customer {
+  id      Int    @id @default(autoincrement())
+  userId  Int    @unique @map("user_id")
+  user    User   @relation(fields: [userId], references: [id])
+}
+
+// ─────────────────────────────────────────
+// RESTAURANT
+model Cart {
+  id        Int        @id @default(autoincrement())
+  userId    Int        @unique @map("user_id")
+  name      String?
+  user      User       @relation(fields: [userId], references: [id])
+  cartItems CartItem[]
+}
+
+// ─────────────────────────────────────────
+// CART ITEMS
+// ─────────────────────────────────────────
+
+model CartItem {
+  id         Int      @id @default(autoincrement())
+  cartId     Int      @map("cart_id")
+  menuItemId Int      @map("menu_item_id")
+  quantity   Int
+  cart       Cart     @relation(fields: [cartId], references: [id])
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
+}
+
+// ─────────────────────────────────────────
+
+model Restaurant {
+  id    Int    @id @default(autoincrement())
+  name  String
+  menus Menu[]
+}
+
+// ─────────────────────────────────────────
+// MENU
+// ─────────────────────────────────────────
+
+model Menu {
+  id           Int        @id @default(autoincrement())
+  restaurantId Int        @map("restaurant_id")
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+  menuItems    MenuItem[]
+}
+
+// ─────────────────────────────────────────
+// MENU ITEMS
+// ─────────────────────────────────────────
+
+model MenuItem {
+  id        Int        @id @default(autoincrement())
+  menuId    Int        @map("menu_id")
+  itemName  String     @map("item_name")
+  price     Int
+  menu      Menu       @relation(fields: [menuId], references: [id])
+  cartItems CartItem[]
+}
+
+// ─────────────────────────────────────────
+// CART
+// ─────────────────────────────────────────
+
+model Cart {
+  id        Int        @id @default(autoincrement())
+  userId    Int        @unique @map("user_id")
+  name      String?
+  user      User       @relation(fields: [userId], references: [id])
+  cartItems CartItem[]
+}
+
+// ─────────────────────────────────────────
+// CART ITEMS
+// ─────────────────────────────────────────
+
+model CartItem {
+  id         Int      @id @default(autoincrement())
+  cartId     Int      @map("cart_id")
+  menuItemId Int      @map("menu_item_id")
+  quantity   Int
+  cart       Cart     @relation(fields: [cartId], references: [id])
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
+}

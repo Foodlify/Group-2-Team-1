@@ -1,0 +1,291 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Foodlify",
+    "version": "1.0.0",
+    "description": "API documentation for a food delivery system"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:4000",
+      "description": "Local server"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Cart",
+      "description": "Operations related to cart"
+    }
+  ],
+  "paths": {
+    "/api/v1/cart/add": {
+      "post": {
+        "tags": ["Cart"],
+        "summary": "create cart and add items to it",
+        "security": [
+          {
+            "BearerAuth": [],
+            "CookieAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "customerId": {
+                    "type": "string",
+                    "example": "48"
+                  },
+                  "itemId": {
+                    "type": "string",
+                    "example": "item_58"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Item added to cart successfully"
+          },
+          "404": {
+            "description": "Customer Not Found Or Item Not found"
+          },
+          "400": {
+            "description": "Bad Request"
+          }
+        }
+      }
+    },
+    "/api/v1/cart/modify/{cartId}": {
+      "delete": {
+        "tags": ["Cart"],
+        "summary": "remove item from cart",
+        "security": [
+          {
+            "BearerAuth": [],
+            "CookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cartId",
+            "in": "path",
+            "required": true,
+            "description": "Cart ID",
+            "schema": {
+              "type": "string",
+              "example": "cart_10"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "itemId": {
+                    "type": "string",
+                    "example": "item_58"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Item removed successfully"
+          },
+          "404": {
+            "description": "Cart Not Found Or Item Not found"
+          },
+          "400": {
+            "description": "Bad Request"
+          }
+        }
+      },
+      "put": {
+        "tags": ["Cart"],
+        "summary": "increment /decrement item quantity in cart",
+        "security": [
+          {
+            "BearerAuth": [],
+            "CookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cartId",
+            "in": "path",
+            "required": true,
+            "description": "Cart ID",
+            "schema": {
+              "type": "string",
+              "example": "cart_10"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "itemId": {
+                    "type": "string",
+                    "example": "item_58"
+                  },
+                  "event_type": {
+                    "type": "string",
+                    "enum": ["increment", "decrement"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Item updated successfully"
+          },
+          "404": {
+            "description": "Cart Not Found Or Item Not found"
+          },
+          "400": {
+            "description": "Bad Request"
+          }
+        }
+      }
+    },
+    "/api/v1/cart/{cartId}": {
+      "get": {
+        "tags": ["Cart"],
+        "summary": "view entire cart",
+        "security": [
+          {
+            "BearerAuth": [],
+            "CookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cartId",
+            "in": "path",
+            "required": true,
+            "description": "Cart ID",
+            "schema": {
+              "type": "string",
+              "example": "cart_10"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "cart items displayed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/cartItems"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Cart Not Found Or Item Not found"
+          },
+          "400": {
+            "description": "Bad Request"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Cart"],
+        "summary": "delete entire cart",
+        "security": [
+          {
+            "BearerAuth": [],
+            "CookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cartId",
+            "in": "path",
+            "required": true,
+            "description": "Cart ID",
+            "schema": {
+              "type": "string",
+              "example": "cart_10"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "entire cart removed successfully"
+          },
+          "404": {
+            "description": "Cart Not Found"
+          },
+          "400": {
+            "description": "Bad Request"
+          }
+        }
+      }
+    }
+  },
+
+  "components": {
+    "schemas": {
+      "cartItems": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "example": "Burger"
+            },
+            "description": {
+              "type": "string",
+              "example": "Beef burger with spicy sauce"
+            },
+            "image": {
+              "type": "string",
+              "example": "url"
+            },
+            "price": {
+              "type": "integer",
+              "example": 25
+            },
+            "quantity": {
+              "type": "integer",
+              "example": 2
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "BearerAuth": {
+        "description": "For accessToken, must add  headers to http request body with authorization: token ",
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      },
+      "CookieAuth": {
+        "description": "For RefreshToken, must add { withCredentials: true } to http request",
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "token"
+      }
+    }
+  }
+}
