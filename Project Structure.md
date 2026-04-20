@@ -1,32 +1,32 @@
-Project Structure 
+Project Structure
 
 src/
-  config/
-    env.js
-    logger.js
+config/
+env.ts
+logger.ts
 
-  modules/
-    user/
-      user.controller.js
-      user.service.js
-      user.repository.js
-      user.model.js
-      user.routes.js
-      user.validation.js
+modules/
+user/
+user.controller.ts
+user.service.ts
+user.repository.ts
+user.model.ts
+user.routes.ts
+user.validation.ts
 
-  middlewares/
-    error.middleware.js
-    auth.middleware.js
+middlewares/
+error.middleware.ts
+auth.middleware.ts
 
-  utils/
-    response.js
-    asyncHandler.js
+utils/
+response.ts
+asyncHandler.ts
 
-  routes/
-    index.js
+routes/
+index.ts
 
-  app.js
-  server.js
+app.ts
+server.ts
 
 tests/
 
