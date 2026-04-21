@@ -2,9 +2,9 @@ import type { PrismaClient } from "../../generated/prisma/client";
 import { BaseRepository } from "../../shared/repositories/base.repository";
 import prisma from "../../config/prisma";
 
-export class UserRepository extends BaseRepository<PrismaClient["user"]> {
+export class OrderItemRepository extends BaseRepository<PrismaClient["orderItem"]> {
   constructor() {
-    super(prisma.user);
+    super(prisma.orderItem);
   }
 
   /**
@@ -16,4 +16,4 @@ export class UserRepository extends BaseRepository<PrismaClient["user"]> {
   }
 }
 
-export const userRepository = new UserRepository();
+export const orderItemRepository = new OrderItemRepository();

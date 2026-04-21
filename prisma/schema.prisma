@@ -63,7 +63,8 @@ model UserRole {
 }
 
 model Customer {
-  userId String @id
+  id     String @id @default(cuid())
+  userId String @unique
 
   user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   orders Order[]
@@ -105,7 +106,8 @@ model Restaurant {
 }
 
 model RestaurantDetails {
-  restaurantId String @id
+  id           String @id @default(cuid())
+  restaurantId String @unique
   description  String
 
   restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
@@ -148,7 +150,8 @@ model MenuItem {
 // ═══════════════════════════════════════════════════════════════
 
 model Cart {
-  userId String     @id
+  id     String     @id @default(cuid())
+  userId String     @unique
   items  CartItem[]
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -163,7 +166,7 @@ model CartItem {
   menuItemId String
   quantity   Int
 
-  cart     Cart     @relation(fields: [cartId], references: [userId], onDelete: Cascade)
+  cart     Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
   menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
 
   createdAt DateTime @default(now())
@@ -184,7 +187,7 @@ model Order {
   orderDate  DateTime @default(now())
   addressId  String
 
-  customer     Customer        @relation(fields: [customerId], references: [userId], onDelete: Restrict)
+  customer     Customer        @relation(fields: [customerId], references: [id], onDelete: Restrict)
   address      Address         @relation(fields: [addressId], references: [id], onDelete: Restrict)
   items        OrderItem[]
   status       OrderStatus?
