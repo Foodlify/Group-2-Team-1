@@ -172,6 +172,45 @@ psql -U postgres -c "ALTER USER postgres CREATEDB;"
 
 ## Prisma Client Issues
 
+### TEST_USER_ID is not set in .env
+
+**Error (at runtime, when hitting a cart endpoint):**
+```
+Error: TEST_USER_ID is not set in .env — set it to the seeded user's ID
+```
+
+**What this means:** The cart controller uses `process.env.TEST_USER_ID` as a
+stand-in for an authenticated user. You haven't seeded the database or haven't
+copied the seed output into `.env` yet.
+
+**Fix:**
+```bash
+npx prisma db seed
+```
+Then copy the `userId` from the output and add it to `.env`:
+```env
+TEST_USER_ID=<paste-here>
+```
+Restart the server.
+
+---
+
+### `npx prisma db seed` fails with "Environment variable not found: DATABASE_URL"
+
+**Error:**
+```
+Environment variable not found: DATABASE_URL
+```
+
+**What this means:** `prisma.config.ts` relies on `dotenv/config` being imported
+to load the `.env` file. If it runs without that import, `env("DATABASE_URL")`
+returns nothing.
+
+**Fix:** Verify `prisma.config.ts` has `import "dotenv/config"` at the top. This is
+the default in Prisma 7's generated config, but could be missing in older setups.
+
+---
+
 ### Cannot find module '../generated/prisma/client'
 
 **Error (at runtime or TypeScript compilation):**
@@ -205,27 +244,6 @@ specific files like `./generated/prisma/client`, not from the folder.
 `prisma generate` automatically after `npm install`. If you're seeing this error, either:
 - You cloned the repo and haven't run `npm install` yet → run `npm install`
 - The `postinstall` script failed silently → run `npm run db:generate` manually
-
-**What this means:** The Prisma Client wasn't generated, or was generated but isn't where
-the code expects it.
-
-**Fix:**
-```bash
-npm run db:generate
-```
-
-Verify the output directory exists:
-```bash
-# Should list several .ts files: client.ts, models.ts, enums.ts, etc.
-ls src/generated/prisma
-```
-
-**Note:** In Prisma 7, there is no `index.ts` inside the generated folder — you import from
-specific files like `./generated/prisma/client`, not from the folder.
-
-**When this happens most often:** After `npm run db:migrate` in Prisma 7.7.0, the client
-generation step occasionally gets skipped due to a race condition. Running
-`npm run db:generate` manually fixes it.
 
 ---
 

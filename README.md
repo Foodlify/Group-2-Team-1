@@ -120,6 +120,9 @@ POSTGRES_DB=G2T1M
 POSTGRES_PORT=5432
 
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/G2T1M
+
+# Temporary (remove when auth is implemented)
+TEST_USER_ID=<paste-user-id-from-seed-output>
 ```
 
 > **Generate a JWT secret:**
@@ -160,7 +163,19 @@ Choose **one** of the following options.
 
    When prompted for a migration name, press Enter to accept the default.
 
-4. (Optional) Open Prisma Studio to inspect your tables:
+4. **(Optional, for development) Seed test data**:
+
+   The project includes a seed script that creates a test user, a restaurant, a menu, and 3 menu items for local development.
+
+   ```bash
+   npx prisma db seed
+   ```
+
+   Copy the `userId` from the output and put it in `.env` as `TEST_USER_ID=...`
+
+   > **Note:** The `TEST_USER_ID` environment variable and seed-based authentication are temporary conveniences until user/auth management is implemented. They will be removed in a future iteration.
+
+5. (Optional) Open Prisma Studio to inspect your tables:
    ```bash
    npm run db:studio
    ```
@@ -215,9 +230,22 @@ docker compose logs -f postgres  # View database logs
    ```
 
 4. Apply migrations:
+
    ```bash
    npm run db:migrate
    ```
+
+5. **(Optional, for development) Seed test data**:
+
+   The project includes a seed script that creates a test user, a restaurant, a menu, and 3 menu items for local development.
+
+   ```bash
+   npx prisma db seed
+   ```
+
+   Copy the `userId` from the output and put it in `.env` as `TEST_USER_ID=...`
+
+   > **Note:** The `TEST_USER_ID` environment variable and seed-based authentication are temporary conveniences until user/auth management is implemented. They will be removed in a future iteration.
 
 ---
 
@@ -272,6 +300,8 @@ The API ships with two documentation UIs, both generated from the same OpenAPI 3
 | `GET /api-docs/swagger` | **Swagger UI** — classic interface                   |
 | `GET /openapi.json`     | Raw OpenAPI 3.1 spec as JSON                         |
 | `GET /health`           | Liveness + DB connectivity check                     |
+
+**Available features:** Cart management endpoints are live. Visit `/api-docs` to explore them interactively with full request/response schemas.
 
 ### How documentation is generated
 
@@ -445,7 +475,7 @@ stable and lets features merge independently.
    class CartService {
      async addItem(userId: string, input: AddToCartInput) {
        const cart =
-         (await cartRepository.findByUserId(userId)) ??
+         (await cartRepository.findUnique({ where: { userId } })) ??
          (await cartRepository.create({ data: { userId } }));
        return cartItemRepository.create({
          data: { cartId: cart.id, ...input },
@@ -482,6 +512,8 @@ stable and lets features merge independently.
 
    const router = Router();
 
+   // Note: Auth middleware is not yet implemented — examples showing `authenticate`
+   // are aspirational and will apply once auth lands.
    router.post(
      "/items",
      authenticate,
@@ -532,14 +564,15 @@ stable and lets features merge independently.
 
 ### Database (Prisma)
 
-| Script                      | Description                                                  |
-| --------------------------- | ------------------------------------------------------------ |
-| `npm run db:generate`       | Regenerate the Prisma Client from the schema                 |
-| `npm run db:migrate`        | Create and apply a new migration (development)               |
-| `npm run db:migrate:deploy` | Apply existing migrations (production — no new ones created) |
-| `npm run db:studio`         | Open Prisma Studio at `http://localhost:5555`                |
-| `npm run db:reset`          | ⚠️ Drop the database and re-apply all migrations             |
-| `npm run db:format`         | Auto-format `schema.prisma`                                  |
+| Script                      | Description                                                      |
+| --------------------------- | ---------------------------------------------------------------- |
+| `npx prisma db seed`        | Seed the database with test data (user, restaurant, menu, items) |
+| `npm run db:generate`       | Regenerate the Prisma Client from the schema                     |
+| `npm run db:migrate`        | Create and apply a new migration (development)                   |
+| `npm run db:migrate:deploy` | Apply existing migrations (production — no new ones created)     |
+| `npm run db:studio`         | Open Prisma Studio at `http://localhost:5555`                    |
+| `npm run db:reset`          | ⚠️ Drop the database and re-apply all migrations                 |
+| `npm run db:format`         | Auto-format `schema.prisma`                                      |
 
 ---
 
@@ -616,7 +649,6 @@ It covers the specific problems encountered during development and their solutio
 ```
 {"level":"info","message":"✅ Seed complete","timestamp":"2026-04-21T11:44:19.057Z","data":{"userId":"cmo8k38lv0001iiapczjj7phv","userEmail":"test@example.com","menuItemIds":[{"id":"cmo8k38mk0006iiapa4wdjh7j","name":"Margherita Pizza"},{"id":"cmo8k38mm0007iiapvytskboq","name":"Pepperoni Pizza"},{"id":"cmo8k38mn0008iiap87bk5byr","name":"Caesar Salad"}]}}
 ```
-
 
 ## License
 
