@@ -5,6 +5,8 @@ import env from "../config/env";
 // Ensure shared schemas are registered
 import "../shared/schemas/error.schema";
 import "../shared/schemas/pagination.schema";
+import "../modules/cart/cart.validation";
+
 
 /**
  * Build the OpenAPI 3.1 document by combining:

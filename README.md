@@ -613,6 +613,11 @@ It covers the specific problems encountered during development and their solutio
 
 ---
 
+```
+{"level":"info","message":"✅ Seed complete","timestamp":"2026-04-21T11:44:19.057Z","data":{"userId":"cmo8k38lv0001iiapczjj7phv","userEmail":"test@example.com","menuItemIds":[{"id":"cmo8k38mk0006iiapa4wdjh7j","name":"Margherita Pizza"},{"id":"cmo8k38mm0007iiapvytskboq","name":"Pepperoni Pizza"},{"id":"cmo8k38mn0008iiap87bk5byr","name":"Caesar Salad"}]}}
+```
+
+
 ## License
 
 ISC

@@ -7,12 +7,24 @@ export class CartRepository extends BaseRepository<PrismaClient["cart"]> {
     super(prisma.cart);
   }
 
-  /**
-   * Convenience method — find by primary key id.
-   * Entity-specific query methods should be added here as the application grows.
-   */
   async findById(id: string) {
     return this.findUnique({ where: { id } });
+  }
+
+  /**
+   * Finds a cart by the owning user's ID, eagerly loading items and their menuItem.
+   * Uses prisma delegate directly so TypeScript narrows the return type to include the relations.
+   */
+  async findByUserIdWithItems(userId: string) {
+    return prisma.cart.findUnique({
+      where: { userId },
+      include: {
+        items: {
+          include: { menuItem: true },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    });
   }
 }
 
