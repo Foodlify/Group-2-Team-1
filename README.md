@@ -4,7 +4,7 @@ A Node.js + Express 5 + TypeScript backend using Prisma 7 with PostgreSQL.
 
 ## Tech Stack
 
-- **Runtime:** Node.js 25.9.0
+- **Runtime:** Node.js 25.8.1
 - **Framework:** Express 5
 - **Language:** TypeScript 6
 - **ORM:** Prisma 7 (with `@prisma/adapter-pg`)
@@ -19,7 +19,7 @@ Before you begin, make sure you have:
 
 | Tool | Version | Required | Notes |
 |------|---------|----------|-------|
-| **Node.js** | `25.9.0` | Yes | Use `nvm` to match the version in `.nvmrc` |
+| **Node.js** | `25.8.1` | Yes | Use `nvm` to match the version in `.nvmrc` |
 | **Git** | any | Yes | For cloning |
 | **Docker Desktop** | latest | Optional | Only if using Option A (recommended) |
 | **PostgreSQL** | `17.x` | Optional | Only if using Option B |
@@ -29,15 +29,15 @@ Before you begin, make sure you have:
 **Windows (nvm-windows):**
 ```powershell
 # Install nvm-windows from: https://github.com/coreybutler/nvm-windows
-nvm install 25.9.0
-nvm use 25.9.0
+nvm install 25.8.1
+nvm use 25.8.1
 ```
 
 **macOS / Linux (nvm):**
 ```bash
 # Install nvm from: https://github.com/nvm-sh/nvm
-nvm install 25.9.0
-nvm use 25.9.0
+nvm install 25.8.1
+nvm use 25.8.1
 ```
 
 If you're in the project directory, `nvm use` alone will read `.nvmrc`.

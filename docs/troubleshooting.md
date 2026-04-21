@@ -23,7 +23,9 @@ based on problems actually encountered during development.
     - [`url` is no longer supported in schema files](#url-is-no-longer-supported-in-schema-files)
     - [Argument `references` must refer only to existing fields](#argument-references-must-refer-only-to-existing-fields)
   - [Docker Issues](#docker-issues)
-    - [Installation failed: ProgramData must be owned by an elevated account](#installation-failed-programdata-must-be-owned-by-an-elevated-account)
+    - [Windows: Installation failed — ProgramData must be owned by an elevated account](#windows-installation-failed--programdata-must-be-owned-by-an-elevated-account)
+    - [Ubuntu: `docker compose` command not found](#ubuntu-docker-compose-command-not-found)
+    - [Ubuntu: Docker commands require sudo](#ubuntu-docker-commands-require-sudo)
     - [Container port mismatch (5432 vs 5433)](#container-port-mismatch-5432-vs-5433)
   - [Port Conflicts](#port-conflicts)
     - [Port 5432 already in use](#port-5432-already-in-use)
@@ -194,6 +196,10 @@ ls src/generated/prisma
 **Note:** In Prisma 7, there is no `index.ts` inside the generated folder — you import from
 specific files like `./generated/prisma/client`, not from the folder.
 
+**When this happens most often:** After `npm run db:migrate` in Prisma 7.7.0, the client
+generation step occasionally gets skipped due to a race condition. Running
+`npm run db:generate` manually fixes it.
+
 ---
 
 ### `url` is no longer supported in schema files
@@ -269,7 +275,7 @@ cart Cart @relation(fields: [cartId], references: [userId])
 
 ## Docker Issues
 
-### Installation failed: ProgramData must be owned by an elevated account
+### Windows: Installation failed — ProgramData must be owned by an elevated account
 
 **Error (during Docker Desktop install):**
 ```
@@ -297,6 +303,105 @@ account.
 
 ---
 
+### Ubuntu: `docker compose` command not found
+
+**Error:**
+```
+docker: unknown command: docker compose
+```
+
+Or with shorthand flags:
+```
+unknown shorthand flag: 'd' in -d
+```
+
+**What this means:** Docker Engine is installed, but the Compose plugin is not.
+On Ubuntu, they are separate packages.
+
+**Check what's installed:**
+```bash
+docker --version              # Should show Docker version
+docker compose version        # V2 plugin (preferred)
+docker-compose --version      # V1 standalone (legacy)
+```
+
+**Fix — Option 1: Install via apt (Ubuntu's repository)**
+
+For Ubuntu 24.04+:
+```bash
+sudo apt update
+sudo apt install docker-compose-v2
+```
+
+If the package isn't found, make sure `universe` repository is enabled:
+```bash
+sudo add-apt-repository universe
+sudo apt update
+sudo apt install docker-compose-v2
+```
+
+**Fix — Option 2: Install from Docker's official repository (latest version)**
+
+```bash
+# Add Docker's official GPG key
+sudo apt update
+sudo apt install ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+# Add the repository
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# Install the Compose plugin
+sudo apt update
+sudo apt install docker-compose-plugin
+```
+
+**Verify:**
+```bash
+docker compose version
+```
+
+Expected output:
+```
+Docker Compose version v2.x.x
+```
+
+---
+
+### Ubuntu: Docker commands require sudo
+
+**Symptom:** Every `docker` command fails unless prefixed with `sudo`. For example:
+```
+permission denied while trying to connect to the Docker daemon socket
+```
+
+**What this means:** By default on Linux, only `root` and members of the `docker` group can
+communicate with the Docker daemon.
+
+**Fix — add your user to the docker group:**
+```bash
+# Add your user to the docker group
+sudo usermod -aG docker $USER
+
+# Activate the change in the current shell without logging out
+newgrp docker
+
+# Verify
+docker ps
+```
+
+> **Security note:** Being in the `docker` group grants effectively root-equivalent access
+> to your system (since containers can mount the host filesystem). Only add trusted users.
+
+If `newgrp docker` doesn't work, log out and back in.
+
+---
+
 ### Container port mismatch (5432 vs 5433)
 
 **Symptom:** You changed `POSTGRES_PORT` in `.env` to `5433`, but `docker compose ps`
@@ -304,7 +409,7 @@ shows `0.0.0.0:5433->5433/tcp` and Prisma gets `P1001`.
 
 **What this means:** The `ports` mapping in `docker-compose.yml` was modified to use the
 variable on **both** sides. The container port should **always be `5432`** regardless of
-the host port.
+the host port, because PostgreSQL inside the container always listens on `5432`.
 
 **Fix — `docker-compose.yml`:**
 ```yaml
@@ -321,7 +426,7 @@ After fixing:
 ```bash
 docker compose down
 docker compose up -d
-docker compose ps   # Should show 5433->5432
+docker compose ps   # Should show <host_port>->5432
 ```
 
 ---

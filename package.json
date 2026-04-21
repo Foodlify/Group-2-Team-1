@@ -4,7 +4,7 @@
   "description": "",
   "main": "src/server.ts",
   "engines": {
-    "node": "25.9.0"
+    "node": "25.8.1"
   },
   "directories": {
     "test": "tests"
