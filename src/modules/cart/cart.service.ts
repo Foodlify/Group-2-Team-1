@@ -14,7 +14,6 @@ class CartService {
   async getMyCart(userId: string): Promise<CartResponse> {
     const cart = await cartRepository.findByUserIdWithItems(userId);
     if (!cart) {
-      // Return an empty-cart shape — don't 404, the cart just hasn't been created yet
       return {
         id: "",
         userId,

@@ -24,7 +24,6 @@ serveOpenApi(app);
 app.use("/api/v1", router);
 
 // ── Health Check ─────────────────────────────────────
-// ── Health Check ─────────────────────────────────────
 app.get("/health", async (req: Request, res: Response): Promise<void> => {
   try {
     // Verify DB connection by running a trivial query
