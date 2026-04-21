@@ -3,6 +3,7 @@ import router from "./routes/index";
 import { errorMiddleware } from "./middlewares/error.middleware";
 import logger from "./config/logger";
 import prisma from "./config/prisma";
+import { serveOpenApi } from "./openapi/serve";
 
 const app: Application = express();
 
@@ -15,6 +16,9 @@ app.use((req: Request, res: Response, next: NextFunction): void => {
   logger.info(`${req.method} ${req.url}`);
   next();
 });
+
+// ── OpenAPI Documentation ─────────────────────────────
+serveOpenApi(app);
 
 // ── Routes ───────────────────────────────────────────
 app.use("/api/v1", router);
