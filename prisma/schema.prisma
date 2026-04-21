@@ -6,7 +6,333 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
-// Models will be added here once you provide the ERD
+// ═══════════════════════════════════════════════════════════════
+// Users & Access Control
+// ═══════════════════════════════════════════════════════════════
+
+model UserType {
+  id    String @id @default(cuid())
+  name  String @unique
+  users User[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  id     String @id @default(cuid())
+  typeId String
+  name   String
+  email  String @unique
+
+  userType          UserType                  @relation(fields: [typeId], references: [id], onDelete: Restrict)
+  roles             UserRole[]
+  customer          Customer?
+  addresses         Address[]
+  cart              Cart?
+  preferredPayments PreferredPaymentSetting[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([typeId])
+}
+
+model Role {
+  id    String     @id @default(cuid())
+  name  String     @unique
+  users UserRole[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model UserRole {
+  userId String
+  roleId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+
+  @@id([userId, roleId])
+  @@index([roleId])
+}
+
+model Customer {
+  userId String @id
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders Order[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Address {
+  id           String  @id @default(cuid())
+  userId       String
+  addressLine1 String
+  addressLine2 String?
+  city         String
+  postalCode   String
+  country      String
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders Order[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Restaurants & Menus
+// ═══════════════════════════════════════════════════════════════
+
+model Restaurant {
+  id      String             @id @default(cuid())
+  name    String
+  details RestaurantDetails?
+  menus   Menu[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model RestaurantDetails {
+  restaurantId String @id
+  description  String
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Menu {
+  id           String     @id @default(cuid())
+  restaurantId String
+  items        MenuItem[]
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([restaurantId])
+}
+
+model MenuItem {
+  id     String @id @default(cuid())
+  menuId String
+  name   String
+  price  Float
+
+  menu       Menu        @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([menuId])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Cart
+// ═══════════════════════════════════════════════════════════════
+
+model Cart {
+  userId String     @id
+  items  CartItem[]
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CartItem {
+  id         String @id @default(cuid())
+  cartId     String
+  menuItemId String
+  quantity   Int
+
+  cart     Cart     @relation(fields: [cartId], references: [userId], onDelete: Cascade)
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([cartId, menuItemId])
+  @@index([cartId])
+  @@index([menuItemId])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Orders
+// ═══════════════════════════════════════════════════════════════
+
+model Order {
+  id         String   @id @default(cuid())
+  customerId String
+  orderDate  DateTime @default(now())
+  addressId  String
+
+  customer     Customer        @relation(fields: [customerId], references: [userId], onDelete: Restrict)
+  address      Address         @relation(fields: [addressId], references: [id], onDelete: Restrict)
+  items        OrderItem[]
+  status       OrderStatus?
+  tracking     OrderTracking[]
+  transactions Transaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([addressId])
+}
+
+model OrderItem {
+  id         String @id @default(cuid())
+  orderId    String
+  menuItemId String
+  quantity   Int
+
+  order    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([menuItemId])
+}
+
+model OrderStatus {
+  orderId String @id
+  status  String
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OrderTracking {
+  id                    String   @id @default(cuid())
+  orderId               String
+  currentLocation       String
+  estimatedDeliveryTime DateTime
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Payments
+// ═══════════════════════════════════════════════════════════════
+
+model PaymentIntegrationType {
+  id             String                     @id @default(cuid())
+  name           String                     @unique
+  configurations PaymentTypeConfiguration[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PaymentTypeConfiguration {
+  id                       String @id @default(cuid())
+  paymentIntegrationTypeId String
+  configurationDetails     Json
+
+  integrationType   PaymentIntegrationType    @relation(fields: [paymentIntegrationTypeId], references: [id], onDelete: Restrict)
+  preferredSettings PreferredPaymentSetting[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([paymentIntegrationTypeId])
+}
+
+model PreferredPaymentSetting {
+  id                  String @id @default(cuid())
+  userId              String
+  paymentTypeConfigId String
+
+  user              User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  paymentTypeConfig PaymentTypeConfiguration @relation(fields: [paymentTypeConfigId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, paymentTypeConfigId])
+  @@index([userId])
+  @@index([paymentTypeConfigId])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Transactions
+// ═══════════════════════════════════════════════════════════════
+
+model Transaction {
+  id                  String @id @default(cuid())
+  orderId             String
+  transactionStatusId String
+  amount              Float
+
+  order   Order               @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  status  TransactionStatus   @relation(fields: [transactionStatusId], references: [id], onDelete: Restrict)
+  details TransactionDetails?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([transactionStatusId])
+}
+
+model TransactionDetails {
+  transactionId String @id
+  details       String
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TransactionStatus {
+  id           String        @id @default(cuid())
+  name         String        @unique
+  transactions Transaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Auditing
+// ═══════════════════════════════════════════════════════════════
+
+model AuditingEvent {
+  id        String   @id @default(cuid())
+  typeId    String
+  data      Json
+  auditDate DateTime @default(now())
+
+  createdAt DateTime @default(now())
+
+  @@index([typeId])
+  @@index([auditDate])
+}
