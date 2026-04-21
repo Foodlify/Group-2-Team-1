@@ -179,6 +179,33 @@ psql -U postgres -c "ALTER USER postgres CREATEDB;"
 Cannot find module '../generated/prisma/client'
 ```
 
+**What this means:** The Prisma Client is generated code that's not committed to git.
+Every machine needs to generate its own copy based on the schema.
+
+**Common scenarios where this happens:**
+1. After a fresh `git clone` (most common)
+2. After `rm -rf node_modules` without rerunning `npm install`
+3. After `npm run db:migrate` in Prisma 7.7.0 (occasional race condition where generate is skipped)
+
+**Fix:**
+```bash
+npm run db:generate
+```
+
+Verify the output directory exists:
+```bash
+# Should list several .ts files: client.ts, models.ts, enums.ts, etc.
+ls src/generated/prisma
+```
+
+**Note:** In Prisma 7, there is no `index.ts` inside the generated folder — you import from
+specific files like `./generated/prisma/client`, not from the folder.
+
+**Prevention:** The project's `package.json` includes a `postinstall` script that runs
+`prisma generate` automatically after `npm install`. If you're seeing this error, either:
+- You cloned the repo and haven't run `npm install` yet → run `npm install`
+- The `postinstall` script failed silently → run `npm run db:generate` manually
+
 **What this means:** The Prisma Client wasn't generated, or was generated but isn't where
 the code expects it.
 

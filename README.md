@@ -59,6 +59,18 @@ cd Group-2-Team-1
 npm install
 ```
 
+This will automatically run `prisma generate` afterwards to create the Prisma Client in
+`src/generated/prisma/`. If for any reason the client isn't generated (e.g., schema errors),
+you can run it manually:
+
+```bash
+npm run db:generate
+```
+
+> **Why this matters:** The Prisma Client is generated code that's specific to your schema.
+> It's not committed to git (too large and changes per schema). Every machine must generate
+> its own copy.
+
 ### Step 3 — Configure environment variables
 
 Copy the example file:
