@@ -1,22 +1,33 @@
+# تعريف الخدمات المستخدمة في المشروع
 services:
+  # خدمة قاعدة البيانات PostgreSQL
   postgres:
+    # استخدام صورة PostgreSQL الرسمية بإصدار 17 على Alpine
     image: postgres:17-alpine
+    # تعيين اسم مخصص للحاوية
     container_name: g2t1_postgres
+    # إعادة تشغيل الحاوية تلقائياً إلا إذا تم إيقافها يدوياً
     restart: unless-stopped
+    # متغيرات البيئة الخاصة بقاعدة البيانات (اسم المستخدم، كلمة المرور، اسم القاعدة)
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+    # ربط منفذ قاعدة البيانات داخل الحاوية بمنفذ على الجهاز المضيف
     ports:
       - "${POSTGRES_PORT}:5432"
+    # إنشاء حجم دائم لتخزين بيانات قاعدة البيانات
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    # فحص صحة الخدمة باستخدام أمر pg_isready
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
+# تعريف الأحجام (Volumes) المستخدمة لتخزين البيانات بشكل دائم
 volumes:
   postgres_data:
+    # استخدام برنامج التشغيل المحلي للأحجام
     driver: local
