@@ -10,7 +10,7 @@ import { schemaRegistry } from "../../openapi/registry";
  */
 export const AddCartItemRequestSchema = z
   .object({
-    menuItemId: z.string().cuid().meta({
+    menuItemId: z.cuid2().meta({
       description: "ID of the menu item to add",
       example: "clxyz...",
     }),
@@ -44,7 +44,7 @@ export const UpdateCartItemRequestSchema = z
  */
 export const CartItemIdParamsSchema = z
   .object({
-    itemId: z.string().cuid().meta({
+    itemId: z.cuid2().meta({
       description: "Cart item ID",
       example: "clabc...",
     }),
@@ -60,11 +60,11 @@ export const CartItemIdParamsSchema = z
  */
 export const CartItemResponseSchema = z
   .object({
-    id: z.string().cuid(),
-    menuItemId: z.string().cuid(),
+    id: z.cuid2(),
+    menuItemId: z.cuid2(),
     quantity: z.number().int().positive(),
     menuItem: z.object({
-      id: z.string().cuid(),
+      id: z.cuid2(),
       name: z.string(),
       price: z.number(),
     }),
@@ -78,8 +78,9 @@ export const CartItemResponseSchema = z
  */
 export const CartResponseSchema = z
   .object({
-    id: z.string().cuid(),
-    userId: z.string().cuid(),
+    id: z.cuid2(),
+    customerId: z.cuid2(),
+    restaurantId: z.cuid2(),
     items: z.array(CartItemResponseSchema),
     totalPrice: z.number().meta({
       description: "Sum of (menuItem.price × quantity) for all items",

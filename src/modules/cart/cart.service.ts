@@ -11,12 +11,13 @@ import type {
 
 class CartService {
   // ─── Read ─────────────────────────────────────────────
-  async getMyCart(userId: string): Promise<CartResponse> {
-    const cart = await cartRepository.findByUserIdWithItems(userId);
+  async getMyCart(customerId: string): Promise<CartResponse> {
+    const cart = await cartRepository.findByCustomerIdWithItems(customerId);
     if (!cart) {
       return {
         id: "",
-        userId,
+        customerId,
+        restaurantId: "",
         items: [],
         totalPrice: 0,
         itemCount: 0,
@@ -29,7 +30,7 @@ class CartService {
 
   // ─── Add Item (upsert behavior) ───────────────────────
   async addItem(
-    userId: string,
+    customerId: string,
     input: AddCartItemInput,
   ): Promise<CartResponse> {
     // 1. Ensure menu item exists
@@ -40,8 +41,10 @@ class CartService {
 
     // 2. Get or create the cart
     const cart =
-      (await cartRepository.findUnique({ where: { userId } })) ??
-      (await cartRepository.create({ data: { userId } }));
+      (await cartRepository.findUnique({ where: { customerId } })) ??
+      (await cartRepository.create({
+        data: { customerId, restaurantId: input.restaurantId },
+      }));
 
     // 3. Upsert the cart item
     const existing = await cartItemRepository.findByCartAndMenuItem(
@@ -64,7 +67,7 @@ class CartService {
       });
     }
 
-    return this.getMyCart(userId);
+    return this.getMyCart(customerId);
   }
 
   // ─── Update Quantity ──────────────────────────────────
@@ -136,7 +139,8 @@ class CartService {
 
     return {
       id: cart.id,
-      userId: cart.userId,
+      customerId: cart.customerId,
+      restaurantId: cart.restaurantId,
       items: cart.items.map((item) => ({
         id: item.id,
         menuItemId: item.menuItemId,

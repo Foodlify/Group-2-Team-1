@@ -15,9 +15,9 @@ export class CartRepository extends BaseRepository<PrismaClient["cart"]> {
    * Finds a cart by the owning user's ID, eagerly loading items and their menuItem.
    * Uses prisma delegate directly so TypeScript narrows the return type to include the relations.
    */
-  async findByUserIdWithItems(userId: string) {
+  async findByCustomerIdWithItems(customerId: string) {
     return prisma.cart.findUnique({
-      where: { userId },
+      where: { customerId },
       include: {
         items: {
           include: { menuItem: true },

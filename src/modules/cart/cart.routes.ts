@@ -12,16 +12,16 @@ const router: Router = Router();
 
 // ─── Handlers ────────────────────────────────────────────
 
-router.get("/me", controller.getMyCart);
+router.get("/", controller.getMyCart);
 
 router.post(
-  "/me/items",
+  "/",
   validate({ body: AddCartItemRequestSchema }),
   controller.addItem,
 );
 
 router.patch(
-  "/me/items/:itemId",
+  "/:itemId",
   validate({
     body: UpdateCartItemRequestSchema,
     params: CartItemIdParamsSchema,
@@ -30,12 +30,12 @@ router.patch(
 );
 
 router.delete(
-  "/me/items/:itemId",
+  "/:itemId",
   validate({ params: CartItemIdParamsSchema }),
   controller.removeItem,
 );
 
-router.delete("/me", controller.clearCart);
+router.delete("/", controller.clearCart);
 
 // ─── OpenAPI Documentation ───────────────────────────────
 
@@ -48,7 +48,7 @@ const validationErrorRef = {
 };
 
 routeRegistry.push({
-  path: "/api/v1/carts/me",
+  path: "/api/v1/carts",
   pathItem: {
     get: {
       tags: [tag],
@@ -82,7 +82,7 @@ routeRegistry.push({
 });
 
 routeRegistry.push({
-  path: "/api/v1/carts/me/items",
+  path: "/api/v1/carts",
   pathItem: {
     post: {
       tags: [tag],
@@ -120,7 +120,7 @@ routeRegistry.push({
 });
 
 routeRegistry.push({
-  path: "/api/v1/carts/me/items/{itemId}",
+  path: "/api/v1/carts/{itemId}",
   pathItem: {
     patch: {
       tags: [tag],
