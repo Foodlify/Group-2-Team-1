@@ -15,12 +15,12 @@ import logger from "../src/config/logger";
 const seed = async (): Promise<void> => {
   logger.info("🌱 Starting seed...");
 
-  // ─── UserType ───────────────────────────────────────
-  const customerType = await prisma.userType.upsert({
-    where: { name: "Customer" },
-    update: {},
-    create: { name: "Customer" },
-  });
+  // // ─── UserType ───────────────────────────────────────
+  // const customerType = await prisma.userType.upsert({
+  //   where: { name: "Customer" },
+  //   update: {},
+  //   create: { name: "Customer" },
+  // });
 
   // ─── Test User ──────────────────────────────────────
   const testUser = await prisma.user.upsert({
@@ -29,7 +29,6 @@ const seed = async (): Promise<void> => {
     create: {
       email: "test@example.com",
       name: "Test User",
-      typeId: customerType.id,
     },
   });
 
@@ -49,9 +48,6 @@ const seed = async (): Promise<void> => {
     restaurant = await prisma.restaurant.create({
       data: {
         name: "Pizza Place",
-        details: {
-          create: { description: "Best pizza in town" },
-        },
       },
     });
   }
@@ -62,7 +58,7 @@ const seed = async (): Promise<void> => {
   });
   if (!menu) {
     menu = await prisma.menu.create({
-      data: { restaurantId: restaurant.id },
+      data: { name: "Breakfast", restaurantId: restaurant.id },
     });
   }
 

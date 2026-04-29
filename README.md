@@ -646,9 +646,81 @@ It covers the specific problems encountered during development and their solutio
 
 ---
 
+---
+
+## After Changing the Schema
+
+Every time you modify `prisma/schema.prisma`, run these steps in order:
+
+### Step 1 — Create a new migration
+
+```bash
+npm run db:migrate
 ```
-{"level":"info","message":"✅ Seed complete","timestamp":"2026-04-21T11:44:19.057Z","data":{"userId":"cmo8k38lv0001iiapczjj7phv","userEmail":"test@example.com","menuItemIds":[{"id":"cmo8k38mk0006iiapa4wdjh7j","name":"Margherita Pizza"},{"id":"cmo8k38mm0007iiapvytskboq","name":"Pepperoni Pizza"},{"id":"cmo8k38mn0008iiap87bk5byr","name":"Caesar Salad"}]}}
+
+When prompted, enter a short name describing your change (e.g. `add-restaurant-id-to-cart`).
+
+This will:
+- Generate a new SQL file under `prisma/migrations/`
+- Apply it to your local database immediately
+
+> **Do not skip this step.** The database won't reflect your schema changes until a migration is applied.
+
+### Step 2 — Regenerate the Prisma Client
+
+```bash
+npm run db:generate
 ```
+
+This regenerates the TypeScript client in `src/generated/prisma/` to match your updated schema. Your IDE autocomplete and type safety won't reflect the new fields until this runs.
+
+> **Note:** `db:migrate` usually triggers `db:generate` automatically, but it's good practice to run it explicitly after any schema change.
+
+### Step 3 — Restart the dev server
+
+```bash
+npm run dev
+```
+
+The server picks up the new Prisma Client on restart.
+
+---
+
+### Quick Reference
+
+| What changed | Commands to run |
+|---|---|
+| Added / removed a field | `db:migrate` → `db:generate` → restart |
+| Added a new model | `db:migrate` → `db:generate` → restart |
+| Renamed a field | `db:migrate` → `db:generate` → restart |
+| Schema only (no DB yet) | `db:generate` → restart |
+
+---
+
+### Seed Output Example
+
+After running `npx prisma db seed`, you'll see output similar to:
+
+```json
+{
+  "level": "info",
+  "message": "✅ Seed complete",
+  "timestamp": "2026-04-21T11:44:19.057Z",
+  "data": {
+    "userId": "cmo8k38lv0001iiapczjj7phv",
+    "userEmail": "test@example.com",
+    "menuItemIds": [
+      { "id": "cmo8k38mk0006iiapa4wdjh7j", "name": "Margherita Pizza" },
+      { "id": "cmo8k38mm0007iiapvytskboq", "name": "Pepperoni Pizza" },
+      { "id": "cmo8k38mn0008iiap87bk5byr", "name": "Caesar Salad" }
+    ]
+  }
+}
+```
+
+Copy the `userId` value and paste it into your `.env` file as `TEST_USER_ID`.
+
+---
 
 ## License
 
