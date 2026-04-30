@@ -172,24 +172,24 @@ psql -U postgres -c "ALTER USER postgres CREATEDB;"
 
 ## Prisma Client Issues
 
-### TEST_USER_ID is not set in .env
+### TEST_CUSTOMER_ID is not set in .env
 
 **Error (at runtime, when hitting a cart endpoint):**
 ```
-Error: TEST_USER_ID is not set in .env — set it to the seeded user's ID
+Error: TEST_CUSTOMER_ID is not set in .env — set it to the seeded customer's ID
 ```
 
-**What this means:** The cart controller uses `process.env.TEST_USER_ID` as a
-stand-in for an authenticated user. You haven't seeded the database or haven't
+**What this means:** The cart controller uses `process.env.TEST_CUSTOMER_ID` as a
+stand-in for an authenticated customer. You haven't seeded the database or haven't
 copied the seed output into `.env` yet.
 
 **Fix:**
 ```bash
 npx prisma db seed
 ```
-Then copy the `userId` from the output and add it to `.env`:
+Then copy the `customerId` from the output and add it to `.env`:
 ```env
-TEST_USER_ID=<paste-here>
+TEST_CUSTOMER_ID=<paste-here>
 ```
 Restart the server.
 

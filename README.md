@@ -122,7 +122,7 @@ POSTGRES_PORT=5432
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/G2T1M
 
 # Temporary (remove when auth is implemented)
-TEST_USER_ID=<paste-user-id-from-seed-output>
+TEST_CUSTOMER_ID=<paste-customer-id-from-seed-output>
 ```
 
 > **Generate a JWT secret:**
@@ -171,9 +171,9 @@ Choose **one** of the following options.
    npx prisma db seed
    ```
 
-   Copy the `userId` from the output and put it in `.env` as `TEST_USER_ID=...`
+   Copy the `customerId` from the output and put it in `.env` as `TEST_CUSTOMER_ID=...`
 
-   > **Note:** The `TEST_USER_ID` environment variable and seed-based authentication are temporary conveniences until user/auth management is implemented. They will be removed in a future iteration.
+   > **Note:** The `TEST_CUSTOMER_ID` environment variable and seed-based customer selection are temporary conveniences until user/auth management is implemented. They will be removed in a future iteration.
 
 5. (Optional) Open Prisma Studio to inspect your tables:
    ```bash
@@ -243,9 +243,9 @@ docker compose logs -f postgres  # View database logs
    npx prisma db seed
    ```
 
-   Copy the `userId` from the output and put it in `.env` as `TEST_USER_ID=...`
+   Copy the `customerId` from the output and put it in `.env` as `TEST_CUSTOMER_ID=...`
 
-   > **Note:** The `TEST_USER_ID` environment variable and seed-based authentication are temporary conveniences until user/auth management is implemented. They will be removed in a future iteration.
+   > **Note:** The `TEST_CUSTOMER_ID` environment variable and seed-based customer selection are temporary conveniences until user/auth management is implemented. They will be removed in a future iteration.
 
 ---
 
@@ -707,7 +707,8 @@ After running `npx prisma db seed`, you'll see output similar to:
   "message": "✅ Seed complete",
   "timestamp": "2026-04-21T11:44:19.057Z",
   "data": {
-    "userId": "cmo8k38lv0001iiapczjj7phv",
+    "customerId": "cmokc9lkd000124ap0i1men3u",
+    "userId": "cmokc9lk6000024ap6ogg7t7j",
     "userEmail": "test@example.com",
     "menuItemIds": [
       { "id": "cmo8k38mk0006iiapa4wdjh7j", "name": "Margherita Pizza" },
@@ -718,7 +719,7 @@ After running `npx prisma db seed`, you'll see output similar to:
 }
 ```
 
-Copy the `userId` value and paste it into your `.env` file as `TEST_USER_ID`.
+Copy the `customerId` value and paste it into your `.env` file as `TEST_CUSTOMER_ID`.
 
 ---
 

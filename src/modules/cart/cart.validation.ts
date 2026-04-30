@@ -101,7 +101,7 @@ export const CartResponseSchema = z
 export const CartSuccessResponseSchema = z
   .object({
     success: z.literal(true),
-    data: CartResponseSchema,
+    data: CartResponseSchema.nullable(),
   })
   .meta({ id: "CartSuccessResponse" });
 

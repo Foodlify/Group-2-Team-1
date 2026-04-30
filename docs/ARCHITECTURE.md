@@ -285,8 +285,8 @@ sequenceDiagram
     end
 
     Validate->>Ctrl: next()
-    Ctrl->>Ctrl: getCurrentUserId()<br/>(حاليًا من TEST_USER_ID)
-    Ctrl->>Svc: addItem(userId, input)
+    Ctrl->>Ctrl: getCurrentCustomerId()<br/>(حاليًا من TEST_CUSTOMER_ID)
+    Ctrl->>Svc: addItem(customerId, input)
 
     Svc->>MIRepo: findById(menuItemId)
     MIRepo->>DB: SELECT menuItem
@@ -298,12 +298,12 @@ sequenceDiagram
         Ctrl-->>Client: 404 JSON
     end
 
-    Svc->>CRepo: findUnique({ userId })
+    Svc->>CRepo: findUnique({ customerId })
     CRepo->>DB: SELECT cart
     DB-->>CRepo: cart | null
 
     alt No cart yet
-        Svc->>CRepo: create({ userId })
+        Svc->>CRepo: create({ customerId })
         CRepo->>DB: INSERT cart
     end
 
@@ -317,7 +317,7 @@ sequenceDiagram
         Svc->>CIRepo: create({ cartId, menuItemId, quantity })
     end
 
-    Svc->>Svc: getMyCart(userId)<br/>يحسب totalPrice + itemCount
+    Svc->>Svc: getMyCart(customerId)<br/>يحسب totalPrice + itemCount
     Svc-->>Ctrl: CartResponse
     Ctrl-->>Client: 201 { success: true, data: cart }
 ```
@@ -474,7 +474,7 @@ graph TB
 في **Service layer** فقط. الـ Controller مهمته الوحيدة استقبال `req` وإرجاع `res`. الـ Repository مهمته الوحيدة CRUD.
 
 **س: كيف تعمل الـ Authentication حاليًا؟**
-الـ middleware موجود في [src/middlewares/auth.middleware.ts](../src/middlewares/auth.middleware.ts) (JWT) لكنه **غير مُفعَّل حاليًا**. الـ Cart controller يقرأ `userId` من متغير `TEST_USER_ID` في `.env` مؤقتًا لحين تفعيل نظام التسجيل.
+الـ middleware موجود في [src/middlewares/auth.middleware.ts](../src/middlewares/auth.middleware.ts) (JWT) لكنه **غير مُفعَّل حاليًا**. الـ Cart controller يقرأ `customerId` من متغير `TEST_CUSTOMER_ID` في `.env` مؤقتًا لحين تفعيل نظام التسجيل.
 
 **س: أين أرى كل الـ endpoints المتاحة؟**
 شغّل السيرفر ثم افتح:

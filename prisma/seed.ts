@@ -3,10 +3,9 @@ import logger from "../src/config/logger";
 
 /**
  * Seeds the database with the minimum data needed for cart testing:
- * - 1 UserType (Customer)
  * - 1 User
  * - 1 Customer (linked to the user)
- * - 1 Restaurant + RestaurantDetails
+ * - 1 Restaurant
  * - 1 Menu
  * - 3 MenuItems
  *
@@ -14,13 +13,6 @@ import logger from "../src/config/logger";
  */
 const seed = async (): Promise<void> => {
   logger.info("🌱 Starting seed...");
-
-  // // ─── UserType ───────────────────────────────────────
-  // const customerType = await prisma.userType.upsert({
-  //   where: { name: "Customer" },
-  //   update: {},
-  //   create: { name: "Customer" },
-  // });
 
   // ─── Test User ──────────────────────────────────────
   const testUser = await prisma.user.upsert({
@@ -85,7 +77,9 @@ const seed = async (): Promise<void> => {
   });
 
   logger.info("✅ Seed complete", {
-    userId: testCustomer.id,
+    customerId: testCustomer.id,
+    userId: testUser.id,
+    userEmail: testUser.email,
     menuItemIds: menuItems.map((m) => ({ id: m.id, name: m.name })),
   });
 };
