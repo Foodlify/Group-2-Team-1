@@ -169,7 +169,7 @@ class CartService {
    */
   private toCartResponse(cart: CartWithItems): CartResponse {
     const totalPrice = cart.items.reduce(
-      (sum, item) => sum + Number(item.menuItem.price) * item.quantity,
+      (sum, item) => sum + Number(item.price) * item.quantity,
       0,
     );
     const itemCount = cart.items.reduce(
@@ -186,9 +186,9 @@ class CartService {
         menuItemId: item.menuItemId,
         quantity: item.quantity,
         menuItem: {
-          id: item.menuItem.id,
-          name: item.menuItem.name,
-          price: Number(item.menuItem.price),
+          id: item.menuItemId,
+          name: item.name,
+          price: Number(item.price),
         },
         createdAt: item.createdAt.toISOString(),
         updatedAt: item.updatedAt.toISOString(),

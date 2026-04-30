@@ -1,18 +1,25 @@
+import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client";
-import env from "./env";
 import logger from "./logger";
+
+const databaseUrl = process.env.DATABASE_URL;
+const nodeEnv = process.env.NODE_ENV || "development";
+
+if (!databaseUrl) {
+  throw new Error("DATABASE_URL is required");
+}
 
 // ─── Adapter ────────────────────────────────────────
 const adapter = new PrismaPg({
-  connectionString: env.DATABASE_URL,
+  connectionString: databaseUrl,
 });
 
 // ─── Prisma Client Singleton ────────────────────────
 const prisma = new PrismaClient({
   adapter,
   log:
-    env.NODE_ENV === "development"
+    nodeEnv === "development"
       ? ["query", "info", "warn", "error"]
       : ["error"],
 });

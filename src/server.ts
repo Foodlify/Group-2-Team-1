@@ -4,6 +4,8 @@ import logger from "./config/logger";
 import { connectPrisma, disconnectPrisma } from "./config/prisma";
 
 const startServer = async (): Promise<void> => {
+  let isShuttingDown = false;
+
   // ── Connect to DB First ─────────────────────────────
   await connectPrisma();
 
@@ -12,8 +14,19 @@ const startServer = async (): Promise<void> => {
     logger.info(`Server running on port ${env.PORT} in ${env.NODE_ENV} mode`);
   });
 
+  server.on("error", (error: Error) => {
+    logger.error("HTTP server error", {
+      message: error.message,
+      stack: error.stack,
+    });
+    process.exit(1);
+  });
+
   // ── Graceful Shutdown ───────────────────────────────
   const shutdown = async (signal: string): Promise<void> => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+
     logger.warn(`${signal} received. Shutting down gracefully...`);
 
     // Stop accepting new requests

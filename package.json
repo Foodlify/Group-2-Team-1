@@ -2,7 +2,7 @@
   "name": "group-2-team-1",
   "version": "1.0.0",
   "description": "",
-  "main": "src/server.ts",
+  "main": "dist/server.js",
   "engines": {
     "node": "25.8.1"
   },
@@ -10,7 +10,8 @@
     "test": "tests"
   },
   "scripts": {
-    "start": "ts-node src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
     "postinstall": "prisma generate",

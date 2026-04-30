@@ -1,150 +1,142 @@
-# مراجعة المشروع - تحديث بعد الإصلاحات
+# مراجعة المشروع - بعد تنفيذ الإصلاحات
 
-تاريخ المراجعة: 2026-04-30
+تاريخ التحديث: 2026-04-30
 
-## نطاق المراجعة
+## نطاق التحديث
 
-تمت مراجعة المشروع مرة أخرى بعد إصلاح نقاط `TEST_CUSTOMER_ID`, seed output, التوثيق، تحقق وجود العميل، واستجابة السلة الفارغة. لم أعد أتعامل مع عدم تفعيل المصادقة كنقطة عيب لأنك طلبت سابقاً تجاوزها، لكنني أدرجت مشاكل البناء لأنها تمنع تشغيل المشروع بشكل إنتاجي.
+تم تنفيذ البنود المطلوبة من التقرير السابق:
 
-## نتيجة الفحوصات
+1. تعليق repositories غير المدعومة حالياً بدون حذف ملفاتها.
+2. إصلاح مسار `build/start`.
+3. إصلاح Docker build path.
+4. استخدام سعر snapshot المحفوظ في `CartItem`.
+5. تشديد تحقق متغيرات البيئة.
+6. تحسين lifecycle الخاص بالخادم.
+7. إضافة service للتطبيق في `docker-compose.yml`.
+8. ضبط وصف OpenAPI ليعكس المسارات المتاحة حالياً.
+9. الاختبارات مؤجلة حسب القرار الحالي.
+
+## نتيجة الفحوصات الحالية
 
 | الفحص | النتيجة |
 | --- | --- |
+| `npm run build` | ناجح |
 | `npm run db:generate` | ناجح |
 | `npx prisma validate` | ناجح |
-| `npm run db:migrate:deploy -- --schema prisma/schema.prisma` | ناجح ولا توجد migrations معلقة |
-| `npx prisma db seed` | ناجح ويطبع `customerId` |
-| فحص `TEST_CUSTOMER_ID` في قاعدة البيانات | ناجح: القيمة الحالية موجودة في جدول `Customer` |
 | `docker compose config` | ناجح |
-| `npm run build` | فاشل: لا يوجد سكربت `build` |
-| `npx tsc --noEmit --pretty false` | فاشل بسبب repositories لنماذج غير موجودة في Prisma schema |
-| `npm test` | فاشل لأن سكربت الاختبار غير مفعّل |
+| `docker build -t g2t1-review .` | ناجح |
+| `npm test` | لم يتم تشغيله لأن الاختبارات مؤجلة حالياً |
 
 ## ما تم إصلاحه
 
-- `TEST_CUSTOMER_ID` في `.env` أصبح يشير إلى `Customer.id` موجود فعلاً في قاعدة البيانات.
-- `prisma/seed.ts` أصبح يطبع `customerId` صراحة، مع `userId` و `userEmail` كمعلومات إضافية.
-- `README.md`, `docs/troubleshooting.md`, و `docs/ARCHITECTURE.md` لم تعد تشير إلى `TEST_USER_ID` في سياق السلة.
-- `CartService` يتحقق الآن من وجود العميل ويرجع `404 Customer not found` بدلاً من الاعتماد على خطأ قاعدة البيانات.
-- استجابة السلة الفارغة أصبحت `data: null`، و `CartSuccessResponseSchema` يسمح بذلك.
-- شرط `max(100)` أزيل من request validation الخاص بالسلة.
+### 1. تعليق repositories غير المدعومة
 
-## الملاحظات الحالية حسب الأولوية
+تم تعليق محتوى repositories التي كانت تشير إلى Prisma delegates غير موجودة في `schema.prisma`، مع إبقاء الملفات في مكانها للعودة إليها لاحقاً.
 
-### 1. حرج: TypeScript build ما زال مكسوراً بسبب عدم تطابق Prisma schema مع repositories
+الملفات المعلقة:
 
-`prisma/schema.prisma:15-134` يحتوي حالياً على 8 نماذج فقط: `User`, `Customer`, `Address`, `Restaurant`, `Menu`, `MenuItem`, `Cart`, `CartItem`.
+- `src/modules/auditingEvent/auditingEvent.repository.ts`
+- `src/modules/order/order.repository.ts`
+- `src/modules/orderItem/orderItem.repository.ts`
+- `src/modules/orderStatus/orderStatus.repository.ts`
+- `src/modules/orderTracking/orderTracking.repository.ts`
+- `src/modules/paymentIntegrationType/paymentIntegrationType.repository.ts`
+- `src/modules/paymentTypeConfiguration/paymentTypeConfiguration.repository.ts`
+- `src/modules/preferredPaymentSetting/preferredPaymentSetting.repository.ts`
+- `src/modules/transaction/transaction.repository.ts`
+- `src/modules/transactionDetails/transactionDetails.repository.ts`
+- `src/modules/transactionStatus/transactionStatus.repository.ts`
 
-لكن توجد repositories تشير إلى Prisma delegates غير موجودة، مثل:
+الأثر: `tsc` أصبح ينجح بدون حذف هذه الملفات.
 
-- `src/modules/auditingEvent/auditingEvent.repository.ts:5`
-- `src/modules/order/order.repository.ts:5`
-- `src/modules/transaction/transaction.repository.ts:5`
-- وأيضاً وحدات `OrderItem`, `OrderStatus`, `OrderTracking`, `Payment*`, `PreferredPaymentSetting`, `TransactionDetails`, `TransactionStatus`
+### 2. إصلاح build/start
 
-الأثر: `npx tsc --noEmit` يفشل، و `Dockerfile:20` سيفشل عند `RUN npx tsc`.
+تم تعديل `package.json`:
 
-التوصية: إمّا إعادة هذه النماذج إلى `schema.prisma`، أو إخراج repositories غير المدعومة من `src` إلى أن تعود نماذجها.
+- `main` أصبح `dist/server.js`.
+- تمت إضافة `build: tsc`.
+- `start` أصبح `node dist/server.js`.
+- بقي `dev` لتشغيل التطوير عبر `ts-node-dev`.
 
-### 2. حرج: لا يوجد مسار build/start إنتاجي واضح
+### 3. إصلاح Docker build
 
-في `package.json:13-15`:
+تمت إضافة `DATABASE_URL` dummy في مراحل build التي تحتاج Prisma generate، وتم تعديل runtime stage حتى لا يحاول نسخ `/app/node_modules/.prisma` غير الموجود مع إعداد Prisma الحالي.
 
-```json
-"start": "ts-node src/server.ts",
-"test": "echo \"Error: no test specified\" && exit 1"
+تم التحقق بالأمر:
+
+```bash
+docker build -t g2t1-review .
 ```
 
-لا يوجد سكربت `build`، و `start` يعتمد على `ts-node` الموجود في `devDependencies`. هذا لا يناسب تشغيل production install.
+والبناء نجح.
 
-الأثر: `npm run build` يفشل مباشرة، و `npm start` لن يعمل إذا تم تثبيت الحزم بـ `npm ci --omit=dev`.
+### 4. استخدام سعر snapshot في السلة
 
-التوصية: إضافة:
+تم تعديل `CartService.toCartResponse()` لاستخدام:
 
-```json
-"build": "tsc",
-"start": "node dist/server.js"
+- `CartItem.price`
+- `CartItem.name`
+
+بدلاً من السعر والاسم الحاليين من `MenuItem`.
+
+الأثر: إجمالي السلة لا يتغير بأثر رجعي إذا تغير سعر عنصر القائمة بعد إضافته للسلة.
+
+### 5. تشديد إعدادات البيئة
+
+تم استخدام Zod للتحقق من:
+
+- `PORT`
+- `NODE_ENV`
+- `DATABASE_URL`
+- `JWT_SECRET`
+
+وأصبح أي خطأ في إعدادات البيئة يفشل مبكراً برسالة واضحة عند startup.
+
+### 6. تحسين lifecycle الخاص بالخادم
+
+تمت إضافة:
+
+- `server.on("error", ...)` لمعالجة أخطاء مثل `EADDRINUSE`.
+- guard باسم `isShuttingDown` لمنع تنفيذ shutdown أكثر من مرة.
+
+### 7. إضافة application service إلى Docker Compose
+
+أصبح `docker-compose.yml` يحتوي على:
+
+- `api` service يبني التطبيق من `Dockerfile`.
+- `postgres` service.
+- `depends_on` على healthcheck الخاص بقاعدة البيانات.
+- `DATABASE_URL` داخل الحاوية يشير إلى host باسم `postgres`.
+
+تم التحقق بالأمر:
+
+```bash
+docker compose config
 ```
 
-مع إبقاء `dev` للتطوير فقط.
+والأمر نجح.
 
-### 3. عالي: Dockerfile غالباً سيفشل في build
+### 8. تحديث وصف OpenAPI
 
-في `Dockerfile:12-14` يتم تشغيل `npm ci`، و `package.json:16` يشغل `postinstall` الذي ينفذ `prisma generate`. داخل Docker build لا يتم نسخ `.env` بسبب `.dockerignore`، ولا توجد `DATABASE_URL` معرفة في مرحلة `deps`.
+تم تعديل وصف OpenAPI حتى لا يعلن أن كل موارد المنصة منشورة حالياً. الوصف الآن يوضح أن السطح المكشوف حالياً هو cart workflow، وأن بقية الموارد مخططة أو داخلية ما لم تُعرض routes لها.
 
-حتى لو تم تجاوز هذه النقطة، سيصل البناء إلى `Dockerfile:20` ويفشل بسبب TypeScript errors المذكورة في الملاحظة الأولى.
+## ملاحظات متبقية
 
-التوصية: تعريف `DATABASE_URL` dummy وقت build أو تعطيل scripts في مرحلة تثبيت الحزم ثم تشغيل `prisma generate` بعد توفير env مناسب، بالتوازي مع إصلاح TypeScript build.
+### 1. الاختبارات مؤجلة
 
-### 4. عالي: `CartItem.price/name` ما زالا غير مستخدمين في حساب/عرض السلة
+لا يزال `npm test` غير مفعّل، لكن هذا مقصود حالياً حسب القرار بعدم إضافة اختبارات الآن.
 
-`CartItem` يحتفظ بـ `price` و `name` في `prisma/schema.prisma:117-123`، ويتم حفظهما عند الإضافة في `src/modules/cart/cart.service.ts:133-141`.
+### 2. repositories المعلقة تحتاج قراراً لاحقاً
 
-لكن `toCartResponse` يستخدم السعر والاسم من `menuItem` الحالي في `src/modules/cart/cart.service.ts:170-191`.
+الملفات المعلقة لم تُحذف. عند الرجوع لتطوير orders/payments/transactions/auditing يجب اختيار أحد المسارين:
 
-الأثر: إذا تغير سعر عنصر القائمة بعد إضافته للسلة، إجمالي السلة سيتغير بأثر رجعي رغم وجود snapshot محفوظ.
+- إعادة النماذج المطلوبة إلى `schema.prisma` ثم فك التعليق.
+- أو حذف الوحدات غير المطلوبة نهائياً عندما يصبح نطاق المشروع ثابتاً.
 
-التوصية: إذا المطلوب تثبيت السعر وقت الإضافة، استخدم `CartItem.price/name` في response والحساب. إذا المطلوب السعر الحالي، احذف حقول snapshot أو وثق السلوك.
+### 3. Docker image بُنيت محلياً باسم مؤقت
 
-### 5. متوسط: إعدادات البيئة لا تتحقق من القيم بشكل صارم
+تم استخدام الاسم `g2t1-review` للتحقق فقط. لا يوجد تغيير مطلوب هنا إلا عند تجهيز image رسمية للنشر.
 
-في `src/config/env.ts:12-16`:
+## الحالة الحالية المختصرة
 
-```ts
-PORT: Number(process.env.PORT) || 3000
-```
-
-لو `PORT` قيمة غير رقمية سيعود التطبيق إلى `3000` بصمت. كذلك `NODE_ENV` يقبل أي string.
-
-الأثر: أخطاء الإعداد قد تمر بدون تنبيه، وقد يعمل التطبيق على port غير متوقع.
-
-التوصية: استخدام Zod للتحقق من `PORT`, `NODE_ENV`, `DATABASE_URL`, و `JWT_SECRET` برسائل startup واضحة.
-
-### 6. متوسط: server lifecycle يحتاج معالجة أوضح للأخطاء
-
-في `src/server.ts:11-13` لا يوجد `server.on("error")` لمعالجة أخطاء مثل `EADDRINUSE`.
-
-وفي `src/server.ts:16-48` يمكن استدعاء `shutdown` أكثر من مرة عبر `SIGTERM`, `SIGINT`, `unhandledRejection`, و `uncaughtException`.
-
-الأثر: رسائل فشل التشغيل أو الإغلاق قد تكون غير واضحة، وقد تتكرر عمليات الإغلاق.
-
-التوصية: إضافة handler لأخطاء server، وإضافة flag مثل `isShuttingDown` لمنع تكرار shutdown.
-
-### 7. متوسط: `docker-compose.yml` يشغل قاعدة البيانات فقط
-
-`docker-compose.yml:1-22` يحتوي service واحد لـ `postgres` فقط. هذا صالح كـ local database compose، لكنه لا يشغل التطبيق.
-
-الأثر: من يتوقع أن `docker compose up` يشغل النظام كاملاً لن يحصل إلا على PostgreSQL.
-
-التوصية: إما إضافة service للتطبيق، أو توثيق أن compose مخصص لقاعدة البيانات المحلية فقط.
-
-### 8. متوسط: OpenAPI description أوسع من المسارات الفعلية
-
-`src/openapi/document.ts:26-29` يصف API يحتوي users, restaurants, menus, carts, orders, payments. لكن `src/routes/index.ts` يركب مسار `/carts` فقط حالياً.
-
-الأثر: التوثيق يعطي توقعات أعلى من السطح الفعلي للـ API.
-
-التوصية: تعديل الوصف ليعكس المتاح حالياً، أو إضافة توضيح أن بقية الموارد مخططة وليست منشورة بعد.
-
-### 9. متوسط: لا توجد اختبارات قابلة للتشغيل
-
-`package.json:15` ما زال يفشل عمداً:
-
-```json
-"test": "echo \"Error: no test specified\" && exit 1"
-```
-
-ومجلد `tests` لا يحتوي ملفات.
-
-الأثر: لا يوجد ضمان آلي لتدفقات السلة المهمة مثل إنشاء السلة، السلة الفارغة، عميل غير موجود، وإضافة نفس العنصر أكثر من مرة.
-
-التوصية: إضافة Vitest أو Jest، والبدء باختبارات `CartService`.
-
-## الأولوية المقترحة
-
-1. توحيد `schema.prisma` مع repositories أو حذف repositories غير المدعومة.
-2. إضافة `build` وتعديل `start` لتشغيل `dist/server.js`.
-3. إصلاح Docker build path بعد ضبط build.
-4. حسم سياسة سعر السلة: snapshot أم السعر الحالي.
-5. تشديد تحقق البيئة وتحسين lifecycle للـ server.
-6. إضافة اختبارات خدمة السلة.
+المشروع أصبح يبني TypeScript بنجاح، Prisma يعمل، Docker build يعمل، وDocker Compose أصبح يحتوي التطبيق وقاعدة البيانات. المتبقي الأساسي هو تفعيل الاختبارات لاحقاً وحسم مصير repositories المعلقة عند توسيع نطاق الـ schema.

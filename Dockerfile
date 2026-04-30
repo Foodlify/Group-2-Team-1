@@ -9,12 +9,14 @@ RUN apk add --no-cache dumb-init libc6-compat openssl
 
 # ── Dependencies (full) ───────────────────────────────
 FROM base AS deps
+ENV DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres
 COPY package.json package-lock.json prisma.config.ts ./
 COPY prisma ./prisma
 RUN npm ci
 
 # ── Build ─────────────────────────────────────────────
 FROM deps AS build
+ENV DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres
 COPY tsconfig.json ./
 COPY src ./src
 RUN npx tsc
@@ -31,8 +33,6 @@ ENV NODE_ENV=production
 ENV PORT=3000
 
 COPY --from=prod-deps /app/node_modules ./node_modules
-COPY --from=deps /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=deps /app/node_modules/@prisma/client ./node_modules/@prisma/client
 COPY --from=build /app/dist ./dist
 COPY prisma ./prisma
 COPY package.json ./

@@ -26,7 +26,7 @@ export const buildOpenApiDocument = (): ReturnType<typeof createDocument> => {
       title: "Food Delivery API",
       version: "1.0.0",
       description:
-        "REST API for a food delivery platform with users, restaurants, menus, carts, orders, and payments.",
+        "REST API for the currently exposed cart workflow in a food delivery platform. Users, restaurants, menus, orders, and payments are planned or internal modules unless routes are explicitly exposed.",
     },
     servers: [
       {
