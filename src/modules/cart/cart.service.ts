@@ -8,6 +8,7 @@ import type {
   CartResponse,
   UpdateCartItemInput,
 } from "./cart.validation";
+import type { Prisma } from "../../generated/prisma/client";
 
 class CartService {
   // ─── Read ─────────────────────────────────────────────
@@ -33,9 +34,11 @@ class CartService {
     customerId: string,
     input: AddCartItemInput,
   ): Promise<CartResponse> {
-    const menuItem = await this.fetchMenuItem(input.menuItemId);
-    const cart = await this.resolveCart(customerId, menuItem.menu.restaurantId);
-    await this.upsertCartItem(cart.id, input, menuItem);
+    await cartRepository.transaction(async (tx) => {
+      const menuItem = await this.fetchMenuItem(input.menuItemId, tx);
+      const cart = await this.resolveCart(customerId, menuItem.menu.restaurantId, tx);
+      await this.upsertCartItem(cart.id, input, menuItem, tx);
+    });
     return this.getMyCart(customerId);
   }
 
@@ -74,26 +77,25 @@ class CartService {
 
   // ─── Private Helpers ──────────────────────────────────
 
-  private async fetchMenuItem(menuItemId: string) {
-    const menuItem = await menuItemRepository.findByIdWithMenu(menuItemId);
+  private async fetchMenuItem(menuItemId: string, tx?: Prisma.TransactionClient) {
+    const menuItem = await menuItemRepository.findByIdWithMenu(menuItemId, tx);
     if (!menuItem) throw new AppError("Menu item not found", 404);
     return menuItem;
   }
 
-  private async resolveCart(customerId: string, restaurantId: string) {
-    const existingCart = await cartRepository.findUnique({
-      where: { customerId },
-    });
+  private async resolveCart(
+    customerId: string,
+    restaurantId: string,
+    tx?: Prisma.TransactionClient,
+  ) {
+    const existingCart = await cartRepository.findByCustomerId(customerId, tx);
     if (existingCart && existingCart.restaurantId !== restaurantId) {
       throw new AppError(
         "Cart already has items from a different restaurant. Clear your cart first.",
         400,
       );
     }
-    return (
-      existingCart ??
-      (await cartRepository.create({ data: { customerId, restaurantId } }))
-    );
+    return existingCart ?? (await cartRepository.createCart({ customerId, restaurantId }, tx));
   }
 
   private async upsertCartItem(
@@ -102,26 +104,31 @@ class CartService {
     menuItem: NonNullable<
       Awaited<ReturnType<typeof menuItemRepository.findByIdWithMenu>>
     >,
+    tx?: Prisma.TransactionClient,
   ) {
     const existing = await cartItemRepository.findByCartAndMenuItem(
       cartId,
       input.menuItemId,
+      tx,
     );
     if (existing) {
-      await cartItemRepository.update({
-        where: { id: existing.id },
-        data: { quantity: existing.quantity + input.quantity },
-      });
+      await cartItemRepository.updateWithTx(
+        { where: { id: existing.id }, data: { quantity: existing.quantity + input.quantity } },
+        tx,
+      );
     } else {
-      await cartItemRepository.create({
-        data: {
-          cartId,
-          menuItemId: input.menuItemId,
-          quantity: input.quantity,
-          name: menuItem.name,
-          price: menuItem.price,
+      await cartItemRepository.createWithTx(
+        {
+          data: {
+            cartId,
+            menuItemId: input.menuItemId,
+            quantity: input.quantity,
+            name: menuItem.name,
+            price: menuItem.price,
+          },
         },
-      });
+        tx,
+      );
     }
   }
 

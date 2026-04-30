@@ -1,4 +1,5 @@
 import type { PrismaClient } from "../../generated/prisma/client";
+import type { Prisma } from "../../generated/prisma/client";
 import { BaseRepository } from "../../shared/repositories/base.repository";
 import prisma from "../../config/prisma";
 
@@ -26,12 +27,30 @@ export class CartItemRepository extends BaseRepository<PrismaClient["cartItem"]>
    * Looks up a cart item by the composite unique key (cartId + menuItemId).
    * Used for the "add item" upsert behavior.
    */
-  async findByCartAndMenuItem(cartId: string, menuItemId: string) {
-    return prisma.cartItem.findUnique({
+  async findByCartAndMenuItem(
+    cartId: string,
+    menuItemId: string,
+    tx?: Prisma.TransactionClient,
+  ) {
+    return (tx ?? prisma).cartItem.findUnique({
       where: {
         cartId_menuItemId: { cartId, menuItemId },
       },
     });
+  }
+
+  async updateWithTx(
+    args: Parameters<PrismaClient["cartItem"]["update"]>[0],
+    tx?: Prisma.TransactionClient,
+  ) {
+    return (tx ?? prisma).cartItem.update(args);
+  }
+
+  async createWithTx(
+    args: Parameters<PrismaClient["cartItem"]["create"]>[0],
+    tx?: Prisma.TransactionClient,
+  ) {
+    return (tx ?? prisma).cartItem.create(args);
   }
 
   /**

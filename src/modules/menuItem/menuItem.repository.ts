@@ -1,4 +1,5 @@
 import type { PrismaClient } from "../../generated/prisma/client";
+import type { Prisma } from "../../generated/prisma/client";
 import { BaseRepository } from "../../shared/repositories/base.repository";
 import prisma from "../../config/prisma";
 
@@ -15,8 +16,8 @@ export class MenuItemRepository extends BaseRepository<PrismaClient["menuItem"]>
     return this.findUnique({ where: { id } });
   }
 
-  async findByIdWithMenu(id: string) {
-    return prisma.menuItem.findUnique({
+  async findByIdWithMenu(id: string, tx?: Prisma.TransactionClient) {
+    return (tx ?? prisma).menuItem.findUnique({
       where: { id },
       include: { menu: { select: { restaurantId: true } } },
     });

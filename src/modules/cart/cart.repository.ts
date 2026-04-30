@@ -1,4 +1,5 @@
 import type { PrismaClient } from "../../generated/prisma/client";
+import type { Prisma } from "../../generated/prisma/client";
 import { BaseRepository } from "../../shared/repositories/base.repository";
 import prisma from "../../config/prisma";
 
@@ -9,6 +10,17 @@ export class CartRepository extends BaseRepository<PrismaClient["cart"]> {
 
   async findById(id: string) {
     return this.findUnique({ where: { id } });
+  }
+
+  async findByCustomerId(customerId: string, tx?: Prisma.TransactionClient) {
+    return (tx ?? prisma).cart.findUnique({ where: { customerId } });
+  }
+
+  async createCart(
+    data: { customerId: string; restaurantId: string },
+    tx?: Prisma.TransactionClient,
+  ) {
+    return (tx ?? prisma).cart.create({ data });
   }
 
   /**

@@ -1,4 +1,4 @@
-import type { PrismaClient } from "../../generated/prisma/client";
+import type { PrismaClient, Prisma } from "../../generated/prisma/client";
 import prisma from "../../config/prisma";
 
 /**
@@ -126,6 +126,10 @@ export abstract class BaseRepository<
         upsert: (a: unknown) => Promise<unknown>;
       }
     ).upsert(args) as Promise<DelegateReturn<TDelegate, "upsert">>;
+  }
+
+  transaction<T>(callback: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+    return prisma.$transaction(callback);
   }
 
   /**
