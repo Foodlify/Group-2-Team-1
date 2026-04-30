@@ -3,14 +3,14 @@ import { asyncHandler } from "../../utils/asyncHandler";
 import { cartService } from "./cart.service";
 import type { CartItemIdParams } from "./cart.validation";
 
-// ─── Test user ID ────────────────────────────────────────
-// TODO: Replace with `req.user.id` once auth is implemented.
+// ─── Test customer ID ────────────────────────────────────────
+// TODO: Replace with `req.customer.id` once auth is implemented.
 // For now, reads from env or falls back to a hardcoded default.
-const getCurrentUserId = (_req: Request): string => {
-  const id = process.env.TEST_USER_ID;
+const getCurrentCustomerId = (_req: Request): string => {
+  const id = process.env.TEST_CUSTOMER_ID;
   if (!id) {
     throw new Error(
-      "TEST_USER_ID is not set in .env — set it to the seeded user's ID",
+      "TEST_CUSTOMER_ID is not set in .env — set it to the seeded customer's ID",
     );
   }
   return id;
@@ -20,25 +20,25 @@ const getCurrentUserId = (_req: Request): string => {
 
 export const getMyCart = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
-    const userId = getCurrentUserId(req);
-    const cart = await cartService.getMyCart(userId);
+    const customerId = getCurrentCustomerId(req);
+    const cart = await cartService.getMyCart(customerId);
     res.status(200).json({ success: true, data: cart });
   },
 );
 
 export const addItem = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
-    const userId = getCurrentUserId(req);
-    const cart = await cartService.addItem(userId, req.body);
+    const customerId = getCurrentCustomerId(req);
+    const cart = await cartService.addItem(customerId, req.body);
     res.status(201).json({ success: true, data: cart });
   },
 );
 
 export const updateItem = asyncHandler(
   async (req: Request<CartItemIdParams>, res: Response): Promise<void> => {
-    const userId = getCurrentUserId(req);
+    const customerId = getCurrentCustomerId(req);
     const cart = await cartService.updateItem(
-      userId,
+      customerId,
       req.params.itemId,
       req.body,
     );
@@ -48,16 +48,16 @@ export const updateItem = asyncHandler(
 
 export const removeItem = asyncHandler(
   async (req: Request<CartItemIdParams>, res: Response): Promise<void> => {
-    const userId = getCurrentUserId(req);
-    const cart = await cartService.removeItem(userId, req.params.itemId);
+    const customerId = getCurrentCustomerId(req);
+    const cart = await cartService.removeItem(customerId, req.params.itemId);
     res.status(200).json({ success: true, data: cart });
   },
 );
 
 export const clearCart = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
-    const userId = getCurrentUserId(req);
-    await cartService.clearCart(userId);
+    const customerId = getCurrentCustomerId(req);
+    await cartService.clearCart(customerId);
     res.status(200).json({ success: true, message: "Cart cleared" });
   },
 );

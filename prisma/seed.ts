@@ -33,7 +33,7 @@ const seed = async (): Promise<void> => {
   });
 
   // ─── Customer (1:1 with User) ───────────────────────
-  await prisma.customer.upsert({
+  const testCustomer = await prisma.customer.upsert({
     where: { userId: testUser.id },
     update: {},
     create: { userId: testUser.id },
@@ -85,8 +85,7 @@ const seed = async (): Promise<void> => {
   });
 
   logger.info("✅ Seed complete", {
-    userId: testUser.id,
-    userEmail: testUser.email,
+    userId: testCustomer.id,
     menuItemIds: menuItems.map((m) => ({ id: m.id, name: m.name })),
   });
 };
