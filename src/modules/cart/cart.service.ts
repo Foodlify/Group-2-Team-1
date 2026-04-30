@@ -33,51 +33,9 @@ class CartService {
     customerId: string,
     input: AddCartItemInput,
   ): Promise<CartResponse> {
-    // 1. Ensure menu item exists and fetch its restaurantId via JOIN
-    const menuItem = await menuItemRepository.findByIdWithMenu(input.menuItemId);
-    if (!menuItem) {
-      throw new AppError("Menu item not found", 404);
-    }
-
-    const restaurantId = menuItem.menu.restaurantId;
-
-    // 2. Get or create the cart; if cart exists, enforce same-restaurant rule
-    const existingCart = await cartRepository.findUnique({ where: { customerId } });
-    if (existingCart && existingCart.restaurantId !== restaurantId) {
-      throw new AppError(
-        "Cart already has items from a different restaurant. Clear your cart first.",
-        400,
-      );
-    }
-    const cart =
-      existingCart ??
-      (await cartRepository.create({
-        data: { customerId, restaurantId },
-      }));
-
-    // 3. Upsert the cart item
-    const existing = await cartItemRepository.findByCartAndMenuItem(
-      cart.id,
-      input.menuItemId,
-    );
-
-    if (existing) {
-      await cartItemRepository.update({
-        where: { id: existing.id },
-        data: { quantity: existing.quantity + input.quantity },
-      });
-    } else {
-      await cartItemRepository.create({
-        data: {
-          cartId: cart.id,
-          menuItemId: input.menuItemId,
-          quantity: input.quantity,
-          name: menuItem.name,
-          price: menuItem.price,
-        },
-      });
-    }
-
+    const menuItem = await this.fetchMenuItem(input.menuItemId);
+    const cart = await this.resolveCart(customerId, menuItem.menu.restaurantId);
+    await this.upsertCartItem(cart.id, input, menuItem);
     return this.getMyCart(customerId);
   }
 
@@ -115,6 +73,57 @@ class CartService {
   }
 
   // ─── Private Helpers ──────────────────────────────────
+
+  private async fetchMenuItem(menuItemId: string) {
+    const menuItem = await menuItemRepository.findByIdWithMenu(menuItemId);
+    if (!menuItem) throw new AppError("Menu item not found", 404);
+    return menuItem;
+  }
+
+  private async resolveCart(customerId: string, restaurantId: string) {
+    const existingCart = await cartRepository.findUnique({
+      where: { customerId },
+    });
+    if (existingCart && existingCart.restaurantId !== restaurantId) {
+      throw new AppError(
+        "Cart already has items from a different restaurant. Clear your cart first.",
+        400,
+      );
+    }
+    return (
+      existingCart ??
+      (await cartRepository.create({ data: { customerId, restaurantId } }))
+    );
+  }
+
+  private async upsertCartItem(
+    cartId: string,
+    input: AddCartItemInput,
+    menuItem: NonNullable<
+      Awaited<ReturnType<typeof menuItemRepository.findByIdWithMenu>>
+    >,
+  ) {
+    const existing = await cartItemRepository.findByCartAndMenuItem(
+      cartId,
+      input.menuItemId,
+    );
+    if (existing) {
+      await cartItemRepository.update({
+        where: { id: existing.id },
+        data: { quantity: existing.quantity + input.quantity },
+      });
+    } else {
+      await cartItemRepository.create({
+        data: {
+          cartId,
+          menuItemId: input.menuItemId,
+          quantity: input.quantity,
+          name: menuItem.name,
+          price: menuItem.price,
+        },
+      });
+    }
+  }
 
   /**
    * Ensures a cart item exists AND belongs to the given user.
