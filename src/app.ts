@@ -1,4 +1,5 @@
 import express, { Application, Request, Response, NextFunction } from "express";
+import { StatusCodes } from "http-status-codes";
 import router from "./routes/index";
 import { errorMiddleware } from "./middlewares/error.middleware";
 import logger from "./config/logger";
@@ -29,14 +30,14 @@ app.get("/health", async (req: Request, res: Response): Promise<void> => {
     // Verify DB connection by running a trivial query
     await prisma.$queryRaw`SELECT 1`;
 
-    res.status(200).json({
+    res.status(StatusCodes.OK).json({
       status: "OK",
       database: "connected",
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
     logger.error("Health check failed", { error });
-    res.status(503).json({
+    res.status(StatusCodes.SERVICE_UNAVAILABLE).json({
       status: "DEGRADED",
       database: "disconnected",
       timestamp: new Date().toISOString(),
@@ -47,7 +48,7 @@ app.get("/health", async (req: Request, res: Response): Promise<void> => {
 // ── 404 Handler ──────────────────────────────────────
 app.use((req: Request, res: Response): void => {
   res
-    .status(404)
+    .status(StatusCodes.NOT_FOUND)
     .json({ success: false, message: `Route ${req.url} not found` });
 });
 

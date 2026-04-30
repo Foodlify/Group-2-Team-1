@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { StatusCodes } from "http-status-codes";
 import { asyncHandler } from "../../utils/asyncHandler";
 import { cartService } from "./cart.service";
 import type { CartItemIdParams } from "./cart.validation";
@@ -24,7 +25,7 @@ export const getMyCart = asyncHandler(
     console.log("customerId", customerId);
 
     const cart = await cartService.getMyCart(customerId);
-    res.status(200).json({ success: true, data: cart });
+    res.status(StatusCodes.OK).json({ success: true, data: cart });
   },
 );
 
@@ -32,7 +33,7 @@ export const addItem = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const customerId = getCurrentCustomerId(req);
     const cart = await cartService.addItem(customerId, req.body);
-    res.status(201).json({ success: true, data: cart });
+    res.status(StatusCodes.CREATED).json({ success: true, data: cart });
   },
 );
 
@@ -44,7 +45,7 @@ export const updateItem = asyncHandler(
       req.params.itemId,
       req.body,
     );
-    res.status(200).json({ success: true, data: cart });
+    res.status(StatusCodes.OK).json({ success: true, data: cart });
   },
 );
 
@@ -52,7 +53,7 @@ export const removeItem = asyncHandler(
   async (req: Request<CartItemIdParams>, res: Response): Promise<void> => {
     const customerId = getCurrentCustomerId(req);
     const cart = await cartService.removeItem(customerId, req.params.itemId);
-    res.status(200).json({ success: true, data: cart });
+    res.status(StatusCodes.OK).json({ success: true, data: cart });
   },
 );
 
@@ -60,6 +61,6 @@ export const clearCart = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const customerId = getCurrentCustomerId(req);
     await cartService.clearCart(customerId);
-    res.status(200).json({ success: true, message: "Cart cleared" });
+    res.status(StatusCodes.OK).json({ success: true, message: "Cart cleared" });
   },
 );

@@ -1,3 +1,4 @@
+import { StatusCodes } from "http-status-codes";
 import { AppError } from "../../middlewares/error.middleware";
 import { cartItemRepository } from "../cartItem/cartItem.repository";
 import { customerRepository } from "../customer/customer.repository";
@@ -36,7 +37,7 @@ class CartService {
       await this.upsertCartItem(cart.id, input, menuItem, tx);
     });
     const cart = await this.getMyCart(customerId);
-    if (!cart) throw new AppError("Cart not found after update", 500);
+    if (!cart) throw new AppError("Cart not found after update", StatusCodes.INTERNAL_SERVER_ERROR);
     return cart;
   }
 
@@ -55,7 +56,7 @@ class CartService {
     });
 
     const cart = await this.getMyCart(customerId);
-    if (!cart) throw new AppError("Cart not found after update", 500);
+    if (!cart) throw new AppError("Cart not found after update", StatusCodes.INTERNAL_SERVER_ERROR);
     return cart;
   }
 
@@ -67,7 +68,7 @@ class CartService {
     await cartItemRepository.delete({ where: { id: itemId } });
 
     const cart = await this.getMyCart(customerId);
-    if (!cart) throw new AppError("Cart not found after update", 500);
+    if (!cart) throw new AppError("Cart not found after update", StatusCodes.INTERNAL_SERVER_ERROR);
     return cart;
   }
 
@@ -86,13 +87,13 @@ class CartService {
   private async assertCustomerExists(customerId: string): Promise<void> {
     const customer = await customerRepository.findById(customerId);
     if (!customer) {
-      throw new AppError("Customer not found", 404);
+      throw new AppError("Customer not found", StatusCodes.NOT_FOUND);
     }
   }
 
   private async fetchMenuItem(menuItemId: string, tx?: Prisma.TransactionClient) {
     const menuItem = await menuItemRepository.findByIdWithMenu(menuItemId, tx);
-    if (!menuItem) throw new AppError("Menu item not found", 404);
+    if (!menuItem) throw new AppError("Menu item not found", StatusCodes.NOT_FOUND);
     return menuItem;
   }
 
@@ -105,7 +106,7 @@ class CartService {
     if (existingCart && existingCart.restaurantId !== restaurantId) {
       throw new AppError(
         "Cart already has items from a different restaurant. Clear your cart first.",
-        400,
+        StatusCodes.BAD_REQUEST,
       );
     }
     return existingCart ?? (await cartRepository.createCart({ customerId, restaurantId }, tx));
@@ -156,10 +157,10 @@ class CartService {
     const item = await cartItemRepository.findByIdWithCart(itemId);
 
     if (!item) {
-      throw new AppError("Cart item not found", 404);
+      throw new AppError("Cart item not found", StatusCodes.NOT_FOUND);
     }
     if (item.cart.customerId !== customerId) {
-      throw new AppError("This cart item does not belong to you", 403);
+      throw new AppError("This cart item does not belong to you", StatusCodes.FORBIDDEN);
     }
   }
 

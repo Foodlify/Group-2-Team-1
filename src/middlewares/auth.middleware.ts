@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
+import { StatusCodes } from "http-status-codes";
 import env from "../config/env";
 import { AppError } from "./error.middleware";
 import { asyncHandler } from "../utils/asyncHandler";
@@ -23,7 +24,7 @@ export const authenticate = asyncHandler(
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      throw new AppError("No token provided", 401);
+      throw new AppError("No token provided", StatusCodes.UNAUTHORIZED);
     }
 
     const token = authHeader.split(" ")[1];
@@ -38,7 +39,7 @@ export const authenticate = asyncHandler(
 export const authorize = (...roles: string[]) => {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.user || !roles.includes(req.user.role)) {
-      throw new AppError("Not authorized", 403);
+      throw new AppError("Not authorized", StatusCodes.FORBIDDEN);
     }
     next();
   };

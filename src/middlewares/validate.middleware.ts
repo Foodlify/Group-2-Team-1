@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { ZodError, type ZodType } from "zod";
+import { StatusCodes } from "http-status-codes";
 
 interface ValidationSchemas {
   body?: ZodType;
@@ -34,7 +35,7 @@ export const validate =
       next();
     } catch (error) {
       if (error instanceof ZodError) {
-        res.status(400).json({
+        res.status(StatusCodes.BAD_REQUEST).json({
           success: false,
           message: "Validation failed",
           errors: error.issues.map((issue) => ({
