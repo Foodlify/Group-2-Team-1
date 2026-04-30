@@ -1,10 +1,13 @@
-# مراجعة المشروع
+# مراجعة المشروع - النسخة الثانية
 
 تاريخ المراجعة: 2026-04-30
 
 ## نطاق المراجعة
 
-تمت مراجعة هيكل المشروع، إعدادات التشغيل، Prisma schema/migrations، طبقات `routes/controller/service/repository` الخاصة بالسلة، وملفات التوثيق الأساسية. لم يتم تعديل منطق التطبيق؛ هذا الملف هو ناتج المراجعة فقط.
+تمت مراجعة التغييرات الحالية في إعدادات البيئة، Docker/Compose، seed، ومسار السلة. حسب طلبك تم استبعاد نقطتين من الحكم في هذه المراجعة:
+
+- مشاكل TypeScript build.
+- تفعيل المصادقة/حماية المسارات.
 
 ## نتيجة الفحوصات
 
@@ -13,62 +16,104 @@
 | `npm run db:generate` | ناجح |
 | `npx prisma validate` | ناجح |
 | `npm run db:migrate:deploy -- --schema prisma/schema.prisma` | ناجح محلياً ولا توجد migrations معلقة |
-| `npx tsc --noEmit` | فاشل |
+| `npx prisma db seed` | ناجح، لكن اسم الحقل في الـ output مضلل |
+| فحص `TEST_CUSTOMER_ID` الحالي في قاعدة البيانات | فاشل: القيمة الحالية في `.env` لا توجد في جدول `Customer` |
 | `npm test` | فاشل لأن سكربت الاختبار غير مفعّل |
+
+## ملاحظات إيجابية بعد التغييرات
+
+- `src/modules/cart/cart.controller.ts:9-16` أصبح يقرأ `TEST_CUSTOMER_ID` بدلاً من `TEST_USER_ID`.
+- `prisma/seed.ts:36-40` أصبح يحتفظ بنتيجة إنشاء/تحديث `Customer` في `testCustomer`.
+- أوامر Prisma الأساسية تعمل: generate, validate, migrate deploy.
 
 ## الملاحظات حسب الأولوية
 
-### 1. خطأ حرج: المشروع لا ينجح في TypeScript build
+### 1. عالي: قيمة `TEST_CUSTOMER_ID` المحلية غير صحيحة
 
-`prisma/schema.prisma:15-134` يحتوي حالياً على 8 نماذج فقط: `User`, `Customer`, `Address`, `Restaurant`, `Menu`, `MenuItem`, `Cart`, `CartItem`. في المقابل توجد repositories ما زالت تشير إلى delegates لم تعد موجودة في Prisma Client، مثل:
+في `.env:14` القيمة الحالية هي:
 
-- `src/modules/order/order.repository.ts:5` يستخدم `PrismaClient["order"]`
-- `src/modules/transaction/transaction.repository.ts:5` يستخدم `PrismaClient["transaction"]`
-- نفس النمط موجود في وحدات `Role`, `UserRole`, `UserType`, `OrderItem`, `OrderStatus`, `OrderTracking`, `Payment*`, `RestaurantDetails`, `AuditingEvent`
+```env
+TEST_CUSTOMER_ID="cmo8k38lv0001iiapczjj7phv"
+```
 
-الأثر: `npx tsc --noEmit` يفشل، وبالتالي `Dockerfile:20` سيفشل أيضاً عند تنفيذ `RUN npx tsc`. كذلك أي استيراد لهذه repositories لاحقاً سيكسر التطبيق.
+تم فحصها مباشرة عبر Prisma وكانت النتيجة أن `customerExists = false`. بعد تشغيل `npx prisma db seed` خرجت قيمة محلية صحيحة مختلفة للـ `Customer.id`:
 
-التوصية: حسم اتجاه واحد فقط:
+```text
+cmokc9lkd000124ap0i1men3u
+```
 
-- إما إعادة النماذج المحذوفة إلى `prisma/schema.prisma` وتحديث migrations والـ generated client.
-- أو حذف/تعطيل modules والـ repositories غير المدعومة حالياً من schema، وعدم تضمينها في البناء.
+الأثر:
 
-### 2. خطأ حرج: السلة تستخدم `userId` مكان `customerId`
+- `GET /api/v1/carts` قد يرجع سلة فارغة وهمية حتى لو كان `customerId` غير موجود.
+- `POST /api/v1/carts` سيفشل غالباً عند إنشاء السلة بسبب foreign key على `Cart.customerId`.
 
-في `src/modules/cart/cart.controller.ts:9-16` يتم قراءة `TEST_USER_ID` ثم تمريره إلى `cartService` كأنه `customerId`. لكن `Cart.customerId` في `prisma/schema.prisma:102-109` يشير إلى `Customer.id` وليس `User.id`.
+التوصية: تحديث `.env` بالقيمة التي يخرجها seed فعلياً، والأفضل أن يطبع seed الحقل باسم `customerId` حتى لا يتم نسخ قيمة خاطئة.
 
-المشكلة تتأكد من `prisma/seed.ts:36-40` حيث يتم إنشاء `Customer` مستقل مرتبط بـ `User`، ثم في `prisma/seed.ts:87-90` يتم طباعة `userId` فقط. كذلك README يطلب نسخ `userId` إلى `TEST_USER_ID` في `README.md:174` و `README.md:721`.
+### 2. عالي: الـ seed يطبع `Customer.id` تحت اسم `userId`
 
-الأثر: إضافة أول عنصر للسلة غالباً ستفشل بسبب foreign key عند إنشاء `Cart` بـ `customerId` يساوي `User.id`، أو ستظهر السلة فارغة دائماً لأن البحث يتم على `Cart.customerId`.
+في `prisma/seed.ts:87-89` يتم تنفيذ:
 
-التوصية: لا تمرر `User.id` إلى خدمة السلة مباشرة. إما:
+```ts
+logger.info("✅ Seed complete", {
+  userId: testCustomer.id,
+  menuItemIds: ...
+});
+```
 
-- تغيير seed والتوثيق ليطبعا ويستخدما `customer.id`.
-- أو جعل الـ controller/service يحول `req.user.id` أو `TEST_USER_ID` إلى `Customer.id` عبر `customerRepository` قبل التعامل مع السلة.
+القيمة هنا ليست `User.id`، بل `Customer.id`. هذا يصلح من ناحية القيمة المستخدمة للسلة، لكنه مضلل في الاسم.
 
-### 3. عالي: نقاط السلة غير محمية بمصادقة فعلية
+الأثر: أي شخص يقرأ الـ output أو README سيظن أنه ينسخ `userId`، بينما النظام الحالي يحتاج `customerId`.
 
-المسارات في `src/modules/cart/cart.routes.ts:15-38` لا تستخدم `authenticate`، والـ controller يعتمد على `TEST_USER_ID` من البيئة في `src/modules/cart/cart.controller.ts:6-16`.
+التوصية: تغيير الحقل إلى:
 
-الأثر: كل الطلبات تعمل كمستخدم واحد ثابت، ولا توجد هوية لكل request. هذا مقبول كتجربة محلية مؤقتة فقط، لكنه غير صالح لأي بيئة مشتركة أو إنتاجية.
+```ts
+customerId: testCustomer.id
+```
 
-التوصية: تفعيل `authenticate` على مسارات السلة، ثم اشتقاق المستخدم من `req.user`. بعد ذلك يجب ربط المستخدم بـ `Customer.id` قبل تنفيذ عمليات السلة.
+وتحديث README و `.env.example` بنفس الاسم.
 
-### 4. عالي: حد الكمية `100` يمكن تجاوزه عند إضافة نفس العنصر
+### 3. عالي: التوثيق و `.env.example` ما زالا يستخدمان الاسم القديم
 
-التحقق في `src/modules/cart/cart.validation.ts:17` يسمح بإضافة كمية حتى 100 في الطلب الواحد، و`src/modules/cart/cart.validation.ts:32` يطبق نفس الحد عند التحديث. لكن عند إضافة عنصر موجود، `src/modules/cart/cart.service.ts:114-117` ينفذ:
+رغم أن الـ controller يستخدم `TEST_CUSTOMER_ID`، لا تزال الملفات التالية تشير إلى `TEST_USER_ID`:
+
+- `.env.example:12`
+- `README.md:125`
+- `README.md:174`
+- `README.md:710-721`
+- `docs/troubleshooting.md:175-192`
+- `docs/ARCHITECTURE.md:288-321`
+
+الأثر: مطور جديد سيتبع README وينشئ متغيراً لا يقرأه التطبيق أصلاً، أو سينسخ قيمة تحت اسم خاطئ.
+
+التوصية: توحيد الاسم في كل مكان إلى `TEST_CUSTOMER_ID`، وتحديث مثال seed output ليعرض `customerId`.
+
+### 4. عالي: خدمة السلة لا تتحقق من وجود العميل قبل إنشاء السلة
+
+في `src/modules/cart/cart.service.ts:86-99` يتم إنشاء Cart مباشرة باستخدام `customerId` القادم من البيئة. إذا كانت القيمة غير موجودة، يتم الاعتماد على قاعدة البيانات كي تفشل بالـ foreign key.
+
+كذلك `getMyCart` في `src/modules/cart/cart.service.ts:15-27` يرجع سلة فارغة حتى لو كان `customerId` غير موجود أصلاً.
+
+الأثر: الأخطاء تتحول إلى 500 عبر `src/middlewares/error.middleware.ts:36-40` بدلاً من رسالة واضحة مثل `Customer not found`.
+
+التوصية: إضافة تحقق واضح في الخدمة قبل عمليات السلة:
+
+- البحث عن `Customer` بالـ id.
+- رمي `AppError("Customer not found", 404)` إذا لم يوجد.
+- عدم الاعتماد على خطأ قاعدة البيانات كسلوك business logic.
+
+### 5. عالي: يمكن تجاوز حد الكمية 100 عند إضافة نفس العنصر
+
+الـ validation في `src/modules/cart/cart.validation.ts:17` و `src/modules/cart/cart.validation.ts:32` يفرض أن الطلب الواحد لا يتجاوز 100. لكن عند وجود العنصر مسبقاً، `src/modules/cart/cart.service.ts:114-117` يجمع الكمية القديمة والجديدة بدون فحص الناتج:
 
 ```ts
 quantity: existing.quantity + input.quantity
 ```
 
-بدون التأكد أن الناتج النهائي لا يتجاوز 100.
+الأثر: يمكن الوصول لكمية أكبر من 100 بإرسال أكثر من طلب.
 
-الأثر: يمكن إرسال طلبين مثل `80 + 80` والحصول على كمية `160` رغم أن الـ validation يعلن أن الحد الأقصى 100.
+التوصية: حساب `nextQuantity` ورفض العملية إذا تجاوزت 100.
 
-التوصية: حساب `nextQuantity` داخل الخدمة ورفضه إذا تجاوز 100. الأفضل أيضاً استخدام تحديث ذري مثل `increment` مع شرط منطقي واضح أو transaction بمستوى عزل مناسب لتقليل مشاكل التزامن.
-
-### 5. متوسط: استجابة السلة الفارغة لا تطابق schema الموثق
+### 6. متوسط: استجابة السلة الفارغة لا تطابق Schema المعلنة
 
 عند عدم وجود سلة، `src/modules/cart/cart.service.ts:17-27` يرجع:
 
@@ -77,66 +122,57 @@ id: "",
 restaurantId: "",
 ```
 
-لكن `CartResponseSchema` في `src/modules/cart/cart.validation.ts:79-84` يطلب أن تكون `id`, `customerId`, `restaurantId` من نوع `cuid2`.
+لكن `CartResponseSchema` في `src/modules/cart/cart.validation.ts:79-84` يتوقع `cuid2` لهذه الحقول.
 
-الأثر: التوثيق وواجهة API يصفان استجابة لا تطابق الواقع، وأي client يعتمد على schema validation قد يرفض استجابة السلة الفارغة.
+الأثر: OpenAPI والـ runtime response غير متطابقين، وأي client يتحقق من schema قد يرفض الاستجابة.
 
-التوصية: تغيير شكل الاستجابة الفارغة إلى أحد الخيارين:
+التوصية: إما جعل `data: null` عند عدم وجود سلة، أو تعريف schema منفصلة للسلة الفارغة.
 
-- `data: null` مع schema واضحة مثل `CartSuccessResponseSchema` يسمح بـ `null`.
-- أو إنشاء Cart فعلي عند أول قراءة، بشرط وجود `customerId` و`restaurantId` منطقيين.
+### 7. متوسط: السعر المخزن في `CartItem` لا يستخدم في حساب الإجمالي
 
-### 6. متوسط: السعر المخزن في `CartItem` لا يستخدم في حساب الإجمالي
+`CartItem` يحتوي على `price` و `name` في `prisma/schema.prisma:117-123`، ويتم حفظهما عند الإضافة في `src/modules/cart/cart.service.ts:120-128`. لكن الحساب والاستجابة يستخدمان `item.menuItem.price` و `item.menuItem.name` في `src/modules/cart/cart.service.ts:157-179`.
 
-`CartItem` يحتوي على snapshot للـ `price` و`name` في `prisma/schema.prisma:117-123`، وعند الإضافة يتم حفظهما في `src/modules/cart/cart.service.ts:120-128`. لكن حساب الإجمالي والرد يستخدمان `item.menuItem.price` و`item.menuItem.name` في `src/modules/cart/cart.service.ts:157-179`.
+الأثر: إذا تغير سعر عنصر القائمة بعد إضافته للسلة، سيتغير إجمالي السلة بأثر رجعي رغم وجود snapshot محفوظ.
 
-الأثر: إذا تغير سعر عنصر القائمة بعد إضافته للسلة، سيظهر إجمالي السلة بسعر جديد لا يطابق السعر الذي تم حفظه وقت الإضافة. هذا قد يكون مطلوباً أو غير مطلوب، لكنه حالياً غير متسق مع وجود `CartItem.price`.
+التوصية: تحديد السياسة:
 
-التوصية: تحديد سياسة واضحة:
+- استخدم `CartItem.price/name` إذا كان المطلوب تثبيت السعر وقت الإضافة.
+- أو احذف snapshot غير المستخدم إذا كان المطلوب دائماً السعر الحالي.
 
-- إذا كانت السلة يجب أن تعكس السعر الحالي، احذف snapshot غير المستخدم أو وثّق السلوك.
-- إذا كانت السلة يجب أن تثبت السعر وقت الإضافة، استخدم `CartItem.price` و`CartItem.name` في الاستجابة والحساب.
+### 8. متوسط: migrations فيها عمليات مدمرة ومخاطر على قواعد بيانات بها بيانات
 
-### 7. متوسط: آخر migration حذفت جداول بينما الكود ما زال يحتوي وحداتها
+آخر migration يحتوي تحذيرات واضحة عن حذف أعمدة وجداول وإضافة أعمدة مطلوبة بدون default في `prisma/migrations/20260429173414_add_restaurant_id_to_cart/migration.sql:4-29`.
 
-`prisma/migrations/20260429173414_add_restaurant_id_to_cart/migration.sql:117-160` يحذف جداول مثل `Order`, `Role`, `Transaction`, `PaymentIntegrationType`, وغيرها. لكن ملفات modules الخاصة بها لا تزال موجودة تحت `src/modules`.
+كذلك يحذف جداول كاملة في `prisma/migrations/20260429173414_add_restaurant_id_to_cart/migration.sql:117-160`.
 
-الأثر: هذا هو السبب العملي لكسر TypeScript build، كما أنه يخلق عدم وضوح في نطاق النظام: هل الطلبات والمدفوعات جزء من المشروع أم تم تأجيلها؟
+الأثر: قد يكون الأمر مقبولاً لقاعدة محلية جديدة، لكنه خطر على أي قاعدة تحتوي بيانات حقيقية.
 
-التوصية: توحيد حدود المشروع الحالية في schema والكود والتوثيق. إن كانت هذه الوحدات مؤجلة، انقلها خارج `src` أو أزلها إلى أن تعود النماذج.
+التوصية: إذا كان المشروع سيُسلّم أو يُنشر على قاعدة بها بيانات، يجب تحويل هذه migration إلى خطوات backfill آمنة أو توثيق أنها تتطلب reset كامل للقاعدة.
 
-### 8. متوسط: لا توجد اختبارات قابلة للتشغيل
+### 9. متوسط: لا توجد اختبارات قابلة للتشغيل
 
-`package.json:15` يحتوي على:
+`package.json:15` ما زال يحتوي:
 
 ```json
 "test": "echo \"Error: no test specified\" && exit 1"
 ```
 
-ومجلد `tests` فارغ.
+الأثر: لا يوجد ضمان آلي لمسارات السلة، خصوصاً الحالات التالية:
 
-الأثر: لا يوجد ضمان آلي لسلوك السلة، خصوصاً في حالات مهمة مثل:
+- إضافة عنصر جديد.
+- إضافة نفس العنصر أكثر من مرة.
+- رفض تجاوز كمية 100.
+- منع خلط عناصر من مطاعم مختلفة.
+- التعامل مع `customerId` غير موجود.
+- السلة الفارغة.
 
-- إضافة عنصر جديد
-- إضافة نفس العنصر أكثر من مرة
-- منع خلط مطاعم مختلفة في نفس السلة
-- تحديث/حذف عنصر لا يخص المستخدم
-- السلة الفارغة
-- تجاوز حد الكمية
+التوصية: إضافة Vitest أو Jest، والبدء باختبارات `CartService` لأنها تحمل أغلب منطق العمل.
 
-التوصية: إضافة test runner مثل Vitest أو Jest، وكتابة اختبارات خدمة السلة أولاً لأنها تحمل معظم منطق العمل.
+## الأولوية المقترحة للإصلاح
 
-## نقاط جيدة
-
-- فصل الطبقات واضح نسبياً: routes, controller, service, repository.
-- استخدام Zod للتحقق من الطلبات جيد ويقلل أخطاء الإدخال.
-- استخدام transaction في `addItem` خطوة صحيحة لأنها تجمع قراءة عنصر القائمة وإنشاء السلة/العنصر.
-- وجود OpenAPI documentation مفيد، لكنه يحتاج أن يطابق الاستجابات الفعلية بعد معالجة الملاحظات أعلاه.
-
-## أولوية الإصلاح المقترحة
-
-1. إصلاح كسر TypeScript build بتوحيد Prisma schema مع modules الموجودة.
-2. إصلاح خلط `userId` و`customerId` في السلة والـ seed/README.
-3. تفعيل المصادقة على مسارات السلة أو عزل الوضع التجريبي بوضوح.
-4. ضبط قواعد الكمية والاستجابة الفارغة.
-5. إضافة اختبارات خدمة السلة ثم اختبارات API للمسارات.
+1. توحيد `TEST_CUSTOMER_ID` في `.env.example`, README, docs, و seed output.
+2. تحديث `.env` المحلية بقيمة `Customer.id` صحيحة من آخر seed.
+3. إضافة تحقق صريح من وجود `Customer` داخل خدمة السلة.
+4. إصلاح تجاوز حد الكمية عند add لنفس العنصر.
+5. ضبط شكل استجابة السلة الفارغة مع OpenAPI schema.
+6. إضافة اختبارات خدمة السلة.

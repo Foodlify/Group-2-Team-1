@@ -14,8 +14,8 @@ export const AddCartItemRequestSchema = z
       description: "ID of the menu item to add",
       example: "clxyz...",
     }),
-    quantity: z.number().int().positive().max(100).meta({
-      description: "Quantity to add (1-100)",
+    quantity: z.number().int().positive().meta({
+      description: "Quantity to add",
       example: 1,
     }),
   })
@@ -29,8 +29,8 @@ export const AddCartItemRequestSchema = z
  */
 export const UpdateCartItemRequestSchema = z
   .object({
-    quantity: z.number().int().positive().max(100).meta({
-      description: "New quantity for the item (1-100)",
+    quantity: z.number().int().positive().meta({
+      description: "New quantity for the item",
       example: 3,
     }),
   })
