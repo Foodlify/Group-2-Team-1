@@ -63,6 +63,8 @@ class CartService {
           cartId: cart.id,
           menuItemId: input.menuItemId,
           quantity: input.quantity,
+          name: menuItem.name,
+          price: menuItem.price,
         },
       });
     }
@@ -72,32 +74,32 @@ class CartService {
 
   // ─── Update Quantity ──────────────────────────────────
   async updateItem(
-    userId: string,
+    customerId: string,
     itemId: string,
     input: UpdateCartItemInput,
   ): Promise<CartResponse> {
-    await this.assertItemBelongsToUser(userId, itemId);
+    await this.assertItemBelongsToUser(customerId, itemId);
 
     await cartItemRepository.update({
       where: { id: itemId },
       data: { quantity: input.quantity },
     });
 
-    return this.getMyCart(userId);
+    return this.getMyCart(customerId);
   }
 
   // ─── Remove Item ──────────────────────────────────────
-  async removeItem(userId: string, itemId: string): Promise<CartResponse> {
-    await this.assertItemBelongsToUser(userId, itemId);
+  async removeItem(customerId: string, itemId: string): Promise<CartResponse> {
+    await this.assertItemBelongsToUser(customerId, itemId);
 
     await cartItemRepository.delete({ where: { id: itemId } });
 
-    return this.getMyCart(userId);
+    return this.getMyCart(customerId);
   }
 
   // ─── Clear Cart ───────────────────────────────────────
-  async clearCart(userId: string): Promise<void> {
-    const cart = await cartRepository.findUnique({ where: { userId } });
+  async clearCart(customerId: string): Promise<void> {
+    const cart = await cartRepository.findUnique({ where: { customerId } });
     if (!cart) return; // Nothing to clear
 
     await cartItemRepository.deleteManyByCartId(cart.id);
@@ -110,7 +112,7 @@ class CartService {
    * Throws 404 if not found, 403 if it belongs to another user.
    */
   private async assertItemBelongsToUser(
-    userId: string,
+    customerId: string,
     itemId: string,
   ): Promise<void> {
     const item = await cartItemRepository.findByIdWithCart(itemId);
@@ -118,7 +120,7 @@ class CartService {
     if (!item) {
       throw new AppError("Cart item not found", 404);
     }
-    if (item.cart.userId !== userId) {
+    if (item.cart.customerId !== customerId) {
       throw new AppError("This cart item does not belong to you", 403);
     }
   }
@@ -129,7 +131,7 @@ class CartService {
    */
   private toCartResponse(cart: CartWithItems): CartResponse {
     const totalPrice = cart.items.reduce(
-      (sum, item) => sum + item.menuItem.price * item.quantity,
+      (sum, item) => sum + Number(item.menuItem.price) * item.quantity,
       0,
     );
     const itemCount = cart.items.reduce(
@@ -148,7 +150,7 @@ class CartService {
         menuItem: {
           id: item.menuItem.id,
           name: item.menuItem.name,
-          price: item.menuItem.price,
+          price: Number(item.menuItem.price),
         },
         createdAt: item.createdAt.toISOString(),
         updatedAt: item.updatedAt.toISOString(),
