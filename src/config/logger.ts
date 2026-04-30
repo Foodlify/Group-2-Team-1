@@ -1,37 +1,45 @@
-type LogLevel = "info" | "warn" | "error" | "debug";
+import winston from "winston";
+import DailyRotateFile from "winston-daily-rotate-file";
 
-interface LogMessage {
-  level: LogLevel;
-  message: string;
-  timestamp: string;
-  data?: unknown;
-}
+const { combine, timestamp, json, colorize, simple } = winston.format;
 
-const formatLog = (
-  level: LogLevel,
-  message: string,
-  data?: unknown,
-): LogMessage => ({
-  level,
-  message,
-  timestamp: new Date().toISOString(),
-  data,
+const isDev = process.env.NODE_ENV === "development";
+
+const winstonLogger = winston.createLogger({
+  level: isDev ? "debug" : "info",
+  format: combine(timestamp(), json()),
+  transports: [
+    new winston.transports.Console({
+      format: isDev ? combine(colorize(), simple()) : combine(timestamp(), json()),
+    }),
+    new DailyRotateFile({
+      filename: "logs/combined-%DATE%.log",
+      datePattern: "YYYY-MM-DD",
+      maxFiles: "14d",
+      maxSize: "20m",
+    }),
+    new DailyRotateFile({
+      filename: "logs/error-%DATE%.log",
+      datePattern: "YYYY-MM-DD",
+      level: "error",
+      maxFiles: "14d",
+      maxSize: "20m",
+    }),
+  ],
 });
 
 const logger = {
   info: (message: string, data?: unknown): void => {
-    console.log(JSON.stringify(formatLog("info", message, data)));
+    winstonLogger.info(message, { data });
   },
   warn: (message: string, data?: unknown): void => {
-    console.warn(JSON.stringify(formatLog("warn", message, data)));
+    winstonLogger.warn(message, { data });
   },
   error: (message: string, data?: unknown): void => {
-    console.error(JSON.stringify(formatLog("error", message, data)));
+    winstonLogger.error(message, { data });
   },
   debug: (message: string, data?: unknown): void => {
-    if (process.env.NODE_ENV === "development") {
-      console.debug(JSON.stringify(formatLog("debug", message, data)));
-    }
+    winstonLogger.debug(message, { data });
   },
 };
 
