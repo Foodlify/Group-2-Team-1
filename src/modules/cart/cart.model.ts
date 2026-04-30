@@ -1,13 +1,5 @@
-import type {
-  CartModel,
-  CartItemModel,
-  MenuItemModel,
-} from "../../generated/prisma/models";
+import type { CartModel, CartItemModel } from "../../generated/prisma/models";
 
-/**
- * Cart with eagerly-loaded items and their menuItem details.
- * This is the shape returned by `cartRepository.findByUserIdWithItems()`.
- */
 export type CartWithItems = CartModel & {
-  items: Array<CartItemModel & { menuItem: MenuItemModel }>;
+  items: Array<CartItemModel>;
 };
