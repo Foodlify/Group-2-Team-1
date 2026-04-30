@@ -10,10 +10,6 @@ import { schemaRegistry } from "../../openapi/registry";
  */
 export const AddCartItemRequestSchema = z
   .object({
-    restaurantId: z.cuid2().meta({
-      description: "ID of the restaurant the item belongs to",
-      example: "clresto123...",
-    }),
     menuItemId: z.cuid2().meta({
       description: "ID of the menu item to add",
       example: "clxyz...",

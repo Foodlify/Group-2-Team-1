@@ -33,17 +33,26 @@ class CartService {
     customerId: string,
     input: AddCartItemInput,
   ): Promise<CartResponse> {
-    // 1. Ensure menu item exists
-    const menuItem = await menuItemRepository.findById(input.menuItemId);
+    // 1. Ensure menu item exists and fetch its restaurantId via JOIN
+    const menuItem = await menuItemRepository.findByIdWithMenu(input.menuItemId);
     if (!menuItem) {
       throw new AppError("Menu item not found", 404);
     }
 
-    // 2. Get or create the cart
+    const restaurantId = menuItem.menu.restaurantId;
+
+    // 2. Get or create the cart; if cart exists, enforce same-restaurant rule
+    const existingCart = await cartRepository.findUnique({ where: { customerId } });
+    if (existingCart && existingCart.restaurantId !== restaurantId) {
+      throw new AppError(
+        "Cart already has items from a different restaurant. Clear your cart first.",
+        400,
+      );
+    }
     const cart =
-      (await cartRepository.findUnique({ where: { customerId } })) ??
+      existingCart ??
       (await cartRepository.create({
-        data: { customerId, restaurantId: input.restaurantId },
+        data: { customerId, restaurantId },
       }));
 
     // 3. Upsert the cart item
