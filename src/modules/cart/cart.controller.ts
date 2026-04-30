@@ -21,6 +21,8 @@ const getCurrentCustomerId = (_req: Request): string => {
 export const getMyCart = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const customerId = getCurrentCustomerId(req);
+    console.log("customerId", customerId);
+
     const cart = await cartService.getMyCart(customerId);
     res.status(200).json({ success: true, data: cart });
   },
