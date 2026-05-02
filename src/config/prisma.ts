@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client";
+import { Pool } from "pg";
 import logger from "./logger";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -10,10 +11,16 @@ if (!databaseUrl) {
   throw new Error("DATABASE_URL is required");
 }
 
-// ─── Adapter ────────────────────────────────────────
-const adapter = new PrismaPg({
+// ─── Connection Pool ─────────────────────────────────
+const pool = new Pool({
   connectionString: databaseUrl,
+  max: 10,
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 5_000,
 });
+
+// ─── Adapter ────────────────────────────────────────
+const adapter = new PrismaPg(pool);
 
 // ─── Prisma Client Singleton ────────────────────────
 const prisma = new PrismaClient({
