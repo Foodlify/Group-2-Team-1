@@ -1,5 +1,4 @@
-import type { PrismaClient } from "../../generated/prisma/client";
-import type { Prisma } from "../../generated/prisma/client";
+import type { PrismaClient, Prisma } from "../../generated/prisma/client";
 import { BaseRepository } from "../../shared/repositories/base.repository";
 import prisma from "../../config/prisma";
 
