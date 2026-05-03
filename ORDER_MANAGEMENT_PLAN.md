@@ -8,6 +8,8 @@
 | `OrderTracking` | جدول منفصل (1:n) | متوافق مع الـ old schema والـ modules الموجودة |
 | `OrderItem.price` + `name` | ✅ snapshot | الـ CartItem عنده snapshot، نـ copy منه مباشرة |
 | `Order.restaurantId` | ❌ غير موجود | الـ old schema ما كانتش بتحتفظ به |
+| Payment | محاكاة فقط (simulation) | لا يوجد real gateway — CASH دايماً ينجح، CARD بيتعمل mock success |
+| `Transaction` | جدول منفصل (1:1 مع Order) | كل order عندها transaction واحدة بالكتير |
 | `Order.totalAmount` | ❌ غير موجود | الـ old schema ما كانتش بتحتفظ به |
 | Status valid values | String مع validation في الـ service | الـ old schema استخدم `String` مش enum |
 
@@ -1258,26 +1260,337 @@ flowchart TD
 
 ---
 
+## Step 9 — Payment Simulation
+
+### 9.1 Schema — إضافة `Transaction` model
+
+**File:** `prisma/schema.prisma`
+
+```prisma
+model Transaction {
+  id            String  @id @default(cuid())
+  orderId       String  @unique
+  amount        Decimal
+  paymentMethod String            // "CASH" | "CARD"
+  status        String            // "PENDING" | "COMPLETED" | "FAILED"
+  reference     String?           // fake reference للـ CARD فقط
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+```
+
+وإضافة back-relation على `Order`:
+```prisma
+transaction Transaction?
+```
+
+ثم تشغيل:
+```bash
+npx prisma migrate dev --name add_transaction
+```
+
+---
+
+### 9.2 Repository — `transaction.repository.ts`
+
+**File:** `src/modules/transaction/transaction.repository.ts`
+
+```typescript
+import type { PrismaClient, Prisma } from "../../generated/prisma/client";
+import { BaseRepository } from "../../shared/repositories/base.repository";
+import prisma from "../../config/prisma";
+
+export class TransactionRepository extends BaseRepository<PrismaClient["transaction"]> {
+  constructor() {
+    super(prisma.transaction);
+  }
+
+  async findByOrderId(orderId: string) {
+    return this.findUnique({ where: { orderId } });
+  }
+
+  async createTransaction(
+    data: Prisma.TransactionUncheckedCreateInput,
+    tx?: Prisma.TransactionClient,
+  ) {
+    return (tx ?? prisma).transaction.create({ data });
+  }
+}
+
+export const transactionRepository = new TransactionRepository();
+```
+
+---
+
+### 9.3 Model — `transaction.model.ts`
+
+**File:** `src/modules/transaction/transaction.model.ts`
+
+```typescript
+export type { TransactionModel } from "../../generated/prisma/models";
+
+export const PAYMENT_METHODS = ["CASH", "CARD"] as const;
+export const TRANSACTION_STATUSES = ["PENDING", "COMPLETED", "FAILED"] as const;
+
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+export type TransactionStatus = (typeof TRANSACTION_STATUSES)[number];
+```
+
+---
+
+### 9.4 Validation — Payment Schemas
+
+إضافة الـ schemas دي لـ `order.validation.ts`:
+
+```typescript
+export const PayOrderRequestSchema = z
+  .object({
+    paymentMethod: z.enum(["CASH", "CARD"]).meta({
+      description: "طريقة الدفع",
+      example: "CARD",
+    }),
+  })
+  .meta({
+    id: "PayOrderRequest",
+    description: "Payload to pay for an order (simulation only)",
+  });
+
+export const TransactionResponseSchema = z
+  .object({
+    id: z.cuid2(),
+    orderId: z.cuid2(),
+    amount: z.number(),
+    paymentMethod: z.enum(["CASH", "CARD"]),
+    status: z.enum(["PENDING", "COMPLETED", "FAILED"]),
+    reference: z.string().nullable(),
+    createdAt: z.iso.datetime(),
+    updatedAt: z.iso.datetime(),
+  })
+  .meta({ id: "TransactionResponse" });
+
+export const PayOrderSuccessResponseSchema = z
+  .object({
+    success: z.literal(true),
+    data: z.object({
+      transaction: TransactionResponseSchema,
+      order: OrderResponseSchema,
+    }),
+  })
+  .meta({ id: "PayOrderSuccessResponse" });
+```
+
+---
+
+### 9.5 Service — `payOrder()`
+
+إضافة الـ method دي لـ `order.service.ts`:
+
+```typescript
+async payOrder(customerId: string, orderId: string, input: PayOrderInput) {
+  // 1. تحقق من الـ order
+  const order = await orderRepository.findByIdWithDetails(orderId);
+  if (!order) throw new AppError("Order not found", StatusCodes.NOT_FOUND);
+  if (order.customerId !== customerId)
+    throw new AppError("This order does not belong to you", StatusCodes.FORBIDDEN);
+  if (order.status?.status !== "PENDING")
+    throw new AppError("Only PENDING orders can be paid", StatusCodes.BAD_REQUEST);
+
+  // 2. تحقق إنه مفيش transaction موجودة (منع double payment)
+  const existing = await transactionRepository.findByOrderId(orderId);
+  if (existing)
+    throw new AppError("This order has already been paid", StatusCodes.CONFLICT);
+
+  // 3. احسب الـ amount من الـ OrderItems
+  const amount = order.items.reduce(
+    (sum, item) => sum + Number(item.price) * item.quantity,
+    0,
+  );
+
+  // 4. محاكاة الدفع
+  const reference =
+    input.paymentMethod === "CARD"
+      ? `TXN-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
+      : null;
+
+  // 5. إنشاء Transaction + تحديث OrderStatus في transaction واحدة
+  let createdTransaction: TransactionModel;
+
+  await orderRepository.transaction(async (tx) => {
+    createdTransaction = await transactionRepository.createTransaction(
+      {
+        orderId,
+        amount,
+        paymentMethod: input.paymentMethod,
+        status: "COMPLETED",   // المحاكاة دايماً تنجح
+        reference,
+      },
+      tx,
+    );
+
+    // الدفع نجح → OrderStatus ينتقل لـ CONFIRMED تلقائياً
+    await orderStatusRepository.updateStatus(orderId, "CONFIRMED", tx);
+  });
+
+  const updatedOrder = await orderRepository.findByIdWithDetails(orderId);
+  return {
+    transaction: this.toTransactionResponse(createdTransaction!),
+    order: this.toOrderResponse(updatedOrder as OrderWithDetails),
+  };
+}
+
+private toTransactionResponse(transaction: TransactionModel) {
+  return {
+    id: transaction.id,
+    orderId: transaction.orderId,
+    amount: Number(transaction.amount),
+    paymentMethod: transaction.paymentMethod,
+    status: transaction.status,
+    reference: transaction.reference ?? null,
+    createdAt: transaction.createdAt.toISOString(),
+    updatedAt: transaction.updatedAt.toISOString(),
+  };
+}
+```
+
+---
+
+### 9.6 Controller — `payOrder` handler
+
+إضافة للـ `order.controller.ts`:
+
+```typescript
+export const payOrder = asyncHandler(
+  async (req: Request<OrderIdParams>, res: Response): Promise<void> => {
+    const customerId = getCurrentCustomerId(req);
+    const result = await orderService.payOrder(customerId, req.params.orderId, req.body);
+    res.status(StatusCodes.CREATED).json({ success: true, data: result });
+  },
+);
+```
+
+---
+
+### 9.7 Routes — Payment Endpoint
+
+إضافة للـ `order.routes.ts`:
+
+```typescript
+router.post(
+  "/:orderId/pay",
+  validate({ params: OrderIdParamsSchema, body: PayOrderRequestSchema }),
+  controller.payOrder,
+);
+```
+
+OpenAPI doc:
+```typescript
+routeRegistry.push({
+  path: "/api/v1/orders/{orderId}/pay",
+  pathItem: {
+    post: {
+      tags: [tag],
+      summary: "Pay for an order — CASH or CARD simulation",
+      parameters: [
+        { name: "orderId", in: "path", required: true, schema: { type: "string" } },
+      ],
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/PayOrderRequest" },
+          },
+        },
+      },
+      responses: {
+        "201": {
+          description: "Payment successful — order moved to CONFIRMED",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/PayOrderSuccessResponse" },
+            },
+          },
+        },
+        "400": { description: "Order is not PENDING", content: { "application/json": { schema: errorRef } } },
+        "403": { description: "Order does not belong to you", content: { "application/json": { schema: errorRef } } },
+        "404": { description: "Order not found", content: { "application/json": { schema: errorRef } } },
+        "409": { description: "Order already paid", content: { "application/json": { schema: errorRef } } },
+      },
+    },
+  },
+});
+```
+
+---
+
+### 9.8 Payment Flowchart
+
+```mermaid
+flowchart TD
+    A([POST /orders/:orderId/pay]) --> B{Order exists?}
+    B -- No --> ERR1[404 Not found]
+    B -- Yes --> C{order.customerId\n= customerId?}
+    C -- No --> ERR2[403 Forbidden]
+    C -- Yes --> D{order.status\n= PENDING?}
+    D -- No --> ERR3[400 Only PENDING orders\ncan be paid]
+    D -- Yes --> E{Transaction\nalready exists?}
+    E -- Yes --> ERR4[409 Already paid]
+    E -- No --> F[Calculate amount\nfrom OrderItems]
+    F --> G{paymentMethod?}
+    G -- CASH --> H[reference = null]
+    G -- CARD --> I[reference = fake TXN-xxx]
+    H & I --> J[BEGIN TRANSACTION]
+    J --> K[Create Transaction\nstatus = COMPLETED]
+    K --> L[Update OrderStatus\nPENDING → CONFIRMED]
+    L --> M[COMMIT]
+    M --> N([201 transaction + order])
+
+    style J fill:#2d6a4f,color:#fff
+    style M fill:#2d6a4f,color:#fff
+    style ERR1 fill:#c1121f,color:#fff
+    style ERR2 fill:#c1121f,color:#fff
+    style ERR3 fill:#c1121f,color:#fff
+    style ERR4 fill:#c1121f,color:#fff
+    style N fill:#1d3557,color:#fff
+```
+
+---
+
+### 9.9 Updated Status Transitions
+
+```
+placeOrder()  →  PENDING
+payOrder()    →  PENDING ──→ CONFIRMED  (عند نجاح الدفع تلقائياً)
+                 PENDING ──→ CANCELLED  (cancelOrder)
+updateStatus  →  CONFIRMED ──→ PREPARING ──→ READY ──→ DELIVERED
+```
+
+---
+
 ## Implementation Order (ترتيب التنفيذ)
 
 ```
-1. prisma/schema.prisma          ← إضافة 4 models + back-relations
-2. npx prisma migrate dev        ← توليد الـ migration + regenerate types
-3. order.repository.ts           ← uncomment + add methods
-4. orderItem.repository.ts       ← uncomment + add createManyWithTx
-5. orderStatus.repository.ts     ← uncomment + add createStatus/updateStatus
-6. orderTracking.repository.ts   ← uncomment + add createTracking/findByOrderId
-7. order.model.ts                ← OrderWithDetails, OrderListItem types
-8. orderItem.model.ts            ← re-export type
-9. orderStatus.model.ts          ← re-export type + ORDER_STATUSES + VALID_TRANSITIONS
-10. orderTracking.model.ts       ← re-export type
-11. order.validation.ts          ← Zod schemas + registry + TS types
-12. order.service.ts             ← business logic
-13. order.controller.ts          ← asyncHandler handlers
-14. order.routes.ts              ← router + OpenAPI docs
-15. src/routes/index.ts          ← mount /orders
-16. src/openapi/document.ts      ← import order.validation
-17. npx tsc --noEmit             ← verify no type errors
+1.  prisma/schema.prisma          ← إضافة 4 order models + Transaction + back-relations
+2.  npx prisma migrate dev        ← توليد الـ migration + regenerate types
+3.  order.repository.ts           ← uncomment + add methods
+4.  orderItem.repository.ts       ← uncomment + add createManyWithTx
+5.  orderStatus.repository.ts     ← uncomment + add createStatus/updateStatus
+6.  orderTracking.repository.ts   ← uncomment + add createTracking/findByOrderId
+7.  transaction.repository.ts     ← uncomment + add findByOrderId/createTransaction
+8.  order.model.ts                ← OrderWithDetails, OrderListItem types
+9.  orderItem.model.ts            ← re-export type
+10. orderStatus.model.ts          ← re-export type + ORDER_STATUSES + VALID_TRANSITIONS
+11. orderTracking.model.ts        ← re-export type
+12. transaction.model.ts          ← re-export type + PAYMENT_METHODS + TRANSACTION_STATUSES
+13. order.validation.ts           ← Zod schemas + payment schemas + registry + TS types
+14. order.service.ts              ← business logic + payOrder()
+15. order.controller.ts           ← asyncHandler handlers + payOrder handler
+16. order.routes.ts               ← router + OpenAPI docs + /pay route
+17. src/routes/index.ts           ← mount /orders
+18. src/openapi/document.ts       ← import order.validation
+19. npx tsc --noEmit              ← verify no type errors
 ```
 
 ---
@@ -1304,9 +1617,15 @@ flowchart TD
 ### ملفات جديدة (4 ملفات)
 | الملف | المحتوى |
 |-------|---------|
-| `src/modules/order/order.validation.ts` | Zod schemas + registry + TS types |
-| `src/modules/order/order.service.ts` | business logic (placeOrder atomic transaction) |
+| `src/modules/order/order.validation.ts` | Zod schemas + payment schemas + registry + TS types |
+| `src/modules/order/order.service.ts` | business logic (placeOrder + payOrder) |
 | `src/modules/order/order.controller.ts` | asyncHandler handlers |
-| `src/modules/order/order.routes.ts` | router + OpenAPI docs |
+| `src/modules/order/order.routes.ts` | router + OpenAPI docs + /pay route |
 | `src/modules/orderStatus/orderStatus.model.ts` | ORDER_STATUSES + VALID_TRANSITIONS |
 | `src/modules/orderTracking/orderTracking.model.ts` | re-export type |
+| `src/modules/transaction/transaction.model.ts` | PAYMENT_METHODS + TRANSACTION_STATUSES |
+
+### ملفات تتفعّل إضافية (payment)
+| الملف | الإضافات |
+|-------|---------|
+| `src/modules/transaction/transaction.repository.ts` | `findByOrderId`, `createTransaction` |

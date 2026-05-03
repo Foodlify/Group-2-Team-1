@@ -1,12 +1,12 @@
 # Order Management — Tasks
 
 ## Phase 1 — Database Schema
-- [ ] 1.1 إضافة `Order` model
-- [ ] 1.2 إضافة `OrderItem` model
-- [ ] 1.3 إضافة `OrderStatus` model
-- [ ] 1.4 إضافة `OrderTracking` model
-- [ ] 1.5 إضافة back-relations على Customer, Address, MenuItem
-- [ ] 1.6 تشغيل `prisma migrate dev`
+- [ * ] 1.1 إضافة `Order` model
+- [ * ] 1.2 إضافة `OrderItem` model
+- [ * ] 1.3 إضافة `OrderStatus` model
+- [ * ] 1.4 إضافة `OrderTracking` model
+- [ * ] 1.5 إضافة back-relations على Customer, Address, MenuItem
+- [ * ] 1.6 تشغيل `prisma migrate dev`
 
 ## Phase 2 — Repository Layer
 - [ ] 2.1 `OrderRepository` — uncomment + add methods
@@ -47,3 +47,15 @@
 - [ ] 8.2 import `order.validation` في `openapi/document.ts`
 - [ ] 8.3 `npx tsc --noEmit`
 - [ ] 8.4 manual testing (Postman / curl)
+
+## Phase 9 — Payment Simulation
+- [ ] 9.1 إضافة `Transaction` model للـ schema + back-relation على `Order`
+- [ ] 9.2 تشغيل `prisma migrate dev --name add_transaction`
+- [ ] 9.3 `transaction.repository.ts` — uncomment + add `findByOrderId` / `createTransaction`
+- [ ] 9.4 `transaction.model.ts` — `PAYMENT_METHODS` + `TRANSACTION_STATUSES`
+- [ ] 9.5 إضافة `PayOrderRequestSchema` + `TransactionResponseSchema` + `PayOrderSuccessResponseSchema` لـ `order.validation.ts`
+- [ ] 9.6 تنفيذ `payOrder()` في `order.service.ts` — atomic: create Transaction + update OrderStatus to CONFIRMED
+- [ ] 9.7 إضافة `payOrder` handler في `order.controller.ts`
+- [ ] 9.8 إضافة `POST /:orderId/pay` route + OpenAPI doc في `order.routes.ts`
+- [ ] 9.9 manual testing: CASH payment
+- [ ] 9.10 manual testing: CARD payment (verify fake reference في الـ response)

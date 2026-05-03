@@ -24,10 +24,12 @@ model User {
 }
 
 model Customer {
-  id        String    @id @default(cuid())
-  userId    String    @unique
-  addresses Address[]
+  id     String @id @default(cuid())
+  userId String @unique
+
   cart      Cart?
+  addresses Address[]
+  orders    Order[]
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -44,6 +46,8 @@ model Address {
   postalCode   String
   country      String
 
+  orders Order[]
+
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
@@ -57,20 +61,22 @@ model Address {
 // ═══════════════════════════════════════════════════════════════
 
 model Restaurant {
-  id    String @id @default(cuid())
-  name  String
+  id   String @id @default(cuid())
+  name String
+
   menus Menu[]
+  carts Cart[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  carts     Cart[]
 }
 
 model Menu {
-  id           String     @id @default(cuid())
+  id           String @id @default(cuid())
   name         String
   restaurantId String
-  items        MenuItem[]
+
+  menuItems MenuItem[]
 
   restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 
@@ -86,8 +92,9 @@ model MenuItem {
   name   String
   price  Decimal
 
-  menu      Menu       @relation(fields: [menuId], references: [id], onDelete: Cascade)
-  cartItems CartItem[]
+  cartItems  CartItem[]
+  orderItems OrderItems[]
+  menu       Menu         @relation(fields: [menuId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -100,10 +107,11 @@ model MenuItem {
 // ═══════════════════════════════════════════════════════════════
 
 model Cart {
-  id           String     @id @default(cuid())
-  customerId   String     @unique
+  id           String @id @default(cuid())
+  customerId   String @unique
   restaurantId String
-  items        CartItem[]
+
+  cartItems CartItem[]
 
   customer   Customer   @relation(fields: [customerId], references: [id], onDelete: Cascade)
   restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
@@ -131,4 +139,70 @@ model CartItem {
   @@unique([cartId, menuItemId])
   @@index([cartId])
   @@index([menuItemId])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Orders
+// ═══════════════════════════════════════════════════════════════
+
+model Order {
+  id         String   @id @default(cuid())
+  customerId String
+  addressId  String
+  orderDate  DateTime @default(now())
+
+  orderStatus OrderStatus[]
+  orderItems  OrderItems[]
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  address  Address  @relation(fields: [addressId], references: [id], onDelete: Restrict)
+
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  orderTrackings orderTracking[]
+
+  @@index([customerId])
+  @@index([addressId])
+}
+
+model OrderItems {
+  id         String  @id @default(cuid())
+  orderId    String
+  menuItemId String
+  quantity   Int
+  price      Decimal
+  name       String
+
+  order    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([menuItemId])
+}
+
+model OrderStatus {
+  orderId String @id
+  status  String
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model orderTracking {
+  id                    String   @id @default(cuid())
+  orderId               String
+  currentLocation       String
+  estimatedDeliveryTime DateTime
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
 }

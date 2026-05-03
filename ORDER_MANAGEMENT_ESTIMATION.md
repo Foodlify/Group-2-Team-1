@@ -108,16 +108,34 @@
 
 ---
 
+## Phase 9 — Payment Simulation
+
+| # | Task | Expected | Actual |
+|---|------|----------|--------|
+| 9.1 | إضافة `Transaction` model + back-relation على `Order` | | |
+| 9.2 | تشغيل `prisma migrate dev --name add_transaction` | | |
+| 9.3 | `transaction.repository.ts` — uncomment + `findByOrderId` / `createTransaction` | | |
+| 9.4 | `transaction.model.ts` — `PAYMENT_METHODS` + `TRANSACTION_STATUSES` | | |
+| 9.5 | إضافة payment schemas لـ `order.validation.ts` | | |
+| 9.6 | تنفيذ `payOrder()` في `order.service.ts` | | |
+| 9.7 | إضافة `payOrder` handler + route + OpenAPI doc | | |
+| 9.8 | manual testing (CASH + CARD) | | |
+
+**Phase 9 — Expected:** &nbsp;&nbsp;&nbsp; / **Actual:**
+
+---
+
 ## Summary
 
 | Phase | Description | Expected | Actual |
 |-------|-------------|----------|--------|
-| 1 | Database Schema | 1h | |
-| 2 | Repository Layer | | |
+| 1 | Database Schema | 1h | 45m |
+| 2 | Repository Layer | 3h | |
 | 3 | Model Layer | | |
 | 4 | Validation Layer | | |
 | 5 | Service Layer | | |
 | 6 | Controller Layer | | |
 | 7 | Routes Layer | | |
 | 8 | Wiring & Verification | | |
+| 9 | Payment Simulation | | |
 | | **Total** | | |
