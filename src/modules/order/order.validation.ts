@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { schemaRegistry } from "../../openapi/registry";
 import { ORDER_STATUSES } from "../orderStatus/orderStatus.model";
-import { PAYMENT_METHODS } from "../transaction/transaction.model";
 import { PaginationMetaSchema } from "../../shared/schemas/pagination.schema";
 
 // ═══════════════════════════════════════════════════════════════
@@ -158,41 +157,6 @@ export const OrderListSuccessResponseSchema = z
   })
   .meta({ id: "OrderListSuccessResponse" });
 
-// ─── Payment Schemas (Phase 9) ────────────────────────────────
-
-export const PayOrderRequestSchema = z
-  .object({
-    paymentMethod: z.enum(PAYMENT_METHODS).meta({
-      description: "Payment method",
-      example: "CARD",
-    }),
-  })
-  .meta({
-    id: "PayOrderRequest",
-    description: "Payload to pay for an order",
-  });
-
-export const TransactionResponseSchema = z
-  .object({
-    id: z.cuid2(),
-    orderId: z.cuid2(),
-    paymentMethod: z.enum(PAYMENT_METHODS),
-    status: z.string(),
-    referenceNumber: z.string().nullable(),
-    createdAt: z.iso.datetime(),
-    updatedAt: z.iso.datetime(),
-  })
-  .meta({ id: "TransactionResponse" });
-
-export const PayOrderSuccessResponseSchema = z
-  .object({
-    success: z.literal(true),
-    data: z.object({
-      order: OrderResponseSchema,
-      transaction: TransactionResponseSchema,
-    }),
-  })
-  .meta({ id: "PayOrderSuccessResponse" });
 
 // ═══════════════════════════════════════════════════════════════
 // Registry
@@ -209,9 +173,6 @@ schemaRegistry.register("OrderResponse", OrderResponseSchema);
 schemaRegistry.register("OrderListItemResponse", OrderListItemResponseSchema);
 schemaRegistry.register("OrderSuccessResponse", OrderSuccessResponseSchema);
 schemaRegistry.register("OrderListSuccessResponse", OrderListSuccessResponseSchema);
-schemaRegistry.register("PayOrderRequest", PayOrderRequestSchema);
-schemaRegistry.register("TransactionResponse", TransactionResponseSchema);
-schemaRegistry.register("PayOrderSuccessResponse", PayOrderSuccessResponseSchema);
 
 // ═══════════════════════════════════════════════════════════════
 // TypeScript Types
@@ -223,6 +184,3 @@ export type AddTrackingInput = z.infer<typeof AddTrackingRequestSchema>;
 export type OrderIdParams = z.infer<typeof OrderIdParamsSchema>;
 export type OrderResponse = z.infer<typeof OrderResponseSchema>;
 export type OrderListItemResponse = z.infer<typeof OrderListItemResponseSchema>;
-export type PayOrderInput = z.infer<typeof PayOrderRequestSchema>;
-export type TransactionResponse = z.infer<typeof TransactionResponseSchema>;
-export type PayOrderSuccessData = z.infer<typeof PayOrderSuccessResponseSchema>["data"];

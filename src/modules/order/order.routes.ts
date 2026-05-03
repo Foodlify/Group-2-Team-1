@@ -6,7 +6,6 @@ import * as controller from "./order.controller";
 import {
   AddTrackingRequestSchema,
   OrderIdParamsSchema,
-  PayOrderRequestSchema,
   PlaceOrderRequestSchema,
   UpdateStatusRequestSchema,
 } from "./order.validation";
@@ -41,12 +40,6 @@ router.post(
   "/:orderId/tracking",
   validate({ params: OrderIdParamsSchema, body: AddTrackingRequestSchema }),
   controller.addTracking,
-);
-
-router.post(
-  "/:orderId/pay",
-  validate({ params: OrderIdParamsSchema, body: PayOrderRequestSchema }),
-  controller.payOrder,
 );
 
 // ─── OpenAPI Documentation ───────────────────────────────
@@ -202,38 +195,6 @@ routeRegistry.push({
           },
         },
         "404": { description: "Order not found", content: { "application/json": { schema: errorRef } } },
-      },
-    },
-  },
-});
-
-routeRegistry.push({
-  path: "/api/v1/orders/{orderId}/pay",
-  pathItem: {
-    post: {
-      tags: [tag],
-      summary: "Pay for an order (PENDING only)",
-      parameters: [orderIdParam],
-      requestBody: {
-        required: true,
-        content: {
-          "application/json": {
-            schema: { $ref: "#/components/schemas/PayOrderRequest" },
-          },
-        },
-      },
-      responses: {
-        "200": {
-          description: "Payment processed — order confirmed",
-          content: {
-            "application/json": {
-              schema: { $ref: "#/components/schemas/PayOrderSuccessResponse" },
-            },
-          },
-        },
-        "400": { description: "Order is not payable or already paid", content: { "application/json": { schema: errorRef } } },
-        "404": { description: "Order not found", content: { "application/json": { schema: errorRef } } },
-        "403": { description: "Order does not belong to you", content: { "application/json": { schema: errorRef } } },
       },
     },
   },

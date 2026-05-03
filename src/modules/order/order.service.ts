@@ -7,18 +7,14 @@ import { orderRepository } from "./order.repository";
 import { orderItemRepository } from "../orderItem/orderItem.repository";
 import { orderStatusRepository } from "../orderStatus/orderStatus.repository";
 import { orderTrackingRepository } from "../orderTracking/orderTracking.repository";
-import { transactionRepository } from "../transaction/transaction.repository";
 import { VALID_TRANSITIONS } from "../orderStatus/orderStatus.model";
 import type { OrderWithDetails, OrderListItem } from "./order.model";
 import type {
   PlaceOrderInput,
   UpdateStatusInput,
   AddTrackingInput,
-  PayOrderInput,
   OrderResponse,
   OrderListItemResponse,
-  TransactionResponse,
-  PayOrderSuccessData,
 } from "./order.validation";
 import type { PaginationQuery } from "../../shared/schemas/pagination.schema";
 
@@ -209,73 +205,6 @@ class OrderService {
     return this.toOrderResponse(updated);
   }
 
-  // ─── Pay Order ───────────────────────────────────────────────
-  async payOrder(
-    customerId: string,
-    orderId: string,
-    input: PayOrderInput,
-  ): Promise<PayOrderSuccessData> {
-    const order = await orderRepository.findByIdWithDetails(orderId);
-    if (!order) throw new AppError("Order not found", StatusCodes.NOT_FOUND);
-    if (order.customerId !== customerId) {
-      throw new AppError(
-        "This order does not belong to you",
-        StatusCodes.FORBIDDEN,
-      );
-    }
-
-    const currentStatus = order.orderStatus[0]?.status;
-    if (currentStatus !== "PENDING") {
-      throw new AppError(
-        "Only PENDING orders can be paid",
-        StatusCodes.BAD_REQUEST,
-      );
-    }
-
-    const existing = await transactionRepository.findByOrderId(orderId);
-    if (existing) {
-      throw new AppError(
-        "This order has already been paid",
-        StatusCodes.BAD_REQUEST,
-      );
-    }
-
-    let transactionId: string;
-
-    await orderRepository.transaction(async (tx) => {
-      const referenceNumber =
-        input.paymentMethod === "CARD" ? crypto.randomUUID() : null;
-      const transaction = await transactionRepository.createTransaction(
-        {
-          orderId,
-          paymentMethod: input.paymentMethod,
-          status: "COMPLETED",
-          referenceNumber,
-        },
-        tx,
-      );
-      transactionId = transaction.id;
-      await orderStatusRepository.updateStatus(orderId, "CONFIRMED", tx);
-    });
-
-    const [updatedOrder, transaction] = await Promise.all([
-      orderRepository.findByIdWithDetails(orderId),
-      transactionRepository.findById(transactionId!),
-    ]);
-
-    if (!updatedOrder || !transaction) {
-      throw new AppError(
-        "Failed to retrieve payment result",
-        StatusCodes.INTERNAL_SERVER_ERROR,
-      );
-    }
-
-    return {
-      order: this.toOrderResponse(updatedOrder),
-      transaction: this.toTransactionResponse(transaction),
-    };
-  }
-
   // ─── Private Helpers ──────────────────────────────────────────
 
   private async assertCustomerExists(customerId: string): Promise<void> {
@@ -333,27 +262,6 @@ class OrderService {
       totalPrice,
       createdAt: order.createdAt.toISOString(),
       updatedAt: order.updatedAt.toISOString(),
-    };
-  }
-
-  private toTransactionResponse(transaction: {
-    id: string;
-    orderId: string;
-    paymentMethod: string;
-    status: string;
-    referenceNumber: string | null;
-    createdAt: Date;
-    updatedAt: Date;
-  }): TransactionResponse {
-    return {
-      id: transaction.id,
-      orderId: transaction.orderId,
-      paymentMethod:
-        transaction.paymentMethod as TransactionResponse["paymentMethod"],
-      status: transaction.status,
-      referenceNumber: transaction.referenceNumber,
-      createdAt: transaction.createdAt.toISOString(),
-      updatedAt: transaction.updatedAt.toISOString(),
     };
   }
 

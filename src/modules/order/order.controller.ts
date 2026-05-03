@@ -63,10 +63,3 @@ export const addTracking = asyncHandler(
   },
 );
 
-export const payOrder = asyncHandler(
-  async (req: Request<OrderIdParams>, res: Response): Promise<void> => {
-    const customerId = getCurrentCustomerId(req);
-    const result = await orderService.payOrder(customerId, req.params.orderId, req.body);
-    res.status(StatusCodes.OK).json({ success: true, data: result });
-  },
-);

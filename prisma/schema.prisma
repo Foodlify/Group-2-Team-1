@@ -154,7 +154,6 @@ model Order {
   orderStatus    OrderStatus[]
   orderItems     OrderItems[]
   orderTrackings orderTracking[]
-  transaction    Transaction?
 
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
   address  Address  @relation(fields: [addressId], references: [id], onDelete: Restrict)
@@ -206,21 +205,4 @@ model orderTracking {
   updatedAt DateTime @updatedAt
 
   @@index([orderId])
-}
-
-// ═══════════════════════════════════════════════════════════════
-// Payments
-// ═══════════════════════════════════════════════════════════════
-
-model Transaction {
-  id              String  @id @default(cuid())
-  orderId         String  @unique
-  paymentMethod   String
-  status          String
-  referenceNumber String?
-
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 }
