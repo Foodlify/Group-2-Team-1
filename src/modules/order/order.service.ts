@@ -24,7 +24,10 @@ import type { PaginationQuery } from "../../shared/schemas/pagination.schema";
 
 class OrderService {
   // ─── Place Order ──────────────────────────────────────────────
-  async placeOrder(customerId: string, input: PlaceOrderInput): Promise<OrderResponse> {
+  async placeOrder(
+    customerId: string,
+    input: PlaceOrderInput,
+  ): Promise<OrderResponse> {
     await this.assertCustomerExists(customerId);
     await this.assertAddressBelongsToCustomer(customerId, input.addressId);
 
@@ -32,7 +35,10 @@ class OrderService {
       input.items.map(async (item) => {
         const menuItem = await menuItemRepository.findById(item.menuItemId);
         if (!menuItem) {
-          throw new AppError(`Menu item ${item.menuItemId} not found`, StatusCodes.NOT_FOUND);
+          throw new AppError(
+            `Menu item ${item.menuItemId} not found`,
+            StatusCodes.NOT_FOUND,
+          );
         }
         return { ...item, price: Number(menuItem.price), name: menuItem.name };
       }),
@@ -62,7 +68,11 @@ class OrderService {
     });
 
     const order = await orderRepository.findByIdWithDetails(orderId!);
-    if (!order) throw new AppError("Order not found after creation", StatusCodes.INTERNAL_SERVER_ERROR);
+    if (!order)
+      throw new AppError(
+        "Order not found after creation",
+        StatusCodes.INTERNAL_SERVER_ERROR,
+      );
     return this.toOrderResponse(order);
   }
 
@@ -70,7 +80,10 @@ class OrderService {
   async getMyOrders(
     customerId: string,
     query: PaginationQuery,
-  ): Promise<{ data: OrderListItemResponse[]; meta: { page: number; limit: number; total: number; totalPages: number } }> {
+  ): Promise<{
+    data: OrderListItemResponse[];
+    meta: { page: number; limit: number; total: number; totalPages: number };
+  }> {
     await this.assertCustomerExists(customerId);
 
     const result = await orderRepository.findPaginatedByCustomer(
@@ -80,49 +93,78 @@ class OrderService {
     );
 
     return {
-      data: (result.data as OrderListItem[]).map((o) => this.toOrderListItemResponse(o)),
+      data: (result.data as OrderListItem[]).map((o) =>
+        this.toOrderListItemResponse(o),
+      ),
       meta: result.meta,
     };
   }
 
   // ─── Get Order By ID ──────────────────────────────────────────
-  async getOrderById(customerId: string, orderId: string): Promise<OrderResponse> {
+  async getOrderById(
+    customerId: string,
+    orderId: string,
+  ): Promise<OrderResponse> {
     const order = await orderRepository.findByIdWithDetails(orderId);
     if (!order) throw new AppError("Order not found", StatusCodes.NOT_FOUND);
     if (order.customerId !== customerId) {
-      throw new AppError("This order does not belong to you", StatusCodes.FORBIDDEN);
+      throw new AppError(
+        "This order does not belong to you",
+        StatusCodes.FORBIDDEN,
+      );
     }
     return this.toOrderResponse(order);
   }
 
   // ─── Cancel Order ─────────────────────────────────────────────
-  async cancelOrder(customerId: string, orderId: string): Promise<OrderResponse> {
+  async cancelOrder(
+    customerId: string,
+    orderId: string,
+  ): Promise<OrderResponse> {
     const order = await orderRepository.findByIdWithDetails(orderId);
     if (!order) throw new AppError("Order not found", StatusCodes.NOT_FOUND);
     if (order.customerId !== customerId) {
-      throw new AppError("This order does not belong to you", StatusCodes.FORBIDDEN);
+      throw new AppError(
+        "This order does not belong to you",
+        StatusCodes.FORBIDDEN,
+      );
     }
 
     const currentStatus = order.orderStatus[0]?.status;
     if (currentStatus !== "PENDING") {
-      throw new AppError("Only PENDING orders can be cancelled", StatusCodes.BAD_REQUEST);
+      throw new AppError(
+        "Only PENDING orders can be cancelled",
+        StatusCodes.BAD_REQUEST,
+      );
     }
 
     await orderStatusRepository.updateStatus(orderId, "CANCELLED");
 
     const updated = await orderRepository.findByIdWithDetails(orderId);
-    if (!updated) throw new AppError("Order not found after update", StatusCodes.INTERNAL_SERVER_ERROR);
+    if (!updated)
+      throw new AppError(
+        "Order not found after update",
+        StatusCodes.INTERNAL_SERVER_ERROR,
+      );
     return this.toOrderResponse(updated);
   }
 
   // ─── Update Order Status (admin) ─────────────────────────────
-  async updateOrderStatus(orderId: string, input: UpdateStatusInput): Promise<OrderResponse> {
+  async updateOrderStatus(
+    orderId: string,
+    input: UpdateStatusInput,
+  ): Promise<OrderResponse> {
     const order = await orderRepository.findByIdWithDetails(orderId);
     if (!order) throw new AppError("Order not found", StatusCodes.NOT_FOUND);
 
-    const currentStatus = order.orderStatus[0]?.status as keyof typeof VALID_TRANSITIONS | undefined;
+    const currentStatus = order.orderStatus[0]?.status as
+      | keyof typeof VALID_TRANSITIONS
+      | undefined;
     if (!currentStatus) {
-      throw new AppError("Order has no status record", StatusCodes.INTERNAL_SERVER_ERROR);
+      throw new AppError(
+        "Order has no status record",
+        StatusCodes.INTERNAL_SERVER_ERROR,
+      );
     }
 
     const allowed = VALID_TRANSITIONS[currentStatus];
@@ -136,12 +178,19 @@ class OrderService {
     await orderStatusRepository.updateStatus(orderId, input.status);
 
     const updated = await orderRepository.findByIdWithDetails(orderId);
-    if (!updated) throw new AppError("Order not found after update", StatusCodes.INTERNAL_SERVER_ERROR);
+    if (!updated)
+      throw new AppError(
+        "Order not found after update",
+        StatusCodes.INTERNAL_SERVER_ERROR,
+      );
     return this.toOrderResponse(updated);
   }
 
   // ─── Add Tracking ─────────────────────────────────────────────
-  async addTracking(orderId: string, input: AddTrackingInput): Promise<OrderResponse> {
+  async addTracking(
+    orderId: string,
+    input: AddTrackingInput,
+  ): Promise<OrderResponse> {
     const order = await orderRepository.findById(orderId);
     if (!order) throw new AppError("Order not found", StatusCodes.NOT_FOUND);
 
@@ -152,32 +201,50 @@ class OrderService {
     });
 
     const updated = await orderRepository.findByIdWithDetails(orderId);
-    if (!updated) throw new AppError("Order not found after update", StatusCodes.INTERNAL_SERVER_ERROR);
+    if (!updated)
+      throw new AppError(
+        "Order not found after update",
+        StatusCodes.INTERNAL_SERVER_ERROR,
+      );
     return this.toOrderResponse(updated);
   }
 
   // ─── Pay Order ───────────────────────────────────────────────
-  async payOrder(customerId: string, orderId: string, input: PayOrderInput): Promise<PayOrderSuccessData> {
+  async payOrder(
+    customerId: string,
+    orderId: string,
+    input: PayOrderInput,
+  ): Promise<PayOrderSuccessData> {
     const order = await orderRepository.findByIdWithDetails(orderId);
     if (!order) throw new AppError("Order not found", StatusCodes.NOT_FOUND);
     if (order.customerId !== customerId) {
-      throw new AppError("This order does not belong to you", StatusCodes.FORBIDDEN);
+      throw new AppError(
+        "This order does not belong to you",
+        StatusCodes.FORBIDDEN,
+      );
     }
 
     const currentStatus = order.orderStatus[0]?.status;
     if (currentStatus !== "PENDING") {
-      throw new AppError("Only PENDING orders can be paid", StatusCodes.BAD_REQUEST);
+      throw new AppError(
+        "Only PENDING orders can be paid",
+        StatusCodes.BAD_REQUEST,
+      );
     }
 
     const existing = await transactionRepository.findByOrderId(orderId);
     if (existing) {
-      throw new AppError("This order has already been paid", StatusCodes.BAD_REQUEST);
+      throw new AppError(
+        "This order has already been paid",
+        StatusCodes.BAD_REQUEST,
+      );
     }
 
     let transactionId: string;
 
     await orderRepository.transaction(async (tx) => {
-      const referenceNumber = input.paymentMethod === "CARD" ? crypto.randomUUID() : null;
+      const referenceNumber =
+        input.paymentMethod === "CARD" ? crypto.randomUUID() : null;
       const transaction = await transactionRepository.createTransaction(
         {
           orderId,
@@ -197,7 +264,10 @@ class OrderService {
     ]);
 
     if (!updatedOrder || !transaction) {
-      throw new AppError("Failed to retrieve payment result", StatusCodes.INTERNAL_SERVER_ERROR);
+      throw new AppError(
+        "Failed to retrieve payment result",
+        StatusCodes.INTERNAL_SERVER_ERROR,
+      );
     }
 
     return {
@@ -210,14 +280,22 @@ class OrderService {
 
   private async assertCustomerExists(customerId: string): Promise<void> {
     const customer = await customerRepository.findById(customerId);
-    if (!customer) throw new AppError("Customer not found", StatusCodes.NOT_FOUND);
+    if (!customer)
+      throw new AppError("Customer not found", StatusCodes.NOT_FOUND);
   }
 
-  private async assertAddressBelongsToCustomer(customerId: string, addressId: string): Promise<void> {
+  private async assertAddressBelongsToCustomer(
+    customerId: string,
+    addressId: string,
+  ): Promise<void> {
     const address = await addressRepository.findById(addressId);
-    if (!address) throw new AppError("Address not found", StatusCodes.NOT_FOUND);
+    if (!address)
+      throw new AppError("Address not found", StatusCodes.NOT_FOUND);
     if (address.customerId !== customerId) {
-      throw new AppError("This address does not belong to you", StatusCodes.FORBIDDEN);
+      throw new AppError(
+        "This address does not belong to you",
+        StatusCodes.FORBIDDEN,
+      );
     }
   }
 
@@ -232,7 +310,8 @@ class OrderService {
       customerId: order.customerId,
       addressId: order.addressId,
       orderDate: order.orderDate.toISOString(),
-      status: (order.orderStatus[0]?.status ?? "PENDING") as OrderResponse["status"],
+      status: (order.orderStatus[0]?.status ??
+        "PENDING") as OrderResponse["status"],
       items: order.orderItems.map((item) => ({
         id: item.id,
         menuItemId: item.menuItemId,
@@ -269,7 +348,8 @@ class OrderService {
     return {
       id: transaction.id,
       orderId: transaction.orderId,
-      paymentMethod: transaction.paymentMethod as TransactionResponse["paymentMethod"],
+      paymentMethod:
+        transaction.paymentMethod as TransactionResponse["paymentMethod"],
       status: transaction.status,
       referenceNumber: transaction.referenceNumber,
       createdAt: transaction.createdAt.toISOString(),
@@ -282,14 +362,18 @@ class OrderService {
       (sum, item) => sum + Number(item.price) * item.quantity,
       0,
     );
-    const itemCount = order.orderItems.reduce((sum, item) => sum + item.quantity, 0);
+    const itemCount = order.orderItems.reduce(
+      (sum, item) => sum + item.quantity,
+      0,
+    );
 
     return {
       id: order.id,
       customerId: order.customerId,
       addressId: order.addressId,
       orderDate: order.orderDate.toISOString(),
-      status: (order.orderStatus[0]?.status ?? "PENDING") as OrderListItemResponse["status"],
+      status: (order.orderStatus[0]?.status ??
+        "PENDING") as OrderListItemResponse["status"],
       itemCount,
       totalPrice,
       createdAt: order.createdAt.toISOString(),
