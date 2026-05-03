@@ -30,7 +30,7 @@ export class CartRepository extends BaseRepository<PrismaClient["cart"]> {
     return prisma.cart.findUnique({
       where: { customerId },
       include: {
-        items: {
+        cartItems: {
           orderBy: { createdAt: "asc" },
         },
       },

@@ -169,11 +169,11 @@ class CartService {
    * computing derived fields (totalPrice, itemCount).
    */
   private toCartResponse(cart: CartWithItems): CartResponse {
-    const totalPrice = cart.items.reduce(
+    const totalPrice = cart.cartItems.reduce(
       (sum, item) => sum + Number(item.price) * item.quantity,
       0,
     );
-    const itemCount = cart.items.reduce(
+    const itemCount = cart.cartItems.reduce(
       (count, item) => count + item.quantity,
       0,
     );
@@ -182,7 +182,7 @@ class CartService {
       id: cart.id,
       customerId: cart.customerId,
       restaurantId: cart.restaurantId,
-      items: cart.items.map((item) => ({
+      items: cart.cartItems.map((item) => ({
         id: item.id,
         menuItemId: item.menuItemId,
         quantity: item.quantity,
