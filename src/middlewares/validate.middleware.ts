@@ -24,7 +24,8 @@ export const validate =
       }
       if (schemas.query) {
         const parsedQuery = await schemas.query.parseAsync(req.query);
-        // `req.query` is read-only on Express 5; mutate its properties instead of reassigning
+        // `req.query` is read-only on Express 5;
+        // mutate its properties instead of reassigning
         Object.assign(req.query as object, parsedQuery);
       }
       if (schemas.params) {

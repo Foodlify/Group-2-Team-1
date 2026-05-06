@@ -16,7 +16,7 @@ router.get("/me", controller.getMyCart);
 
 router.post(
   "/me/items",
-  validate({ body: AddCartItemRequestSchema }),
+  // validate({ body: AddCartItemRequestSchema }),
   controller.addItem,
 );
 

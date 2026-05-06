@@ -6,13 +6,15 @@ import type { CartItemIdParams } from "./cart.validation";
 // ─── Test user ID ────────────────────────────────────────
 // TODO: Replace with `req.user.id` once auth is implemented.
 // For now, reads from env or falls back to a hardcoded default.
-const getCurrentUserId = (_req: Request): string => {
+export const getCurrentUserId = (_req: Request): string => {
   const id = process.env.TEST_USER_ID;
   if (!id) {
     throw new Error(
       "TEST_USER_ID is not set in .env — set it to the seeded user's ID",
     );
   }
+  console.log("user id", id);
+
   return id;
 };
 
@@ -21,6 +23,7 @@ const getCurrentUserId = (_req: Request): string => {
 export const getMyCart = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const userId = getCurrentUserId(req);
+    console.log("userId", userId);
     const cart = await cartService.getMyCart(userId);
     res.status(200).json({ success: true, data: cart });
   },
@@ -29,6 +32,8 @@ export const getMyCart = asyncHandler(
 export const addItem = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const userId = getCurrentUserId(req);
+    console.log("userId", userId);
+    console.log("req.body", req.body);
     const cart = await cartService.addItem(userId, req.body);
     res.status(201).json({ success: true, data: cart });
   },

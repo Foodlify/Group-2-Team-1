@@ -33,6 +33,7 @@ class CartService {
     input: AddCartItemInput,
   ): Promise<CartResponse> {
     // 1. Ensure menu item exists
+    console.log("🔍 Looking for menuItemId:", JSON.stringify(input.menuItemId));
     const menuItem = await menuItemRepository.findById(input.menuItemId);
     if (!menuItem) {
       throw new AppError("Menu item not found", 404);

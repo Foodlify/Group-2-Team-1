@@ -95,6 +95,16 @@ const seed = async (): Promise<void> => {
   });
 };
 
+//
+// id                    String   @id @default(cuid())
+// orderId               String
+// currentLocation       String
+// estimatedDeliveryTime DateTime
+
+// order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+// createdAt DateTime @default(now())
+// updatedAt DateTime @updatedAt
 seed()
   .then(async () => {
     await prisma.$disconnect();
