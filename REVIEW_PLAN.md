@@ -1,0 +1,326 @@
+# خطة تطبيق تعديلات المراجع (Ahmed Emad)
+
+## السياق (Context)
+
+- **المشروع المراجَع** (للقراءة فقط): `/media/beingmomen/Work/Courses/Ahmed Emad/S15/Group-2-Team-1-feat-order-management`
+- **المشروع الحالي** (للتعديل): `/media/beingmomen/Code/Mentor/Group-2-Team-1`
+- Branch: `order-management-momen`
+
+## مصادر التعديلات
+
+1. **تعليقات داخل الكود** (TODO, FIXME, ملاحظات Ahmed Emad)
+2. **محضر اجتماع 1** (`transscript_01.txt`) — نقاش حول concurrency, transactions, taxes, pagination
+3. **محضر اجتماع 2** (`transscript_02.txt`) — نقاش حول Design Patterns, Service Abstraction, Order Flow
+
+## أسلوب العمل المتفق عليه
+
+- **نقطة نقطة**: نناقش كل نقطة على حدة قبل التنفيذ
+- **بعد الاتفاق**: نُنفِّذ، نراجع، ثم ننتقل للنقطة التالية
+
+---
+
+## ⚠️ ملاحظة: نتائج الفحص الأولي
+
+تم فحص الملفات الحالية ووُجد أن المشروع الحالي **أنظف من المشروع المراجَع**:
+
+| التعديل المقترح في المراجَع | الوضع في المشروع الحالي |
+|------------------------------|--------------------------|
+| تنظيف commented-out code في `order.service.ts` | ✅ نظيف بالفعل |
+| تنظيف pseudocode (`// get order`, `// yes -> update`) | ✅ نظيف بالفعل |
+| حذف `// IGNORE` comments | ✅ غير موجود |
+| تنظيف `// getOrders`, `// [orderId , createdAt...]` في controller | ✅ غير موجود |
+
+لذا **تم حذف مرحلة التنظيف** من الخطة. النقاط أُعيد ترقيمها.
+
+---
+
+# 📋 قائمة التعديلات الكاملة (مرتبة حسب الأولوية المنطقية)
+
+## ✅ المرحلة الأولى: إعادة التسميات (Renaming) — **مكتملة**
+
+### ✅ 1️⃣ إعادة تسمية `addTracking` إلى `addOrderStatusTracking`
+- **السبب من المراجع**: تتبع الطلب أوسع من الحالة (يشمل الموقع والوقت المقدر للتسليم)
+- **الملفات المتأثرة**:
+  - [src/modules/order/order.controller.ts](src/modules/order/order.controller.ts) — handler name
+  - [src/modules/order/order.service.ts](src/modules/order/order.service.ts) — method name
+  - [src/modules/order/order.routes.ts](src/modules/order/order.routes.ts) — route binding
+- ✅ **تم التنفيذ** — URL يبقى `/tracking` كما هو
+
+### ✅ 2️⃣ توحيد PascalCase لـ Prisma models
+- إعادة تسمية model `orderTracking` → `OrderTracking` في [prisma/schema.prisma](prisma/schema.prisma)
+- استخدام `@@map("orderTracking")` لحفظ اسم الجدول في DB (لا migration)
+- تحديث type في [src/modules/order/order.model.ts](src/modules/order/order.model.ts) من `orderTrackingModel` إلى `OrderTrackingModel`
+- **اكتشاف مهم**: `prisma.orderTracking` (delegate) يبقى camelCase تلقائياً (Prisma behavior)
+- ✅ **تم التنفيذ**
+
+---
+
+## ⏳ المرحلة الثانية: Custom Exceptions
+
+### 3️⃣ إنشاء `OrderNotFoundException` و custom exceptions
+- استبدال `AppError` العام بـ exceptions مخصصة لكل نوع
+- **الـ exceptions المطلوبة**:
+  - `OrderNotFoundException(orderId)` — بدل `new AppError("Order not found", 404)`
+  - `OrderAccessDeniedException()` — للـ ownership validation
+  - `InvalidOrderStatusTransitionException(from, to)` — لـ state machine
+  - `CartLockedException()` — سيُستخدم في المرحلة الخامسة
+- **الملفات الجديدة**: `src/modules/order/exceptions/*.ts`
+- **الملفات المتأثرة**: `order.service.ts` — استبدال كل `new AppError(...)`
+
+---
+
+## ⏳ المرحلة الثالثة: Service Abstraction (من نقاش الاجتماع 2)
+
+### 4️⃣ منع استخدام Repository الخاصة بـ module آخر مباشرة
+- **المشكلة الحالية**: `orderService` يستخدم `menuItemRepository` و `customerRepository` و `addressRepository` مباشرة
+- **القاعدة من الاجتماع 2**: داخل نفس الـ module يجوز استخدام الـ repository مباشرة. خارج الـ module يجب المرور بالـ service
+- **الحل**:
+  - إنشاء `menuItemService` و `customerService` و `addressService` (لو غير موجودين)
+  - استبدال استدعاءات الـ repository بـ services
+- **استثناء**: `orderItemRepository`, `orderStatusRepository`, `orderTrackingRepository` تابعون لـ order domain، يمكن إبقاء استخدامهم المباشر
+
+### 5️⃣ تحسين validation الـ menu items باستخدام IN CLAUSE
+- **المشكلة الحالية**: `Promise.all(items.map(findById))` = N queries
+- **الحل**: `menuItemService.findManyByIds(ids[])` = query واحد
+- **الملفات المتأثرة**:
+  - `menuItemRepository`: إضافة `findManyByIds`
+  - `menuItemService` (الجديد): wrapper للـ method
+  - `order.service.ts` السطور 30-41
+
+---
+
+## ⏳ المرحلة الرابعة: Order Flow Optimizations
+
+### 6️⃣ إزالة fetch مكرر بعد update
+- **المشكلة**: في `addOrderStatusTracking` و `cancelOrder` و `updateOrderStatus`: يتم استدعاء `findByIdWithDetails` مرتين (مرة قبل update ومرة بعده)
+- **الحل**: استخدام result الـ update مباشرة أو إعادة بناء response من الـ data الموجودة
+- **السبب من الاجتماع**: round-trip latency للـ DB
+
+### 7️⃣ تحسين `findPaginatedByCustomer` بـ `relationLoadStrategy: "join"`
+- استخدام join بدل subqueries لتقليل round trips
+- **الملف**: [src/modules/order/order.repository.ts](src/modules/order/order.repository.ts)
+
+### 8️⃣ التأكد من Snapshot data في OrderItems
+- **التحقق**: الـ schema الحالي يحفظ `price` و `name` في `OrderItems` ✅ موجود
+- **التحقق**: `placeOrder` يحفظ هذه القيم وقت إنشاء الطلب ✅ موجود
+- **التعديل المطلوب**: إضافة جواز توثيق (JSDoc) يوضح أن هذه snapshots وليست references
+- **السبب من الاجتماع 1**: لو تغير سعر `MenuItem` بعد الطلب، الطلب يحتفظ بالسعر الأصلي
+
+---
+
+## ⏳ المرحلة الخامسة: Cart Locking & Concurrency (من الاجتماع 1)
+
+### 9️⃣ Lock الـ Cart أثناء `placeOrder`
+- **المشكلة الموصوفة في الاجتماع 1**:
+  - User يفتح الكارت ويبدأ الطلب
+  - في نفس الوقت admin يعدل أسعار أو يحذف items
+  - الطلب يتم بأسعار قديمة أو بـ items غير موجودة
+- **الحل**: Prisma transaction مع `SELECT FOR UPDATE` على الكارت
+- **الـ Flow الجديد**:
+  1. Lock Cart (row-level lock)
+  2. Validate كل items وأسعارها مازالت متطابقة
+  3. Snapshot الأسعار في OrderItems
+  4. Create Order + OrderItems + OrderStatus
+  5. Clear Cart (المرحلة 13)
+  6. الـ transaction يُغلق فيُحرَّر الـ lock تلقائياً
+
+### 🔟 Price Validation عند الـ Checkout
+- **النقطة من الاجتماع 1**: مقارنة الأسعار في الكارت بأسعار `MenuItem` الحالية قبل تأكيد الطلب
+- **لو السعر اختلف**:
+  - **خيار أ**: رفض الطلب وإبلاغ المستخدم بالسعر الجديد
+  - **خيار ب**: تحديث الكارت تلقائياً وطلب تأكيد جديد
+- **يحتاج نقاش**: أي خيار نختار؟ (الاجتماع لم يحسم)
+
+### 1️⃣1️⃣ Item Availability Check
+- التأكد من أن كل `menuItemId` في الكارت مازال موجوداً (لم يُحذف من القائمة)
+- لو item غير موجود: رفض الطلب أو حذفه تلقائياً من الكارت
+- **يحتاج نقاش**: أي السلوكين؟
+
+---
+
+## ⏳ المرحلة السادسة: Inventory / Stock (مؤجل قابل للتفعيل)
+
+### 1️⃣2️⃣ Stock Management (اختياري حسب البزنس)
+- **النقطة من الاجتماع 1**: المراجع طلب التفكير في stock management
+- **الملاحظة**: المشروع الحالي ليس عنده stock model
+- **القرار المطلوب**: نضيفه الآن أم نؤجله؟
+- **في حال الإضافة**:
+  - إضافة حقل `stock` في `MenuItem` أو model جديد `Inventory`
+  - تخفيض الـ stock عند `placeOrder` (داخل الـ transaction)
+  - إرجاعه عند `cancelOrder`
+- **التوصية**: نؤجلها لأنها feature جديد كامل وليست refactor
+
+---
+
+## ⏳ المرحلة السابعة: Clear Cart بعد Order
+
+### 1️⃣3️⃣ مسح الكارت بعد إنشاء الطلب
+- **حالياً**: الكارت لا يُمسح بعد placeOrder
+- **التعديل**: استدعاء `cartService.clearCart(customerId)` داخل نفس الـ transaction
+- **يحتاج نقاش**: المسح فوري أم نترك للـ user؟ (الاجتماع لم يحسم)
+
+---
+
+## ⏳ المرحلة الثامنة: Transaction Model (إعادة بناء)
+
+### 1️⃣4️⃣ إعادة بناء Transaction Model (المحذوف في commit 18c36ac)
+- **المراجع طلب صراحةً في الاجتماع 1**:
+  - لا يكفي transaction model مرتبط بـ orders فقط
+  - نحتاج جدول `Transaction` عام لـ ALL operations:
+    - Order payments
+    - Refunds (full / partial)
+    - Returns
+    - External integrations (Stripe, PayPal, etc.)
+- **ملاحظة**: يوجد بالفعل `src/modules/transaction/transaction.repository.ts` بأخطاء type (بقايا من الحذف) — سنعالجها هنا
+- **الـ Schema المقترح**:
+  ```prisma
+  model Transaction {
+    id            String   @id @default(cuid())
+    type          String   // ORDER_PAYMENT, REFUND, PARTIAL_REFUND, ...
+    amount        Decimal
+    currency      String   @default("EGP")
+    status        String   // PENDING, SUCCESS, FAILED
+    externalRef   String?  // stripe_transaction_id, etc.
+    paymentMethod String   // CREDIT_CARD, PAYPAL, CASH, WALLET
+    orderId       String?
+    metadata      Json?
+    order         Order?   @relation(...)
+    createdAt     DateTime @default(now())
+    updatedAt     DateTime @updatedAt
+    @@index([orderId])
+    @@index([externalRef])
+  }
+  ```
+- **السبب**: لو الطلب جاء من Stripe، نحتاج نخزن الـ external reference لعمل refunds لاحقاً
+
+### 1️⃣5️⃣ Transaction Service مستقل
+- إنشاء `src/modules/transaction/transaction.service.ts`
+- methods الأساسية:
+  - `createTransaction(input)`
+  - `findByExternalRef(ref)`
+  - `findByOrder(orderId)`
+  - `refund(transactionId, amount?)` — partial أو full
+- **التكامل**: داخل `orderService.placeOrder` يستدعي `transactionService.createTransaction`
+
+---
+
+## ⏳ المرحلة التاسعة: Payment Strategy Pattern
+
+### 1️⃣6️⃣ تطبيق Payment Strategy Pattern
+- **المراجع طلبها صراحةً في الاجتماع 2**
+- **الفكرة**: support لطرق دفع متعددة (Stripe, PayPal, Cash on Delivery, Wallet)
+- **التنفيذ**:
+  - `PaymentStrategy.interface.ts`:
+    ```typescript
+    interface PaymentStrategy {
+      pay(amount: number, metadata: PaymentMetadata): Promise<TransactionResult>;
+      refund(transactionId: string, amount?: number): Promise<TransactionResult>;
+    }
+    ```
+  - implementations: `StripeStrategy`, `PayPalStrategy`, `CashOnDeliveryStrategy`, `WalletStrategy`
+  - `PaymentContext` يختار الـ strategy بناءً على `paymentMethod`
+- **التكامل**: `orderService.placeOrder` يستقبل `paymentMethod` ويستدعي `paymentService.pay(...)`
+
+### 1️⃣7️⃣ Tax Calculation
+- **نقاش الاجتماع 1**: المراجع تكلم عن الحاجة لحساب الضرائب وعرضها للمستخدم
+- **التعديل**:
+  - إضافة `subtotal`, `taxAmount`, `total` في `OrderResponse`
+  - إنشاء `taxCalculator` service (utility function أو strategy)
+- **يحتاج نقاش**:
+  - نسبة الضريبة ثابتة (14% مثلاً)؟
+  - أم متغيرة حسب المنطقة (من `Address`)؟
+  - أم لكل `MenuItem` ضريبة مختلفة؟
+
+### 1️⃣8️⃣ Shipping Fee
+- إضافة `shippingFee` في الطلب
+- **الحساب**: حسب `addressId` (المسافة) أو ثابت أو حسب الـ restaurant
+- **يحتاج نقاش**: business logic للحساب
+
+---
+
+## ⏳ المرحلة العاشرة: JWT Authentication
+
+### 1️⃣9️⃣ تطبيق JWT Auth الكامل
+- استبدال `TEST_CUSTOMER_ID` بـ `req.user.id` من JWT middleware
+- **الملفات المتأثرة**:
+  - [src/middlewares/auth.middleware.ts](src/middlewares/auth.middleware.ts) — موجود بالفعل ✅
+  - [src/modules/order/order.routes.ts](src/modules/order/order.routes.ts) — إضافة `authenticate`
+  - [src/modules/cart/cart.routes.ts](src/modules/cart/cart.routes.ts) — إضافة `authenticate`
+  - حماية admin routes (`updateOrderStatus`, `addOrderStatusTracking`) بـ `authorize(['admin'])`
+- **الحذف**:
+  - `getCurrentCustomerId` المؤقتة من cart + order controllers
+  - `TEST_CUSTOMER_ID` من `.env.example`
+
+---
+
+## ⏳ المرحلة الحادية عشر: Pagination Improvements
+
+### 2️⃣0️⃣ Date Range Filter للـ Orders
+- **نقاش الاجتماع**: المستخدم قد يحتاج فقط orders آخر شهر بدل كل تاريخه
+- **التعديل**: إضافة `from` و `to` query params في `getMyOrders`
+- **الفائدة**: تقليل حجم البيانات المرتجعة للـ frontend
+
+### 2️⃣1️⃣ (اختياري) Cursor-based Pagination
+- **النقطة**: المراجع تكلم عن أن offset-based pagination سيء للأداء على كميات بيانات كبيرة
+- **التوصية**: نؤجلها لأن offset-based يكفي للـ scale الحالي
+- **يحتاج نقاش**: نضيفها الآن أم نؤجلها؟
+
+---
+
+## ⏳ المرحلة الثانية عشر: Architectural Pattern (متقدم/اختياري)
+
+### 2️⃣2️⃣ Chain of Responsibility / Saga Pattern لـ `placeOrder`
+- **اقتراح المراجع في الاجتماع 2**: تنظيم flow الطلب كـ chain من الـ handlers
+- **الـ Handlers المقترحة**:
+  1. `LockCartHandler`
+  2. `ValidateCustomerHandler`
+  3. `ValidateAddressHandler`
+  4. `ValidateMenuItemsHandler`
+  5. `ValidatePricesHandler` (snapshot)
+  6. `CalculateTaxHandler`
+  7. `CalculateShippingHandler`
+  8. `CreateOrderHandler`
+  9. `CreateOrderItemsHandler`
+  10. `ProcessPaymentHandler` (Strategy)
+  11. `ClearCartHandler`
+  12. `CreateOrderStatusHandler`
+- **المخاطر**: refactor كبير جداً
+- **التوصية**: **مؤجَّل** — نطبقه فقط لو الـ flow أصبح معقداً جداً بعد كل التعديلات السابقة
+- **البديل البسيط**: تنظيم الـ orderService methods كـ private methods منفصلة بدون pattern كامل
+
+---
+
+## 📊 ملخص حالة التقدم
+
+| المرحلة | النقاط | الوقت المتوقع | المخاطر | الحالة |
+|---------|--------|----------------|---------|--------|
+| ~~تنظيف الكود~~ | ~~قديمة~~ | — | — | ✅ غير لازم (نظيف بالفعل) |
+| **إعادة التسميات** | **1, 2** | **قليل** | **منخفضة** | **✅ مكتمل** |
+| Custom Exceptions | 3 | متوسط | منخفضة | ⏳ التالي |
+| Service Abstraction | 4, 5 | متوسط | متوسطة | ⏳ معلَّق |
+| Order Flow Optimizations | 6, 7, 8 | متوسط | منخفضة | ⏳ معلَّق |
+| Cart Locking | 9, 10, 11 | كبير | متوسطة | ⏳ معلَّق |
+| Stock (اختياري) | 12 | كبير | متوسطة | ⏳ معلَّق |
+| Clear Cart | 13 | قليل | منخفضة | ⏳ معلَّق |
+| Transaction Model | 14, 15 | كبير | متوسطة | ⏳ معلَّق |
+| Payment Strategy | 16, 17, 18 | كبير | متوسطة | ⏳ معلَّق |
+| JWT Auth | 19 | متوسط | متوسطة | ⏳ معلَّق |
+| Pagination | 20, 21 | متوسط | منخفضة | ⏳ معلَّق |
+| Saga Pattern | 22 | كبير جداً | عالية | ⏳ معلَّق |
+
+---
+
+## 📝 سجل التغييرات (Changelog)
+
+### ✅ المرحلة الأولى — مكتملة
+**النقطة 1**: rename `addTracking` → `addOrderStatusTracking`
+- [src/modules/order/order.service.ts](src/modules/order/order.service.ts) — method name
+- [src/modules/order/order.controller.ts](src/modules/order/order.controller.ts) — handler name
+- [src/modules/order/order.routes.ts](src/modules/order/order.routes.ts) — route binding
+
+**النقطة 2**: Prisma model `orderTracking` → `OrderTracking`
+- [prisma/schema.prisma](prisma/schema.prisma) — model name + `@@map("orderTracking")` للحفاظ على اسم الجدول
+- [src/modules/order/order.model.ts](src/modules/order/order.model.ts) — type `orderTrackingModel` → `OrderTrackingModel`
+- اكتشاف: `prisma.orderTracking` delegate يبقى camelCase تلقائياً (Prisma behavior)
+
+**ملاحظة**: URL endpoint بقي `POST /api/v1/orders/:orderId/tracking` (عدم كسر API consumers)
