@@ -1,9 +1,9 @@
-import type { OrderModel, OrderItemsModel, OrderStatusModel, orderTrackingModel } from "../../generated/prisma/models";
+import type { OrderModel, OrderItemsModel, OrderStatusModel, OrderTrackingModel } from "../../generated/prisma/models";
 
 export type OrderWithDetails = OrderModel & {
   orderItems: OrderItemsModel[];
   orderStatus: OrderStatusModel[];
-  orderTrackings: orderTrackingModel[];
+  orderTrackings: OrderTrackingModel[];
 };
 
 export type OrderListItem = OrderModel & {

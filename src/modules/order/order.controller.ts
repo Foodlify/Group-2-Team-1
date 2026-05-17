@@ -56,9 +56,9 @@ export const updateOrderStatus = asyncHandler(
   },
 );
 
-export const addTracking = asyncHandler(
+export const addOrderStatusTracking = asyncHandler(
   async (req: Request<OrderIdParams>, res: Response): Promise<void> => {
-    const order = await orderService.addTracking(req.params.orderId, req.body);
+    const order = await orderService.addOrderStatusTracking(req.params.orderId, req.body);
     res.status(StatusCodes.CREATED).json({ success: true, data: order });
   },
 );

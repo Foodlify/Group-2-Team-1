@@ -182,8 +182,8 @@ class OrderService {
     return this.toOrderResponse(updated);
   }
 
-  // ─── Add Tracking ─────────────────────────────────────────────
-  async addTracking(
+  // ─── Add Order Status Tracking ────────────────────────────────
+  async addOrderStatusTracking(
     orderId: string,
     input: AddTrackingInput,
   ): Promise<OrderResponse> {

@@ -153,7 +153,7 @@ model Order {
 
   orderStatus    OrderStatus[]
   orderItems     OrderItems[]
-  orderTrackings orderTracking[]
+  orderTrackings OrderTracking[]
 
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
   address  Address  @relation(fields: [addressId], references: [id], onDelete: Restrict)
@@ -193,7 +193,7 @@ model OrderStatus {
   updatedAt DateTime @updatedAt
 }
 
-model orderTracking {
+model OrderTracking {
   id                    String   @id @default(cuid())
   orderId               String
   currentLocation       String
@@ -205,4 +205,5 @@ model orderTracking {
   updatedAt DateTime @updatedAt
 
   @@index([orderId])
+  @@map("orderTracking")
 }

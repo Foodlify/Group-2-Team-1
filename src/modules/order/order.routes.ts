@@ -39,7 +39,7 @@ router.patch(
 router.post(
   "/:orderId/tracking",
   validate({ params: OrderIdParamsSchema, body: AddTrackingRequestSchema }),
-  controller.addTracking,
+  controller.addOrderStatusTracking,
 );
 
 // ─── OpenAPI Documentation ───────────────────────────────
