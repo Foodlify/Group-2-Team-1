@@ -184,46 +184,44 @@
 
 ---
 
-## ⏳ المرحلة الثامنة: Transaction Model (إعادة بناء)
+## ✅ المرحلة الثامنة: Transaction Model (مُنجَزة)
 
-### 1️⃣4️⃣ إعادة بناء Transaction Model (المحذوف في commit 18c36ac)
-- **المراجع طلب صراحةً في الاجتماع 1**:
-  - لا يكفي transaction model مرتبط بـ orders فقط
-  - نحتاج جدول `Transaction` عام لـ ALL operations:
-    - Order payments
-    - Refunds (full / partial)
-    - Returns
-    - External integrations (Stripe, PayPal, etc.)
-- **ملاحظة**: يوجد بالفعل `src/modules/transaction/transaction.repository.ts` بأخطاء type (بقايا من الحذف) — سنعالجها هنا
-- **الـ Schema المقترح**:
+### 1️⃣4️⃣ إعادة بناء Transaction Model ✅
+- **الـ schema الجديد** (مُطبَّق في `prisma/schema.prisma`):
   ```prisma
   model Transaction {
     id            String   @id @default(cuid())
-    type          String   // ORDER_PAYMENT, REFUND, PARTIAL_REFUND, ...
+    type          String   // ORDER_PAYMENT, REFUND, PARTIAL_REFUND
     amount        Decimal
     currency      String   @default("EGP")
     status        String   // PENDING, SUCCESS, FAILED
-    externalRef   String?  // stripe_transaction_id, etc.
-    paymentMethod String   // CREDIT_CARD, PAYPAL, CASH, WALLET
+    paymentMethod String   // CASH, CREDIT_CARD, PAYPAL, WALLET
+    externalRef   String?
     orderId       String?
     metadata      Json?
-    order         Order?   @relation(...)
+    order         Order? @relation(fields: [orderId], references: [id], onDelete: Restrict)
     createdAt     DateTime @default(now())
     updatedAt     DateTime @updatedAt
     @@index([orderId])
     @@index([externalRef])
   }
   ```
-- **السبب**: لو الطلب جاء من Stripe، نحتاج نخزن الـ external reference لعمل refunds لاحقاً
+- **التغيير عن القديم**:
+  - 1:1 (`@unique`) → N:1 nullable (طلب واحد ممكن له عدة معاملات: payment + refund)
+  - `referenceNumber` → `externalRef` (أوضح)
+  - إضافة `type`, `amount`, `currency`, `metadata`
+- **Migration**: `20260518180357_add_transaction_model`
+- **Order model**: إضافة `transactions Transaction[]` relation
 
-### 1️⃣5️⃣ Transaction Service مستقل
-- إنشاء `src/modules/transaction/transaction.service.ts`
-- methods الأساسية:
-  - `createTransaction(input)`
-  - `findByExternalRef(ref)`
-  - `findByOrder(orderId)`
-  - `refund(transactionId, amount?)` — partial أو full
-- **التكامل**: داخل `orderService.placeOrder` يستدعي `transactionService.createTransaction`
+### 1️⃣5️⃣ Transaction Model + Repository + Service ✅
+- **`transaction.model.ts`**: constants لـ `TRANSACTION_TYPES`, `TRANSACTION_STATUSES`, `PAYMENT_METHODS`
+- **`transaction.repository.ts`**: `findById`, `findByOrderId` (returns array), `findByExternalRef`, `createTransaction`, `updateStatus`
+- **`transaction.service.ts`** (جديد): thin wrapper
+
+### ⏸️ مؤجَّل للمرحلة 9 (Payment Strategy)
+- التكامل داخل `placeOrder` (إنشاء transaction عند الطلب)
+- `refund(transactionId, amount?)` — يحتاج Payment Strategy
+- Stripe/PayPal adapters
 
 ---
 
@@ -325,7 +323,7 @@
 | **Cart Locking** | **9, 10, 11** | **كبير** | **متوسطة** | **✅ مكتمل** |
 | Stock (اختياري) | 12 | كبير | متوسطة | ⏳ التالي |
 | Clear Cart | 13 | قليل | منخفضة | ✅ مُنجَزة |
-| Transaction Model | 14, 15 | كبير | متوسطة | ⏳ معلَّق |
+| Transaction Model | 14, 15 | كبير | متوسطة | ✅ مُنجَزة |
 | Payment Strategy | 16, 17, 18 | كبير | متوسطة | ⏳ معلَّق |
 | JWT Auth | 19 | متوسط | متوسطة | ⏳ معلَّق |
 | Pagination | 20, 21 | متوسط | منخفضة | ⏳ معلَّق |

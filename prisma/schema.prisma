@@ -154,6 +154,7 @@ model Order {
   orderStatus    OrderStatus[]
   orderItems     OrderItems[]
   orderTrackings OrderTracking[]
+  transactions   Transaction[]
 
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
   address  Address  @relation(fields: [addressId], references: [id], onDelete: Restrict)
@@ -208,4 +209,31 @@ model OrderTracking {
 
   @@index([orderId])
   @@map("orderTracking")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Payments / Transactions
+// ═══════════════════════════════════════════════════════════════
+
+/// Generic financial transaction record. Supports order payments, refunds,
+/// and external gateway integrations (Stripe, PayPal, etc.). The optional
+/// orderId allows future non-order transactions (wallet top-ups, etc.).
+model Transaction {
+  id            String   @id @default(cuid())
+  type          String
+  amount        Decimal
+  currency      String   @default("EGP")
+  status        String
+  paymentMethod String
+  externalRef   String?
+  orderId       String?
+  metadata      Json?
+
+  order Order? @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([externalRef])
 }
