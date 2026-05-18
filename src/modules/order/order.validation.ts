@@ -13,25 +13,11 @@ export const PlaceOrderRequestSchema = z
       description: "ID of the delivery address",
       example: "clxyz...",
     }),
-    items: z
-      .array(
-        z.object({
-          menuItemId: z.cuid2().meta({
-            description: "ID of the menu item",
-            example: "clabc...",
-          }),
-          quantity: z.number().int().positive().meta({
-            description: "Quantity to order",
-            example: 2,
-          }),
-        }),
-      )
-      .min(1)
-      .meta({ description: "Order line items (at least one required)" }),
   })
   .meta({
     id: "PlaceOrderRequest",
-    description: "Payload to place a new order",
+    description:
+      "Payload to place a new order. Order items are read from the customer's cart.",
   });
 
 export const UpdateStatusRequestSchema = z

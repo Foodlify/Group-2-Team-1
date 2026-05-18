@@ -83,6 +83,19 @@ class CartService {
     await cartItemRepository.deleteManyByCartId(cart.id);
   }
 
+  /**
+   * Acquires a row-level lock on the cart and returns it with items.
+   * Must be called inside a Prisma transaction — the lock is released
+   * when the transaction commits or rolls back.
+   * Used by checkout flow to prevent concurrent cart mutations.
+   */
+  async lockByCustomerIdWithItems(
+    customerId: string,
+    tx: Prisma.TransactionClient,
+  ) {
+    return cartRepository.lockByCustomerIdWithItems(customerId, tx);
+  }
+
   // ─── Private Helpers ──────────────────────────────────
 
   private async assertCustomerExists(customerId: string): Promise<void> {

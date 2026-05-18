@@ -4,6 +4,7 @@ import { orderErrors } from "../../shared/exceptions/order.errors";
 import { customerService } from "../customer/customer.service";
 import { addressService } from "../address/address.service";
 import { menuItemService } from "../menuItem/menuItem.service";
+import { cartService } from "../cart/cart.service";
 import { orderRepository } from "./order.repository";
 import { orderItemRepository } from "../orderItem/orderItem.repository";
 import { orderStatusRepository } from "../orderStatus/orderStatus.repository";
@@ -28,41 +29,66 @@ class OrderService {
     await this.assertCustomerExists(customerId);
     await this.assertAddressBelongsToCustomer(customerId, input.addressId);
 
-    const menuItemIds = input.items.map((i) => i.menuItemId);
-    const foundMenuItems = await menuItemService.findManyByIds(menuItemIds);
-    const menuItemMap = new Map(foundMenuItems.map((m) => [m.id, m]));
-
-    const menuItems = input.items.map((item) => {
-      const menuItem = menuItemMap.get(item.menuItemId);
-      if (!menuItem) {
-        throw new AppError(
-          orderErrors.MENU_ITEM_NOT_FOUND.message,
-          orderErrors.MENU_ITEM_NOT_FOUND.statusCode,
-        );
-      }
-      return { ...item, price: Number(menuItem.price), name: menuItem.name };
-    });
-
     let orderId: string;
 
     await orderRepository.transaction(async (tx) => {
+      // 1. Lock the cart (row-level lock until tx commits/rolls back)
+      const cart = await cartService.lockByCustomerIdWithItems(customerId, tx);
+      if (!cart) {
+        throw new AppError(
+          orderErrors.CART_NOT_FOUND.message,
+          orderErrors.CART_NOT_FOUND.statusCode,
+        );
+      }
+      if (cart.cartItems.length === 0) {
+        throw new AppError(
+          orderErrors.CART_EMPTY.message,
+          orderErrors.CART_EMPTY.statusCode,
+        );
+      }
+
+      // 2. Verify each menu item still exists (availability check)
+      const menuItemIds = cart.cartItems.map((ci) => ci.menuItemId);
+      const currentMenuItems = await menuItemService.findManyByIds(menuItemIds);
+      const currentMap = new Map(currentMenuItems.map((m) => [m.id, m]));
+
+      for (const cartItem of cart.cartItems) {
+        const current = currentMap.get(cartItem.menuItemId);
+        if (!current) {
+          throw new AppError(
+            orderErrors.MENU_ITEM_UNAVAILABLE.message,
+            orderErrors.MENU_ITEM_UNAVAILABLE.statusCode,
+          );
+        }
+        // 3. Price validation: cart snapshot must match current price
+        if (Number(current.price) !== Number(cartItem.price)) {
+          throw new AppError(
+            orderErrors.PRICE_CHANGED.message,
+            orderErrors.PRICE_CHANGED.statusCode,
+          );
+        }
+      }
+
+      // 4. Create order
       const order = await orderRepository.createOrder(
         { customerId, addressId: input.addressId },
         tx,
       );
       orderId = order.id;
 
+      // 5. Create order items using cart snapshots (price + name)
       await orderItemRepository.createManyWithTx(
-        menuItems.map((item) => ({
+        cart.cartItems.map((ci) => ({
           orderId: order.id,
-          menuItemId: item.menuItemId,
-          quantity: item.quantity,
-          price: item.price,
-          name: item.name,
+          menuItemId: ci.menuItemId,
+          quantity: ci.quantity,
+          price: Number(ci.price),
+          name: ci.name,
         })),
         tx,
       );
 
+      // 6. Create initial status
       await orderStatusRepository.createStatus(order.id, "PENDING", tx);
     });
 

@@ -36,6 +36,31 @@ export class CartRepository extends BaseRepository<PrismaClient["cart"]> {
       },
     });
   }
+
+  /**
+   * Acquires a row-level lock on the cart and returns it with items.
+   * Uses a no-op UPDATE to force Postgres row locking — the lock is held
+   * until the surrounding transaction commits or rolls back, preventing
+   * concurrent modifications of the cart during checkout.
+   * Must be called inside a Prisma transaction.
+   */
+  async lockByCustomerIdWithItems(
+    customerId: string,
+    tx: Prisma.TransactionClient,
+  ) {
+    await tx.cart.update({
+      where: { customerId },
+      data: { updatedAt: new Date() },
+    });
+    return tx.cart.findUnique({
+      where: { customerId },
+      include: {
+        cartItems: {
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    });
+  }
 }
 
 export const cartRepository = new CartRepository();

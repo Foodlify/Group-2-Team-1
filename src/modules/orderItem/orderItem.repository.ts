@@ -21,9 +21,7 @@ export class OrderItemRepository extends BaseRepository<PrismaClient["orderItems
     }>,
     tx: Prisma.TransactionClient,
   ) {
-    return Promise.all(
-      items.map((item) => tx.orderItems.create({ data: item })),
-    );
+    return tx.orderItems.createMany({ data: items });
   }
 }
 

@@ -121,33 +121,36 @@
 
 ---
 
-## ⏳ المرحلة الخامسة: Cart Locking & Concurrency (من الاجتماع 1)
+## ✅ المرحلة الخامسة: Cart Locking & Concurrency — **مكتملة**
 
-### 9️⃣ Lock الـ Cart أثناء `placeOrder`
-- **المشكلة الموصوفة في الاجتماع 1**:
-  - User يفتح الكارت ويبدأ الطلب
-  - في نفس الوقت admin يعدل أسعار أو يحذف items
-  - الطلب يتم بأسعار قديمة أو بـ items غير موجودة
-- **الحل**: Prisma transaction مع `SELECT FOR UPDATE` على الكارت
-- **الـ Flow الجديد**:
-  1. Lock Cart (row-level lock)
-  2. Validate كل items وأسعارها مازالت متطابقة
-  3. Snapshot الأسعار في OrderItems
-  4. Create Order + OrderItems + OrderStatus
-  5. Clear Cart (المرحلة 13)
-  6. الـ transaction يُغلق فيُحرَّر الـ lock تلقائياً
+### 🔄 تغيير الـ Design في `PlaceOrderRequest`
+- **قبل**: الـ items تأتي في request body مباشرة (الكارت غير مشارك في checkout)
+- **بعد**: الـ items تُقرأ من الكارت (الـ design الصحيح لـ e-commerce)
+- **Breaking change** في API contract: `items` field removed من `PlaceOrderRequest`
 
-### 🔟 Price Validation عند الـ Checkout
-- **النقطة من الاجتماع 1**: مقارنة الأسعار في الكارت بأسعار `MenuItem` الحالية قبل تأكيد الطلب
-- **لو السعر اختلف**:
-  - **خيار أ**: رفض الطلب وإبلاغ المستخدم بالسعر الجديد
-  - **خيار ب**: تحديث الكارت تلقائياً وطلب تأكيد جديد
-- **يحتاج نقاش**: أي خيار نختار؟ (الاجتماع لم يحسم)
+### ✅ 9️⃣ Lock الـ Cart أثناء `placeOrder`
+- **التطبيق**: Prisma transaction + UPDATE noop على `Cart.updatedAt` (يفرض row-level lock في Postgres)
+- **الـ method الجديد**: [src/modules/cart/cart.repository.ts](src/modules/cart/cart.repository.ts) `lockByCustomerIdWithItems(customerId, tx)`
+- **wrapper في service**: [src/modules/cart/cart.service.ts](src/modules/cart/cart.service.ts)
+- **الـ Flow المُطَبَّق**:
+  1. Lock Cart (row-level lock حتى تنتهي transaction)
+  2. Validate availability + prices
+  3. Create Order + OrderItems (snapshots) + OrderStatus
+  4. الـ transaction commit → الـ lock يُحرَّر تلقائياً
+- ✅ **تم التنفيذ**
 
-### 1️⃣1️⃣ Item Availability Check
-- التأكد من أن كل `menuItemId` في الكارت مازال موجوداً (لم يُحذف من القائمة)
-- لو item غير موجود: رفض الطلب أو حذفه تلقائياً من الكارت
-- **يحتاج نقاش**: أي السلوكين؟
+### ✅ 🔟 Price Validation عند الـ Checkout
+- **الخيار المعتمد**: **رفض الطلب** لو السعر تغير (`409 Conflict`)
+- المقارنة: `Number(currentMenuItem.price) !== Number(cartItem.price)` (snapshot من الكارت ضد السعر الحالي)
+- الخطأ الجديد: `PRICE_CHANGED` في [order.errors.ts](src/shared/exceptions/order.errors.ts)
+- الـ frontend مسؤول عن إعادة تحميل الكارت بعد الخطأ
+- ✅ **تم التنفيذ**
+
+### ✅ 1️⃣1️⃣ Item Availability Check
+- **الخيار المعتمد**: **رفض الطلب** لو item غير موجود (`409 Conflict`)
+- استخدام `menuItemService.findManyByIds(ids[])` (IN CLAUSE من المرحلة 3)
+- الخطأ الجديد: `MENU_ITEM_UNAVAILABLE` في [order.errors.ts](src/shared/exceptions/order.errors.ts)
+- ✅ **تم التنفيذ**
 
 ---
 
@@ -312,8 +315,8 @@
 | **Custom Exceptions** | **3** | **متوسط** | **منخفضة** | **✅ مكتمل** |
 | **Service Abstraction** | **4, 5** | **متوسط** | **متوسطة** | **✅ مكتمل** |
 | **Order Flow Optimizations** | **6, 7, 8** | **متوسط** | **منخفضة** | **✅ مكتمل** |
-| Cart Locking | 9, 10, 11 | كبير | متوسطة | ⏳ التالي |
-| Stock (اختياري) | 12 | كبير | متوسطة | ⏳ معلَّق |
+| **Cart Locking** | **9, 10, 11** | **كبير** | **متوسطة** | **✅ مكتمل** |
+| Stock (اختياري) | 12 | كبير | متوسطة | ⏳ التالي |
 | Clear Cart | 13 | قليل | منخفضة | ⏳ معلَّق |
 | Transaction Model | 14, 15 | كبير | متوسطة | ⏳ معلَّق |
 | Payment Strategy | 16, 17, 18 | كبير | متوسطة | ⏳ معلَّق |
@@ -477,3 +480,80 @@ return this.toOrderResponse(order);
 **ما تبقى من AppError 500s** (2 فقط الآن):
 - "Order not found after creation" في `placeOrder` (مبرر — يحدث لو فشلت الـ transaction بشكل غير متوقع)
 - "Order has no status record" في `updateOrderStatus` (مبرر — defensive check)
+
+---
+
+### ✅ المرحلة الخامسة — مكتملة
+
+**التغيير الأكبر**: الـ `placeOrder` صار يقرأ من الكارت (breaking change في API).
+
+**الـ Flow الجديد**:
+
+```typescript
+async placeOrder(customerId, input: { addressId }) {
+  await assertCustomerExists(customerId);
+  await assertAddressBelongsToCustomer(customerId, input.addressId);
+
+  await orderRepository.transaction(async (tx) => {
+    // 1. Lock cart (row-level lock)
+    const cart = await cartService.lockByCustomerIdWithItems(customerId, tx);
+    if (!cart) throw CART_NOT_FOUND;
+    if (cart.cartItems.length === 0) throw CART_EMPTY;
+
+    // 2. Verify availability + price for each cart item
+    const ids = cart.cartItems.map(ci => ci.menuItemId);
+    const current = await menuItemService.findManyByIds(ids);
+    const currentMap = new Map(current.map(m => [m.id, m]));
+
+    for (const ci of cart.cartItems) {
+      const c = currentMap.get(ci.menuItemId);
+      if (!c) throw MENU_ITEM_UNAVAILABLE;          // النقطة 11
+      if (Number(c.price) !== Number(ci.price))     // النقطة 10
+        throw PRICE_CHANGED;
+    }
+
+    // 3. Create order + items (using cart snapshots)
+    const order = await orderRepository.createOrder({ customerId, addressId }, tx);
+    await orderItemRepository.createManyWithTx(
+      cart.cartItems.map(ci => ({
+        orderId: order.id, menuItemId: ci.menuItemId,
+        quantity: ci.quantity, price: Number(ci.price), name: ci.name,
+      })),
+      tx,
+    );
+    await orderStatusRepository.createStatus(order.id, "PENDING", tx);
+  });
+  // tx commit → cart lock released automatically
+}
+```
+
+**كيف يعمل الـ Lock؟**
+
+```typescript
+// في cart.repository.ts
+async lockByCustomerIdWithItems(customerId, tx) {
+  // UPDATE noop على updatedAt يُجبر Postgres على وضع row-level lock
+  await tx.cart.update({
+    where: { customerId },
+    data: { updatedAt: new Date() },
+  });
+  // الـ lock نشط حتى end of transaction
+  return tx.cart.findUnique({
+    where: { customerId },
+    include: { cartItems: { orderBy: { createdAt: "asc" } } },
+  });
+}
+```
+
+**الأخطاء الجديدة** في [order.errors.ts](src/shared/exceptions/order.errors.ts):
+- `CART_NOT_FOUND` (404) — الكارت غير موجود
+- `CART_EMPTY` (400) — الكارت فارغ
+- `MENU_ITEM_UNAVAILABLE` (409) — item في الكارت تم حذفه من القائمة
+- `PRICE_CHANGED` (409) — السعر اختلف بين الكارت والـ MenuItem الحالي
+
+**سيناريو race condition تم حله**:
+1. User A: يبدأ checkout → يُقفل الكارت
+2. User B (admin): يحاول تعديل أسعار menu items → الـ UPDATE على الكارت يجعل قراءة الكارت في tx الأخرى تنتظر
+3. User A: يكمل الـ checkout بـ snapshot الكارت الحالي → يُحرَّر الـ lock
+4. User B: تنفذ التغييرات بعد ذلك
+- ✅ no race condition، no stale data، no overselling

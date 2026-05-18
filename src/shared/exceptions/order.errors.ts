@@ -31,4 +31,21 @@ export const orderErrors = {
     message: "This address does not belong to you",
     statusCode: 403,
   },
+  CART_NOT_FOUND: {
+    message: "Cart not found",
+    statusCode: 404,
+  },
+  CART_EMPTY: {
+    message: "Cannot place order with an empty cart",
+    statusCode: 400,
+  },
+  MENU_ITEM_UNAVAILABLE: {
+    message: "One or more menu items in your cart are no longer available",
+    statusCode: 409,
+  },
+  PRICE_CHANGED: {
+    message:
+      "Prices of one or more cart items have changed. Please review your cart.",
+    statusCode: 409,
+  },
 } as const;
