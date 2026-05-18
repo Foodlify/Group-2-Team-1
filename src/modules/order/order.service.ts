@@ -8,10 +8,8 @@ import { cartService } from "../cart/cart.service";
 import { paymentService } from "../payment/payment.service";
 import { orderRepository } from "./order.repository";
 import { orderItemRepository } from "../orderItem/orderItem.repository";
-import { orderStatusRepository } from "../orderStatus/orderStatus.repository";
-import { orderTrackingRepository } from "../orderTracking/orderTracking.repository";
-import { VALID_TRANSITIONS } from "../orderStatus/orderStatus.model";
-import type { OrderWithDetails, OrderListItem } from "./order.model";
+import { VALID_TRANSITIONS } from "./order.status";
+import type { OrderWithDetails, OrderListItem, TimelineEntry } from "./order.model";
 import type {
   PlaceOrderInput,
   UpdateStatusInput,
@@ -76,7 +74,7 @@ class OrderService {
         0,
       );
 
-      // 5. Create order
+      // 5. Create order (status="PENDING" + initial timeline entry, atomically)
       const order = await orderRepository.createOrder(
         { customerId, addressId: input.addressId },
         tx,
@@ -95,10 +93,7 @@ class OrderService {
         tx,
       );
 
-      // 7. Create initial status
-      await orderStatusRepository.createStatus(order.id, "PENDING", tx);
-
-      // 8. Process payment via Strategy + persist Transaction
+      // 7. Process payment via Strategy + persist Transaction
       await paymentService.processPayment(
         input.paymentMethod,
         totalAmount,
@@ -106,7 +101,7 @@ class OrderService {
         tx,
       );
 
-      // 9. Clear cart (atomic — rolled back if anything above fails)
+      // 8. Clear cart (atomic — rolled back if anything above fails)
       await cartService.clearCart(customerId, tx);
     });
 
@@ -182,21 +177,22 @@ class OrderService {
       );
     }
 
-    const currentStatus = order.orderStatus[0]?.status;
-    if (currentStatus !== "PENDING") {
+    if (order.status !== "PENDING") {
       throw new AppError(
         orderErrors.ORDER_NOT_CANCELLABLE.message,
         orderErrors.ORDER_NOT_CANCELLABLE.statusCode,
       );
     }
 
-    const updatedStatus = await orderStatusRepository.updateStatus(
-      orderId,
-      "CANCELLED",
+    const entry: TimelineEntry = {
+      status: "CANCELLED",
+      changedAt: new Date().toISOString(),
+    };
+    const updated = await orderRepository.transaction((tx) =>
+      orderRepository.appendTimelineEntry(orderId, entry, tx),
     );
-    order.orderStatus = [updatedStatus];
 
-    return this.toOrderResponse(order);
+    return this.toOrderResponse({ ...order, ...updated });
   }
 
   // ─── Update Order Status (admin) ─────────────────────────────
@@ -211,34 +207,29 @@ class OrderService {
         orderErrors.ORDER_NOT_FOUND.statusCode,
       );
 
-    const currentStatus = order.orderStatus[0]?.status as
-      | keyof typeof VALID_TRANSITIONS
-      | undefined;
-    if (!currentStatus) {
-      throw new AppError(
-        "Order has no status record",
-        StatusCodes.INTERNAL_SERVER_ERROR,
-      );
-    }
-
+    const currentStatus = order.status as keyof typeof VALID_TRANSITIONS;
     const allowed = VALID_TRANSITIONS[currentStatus];
-    if (!allowed.includes(input.status as (typeof allowed)[number])) {
+    if (!allowed || !allowed.includes(input.status as (typeof allowed)[number])) {
       throw new AppError(
         `Cannot transition from ${currentStatus} to ${input.status}`,
         orderErrors.INVALID_STATUS_TRANSITION.statusCode,
       );
     }
 
-    const updatedStatus = await orderStatusRepository.updateStatus(
-      orderId,
-      input.status,
+    const entry: TimelineEntry = {
+      status: input.status,
+      changedAt: new Date().toISOString(),
+    };
+    const updated = await orderRepository.transaction((tx) =>
+      orderRepository.appendTimelineEntry(orderId, entry, tx),
     );
-    order.orderStatus = [updatedStatus];
 
-    return this.toOrderResponse(order);
+    return this.toOrderResponse({ ...order, ...updated });
   }
 
   // ─── Add Order Status Tracking ────────────────────────────────
+  // Appends a delivery-tracking entry (location + ETA) to the order's
+  // timeline without changing its status.
   async addOrderStatusTracking(
     orderId: string,
     input: AddTrackingInput,
@@ -250,14 +241,17 @@ class OrderService {
         orderErrors.ORDER_NOT_FOUND.statusCode,
       );
 
-    const newTracking = await orderTrackingRepository.createTracking({
-      orderId,
-      currentLocation: input.currentLocation,
-      estimatedDeliveryTime: new Date(input.estimatedDeliveryTime),
-    });
-    order.orderTrackings = [newTracking, ...order.orderTrackings];
+    const entry: TimelineEntry = {
+      status: order.status as TimelineEntry["status"],
+      changedAt: new Date().toISOString(),
+      location: input.currentLocation,
+      estimatedDeliveryTime: new Date(input.estimatedDeliveryTime).toISOString(),
+    };
+    const updated = await orderRepository.transaction((tx) =>
+      orderRepository.appendTimelineEntry(orderId, entry, tx),
+    );
 
-    return this.toOrderResponse(order);
+    return this.toOrderResponse({ ...order, ...updated });
   }
 
   // ─── Private Helpers ──────────────────────────────────────────
@@ -295,13 +289,17 @@ class OrderService {
       0,
     );
 
+    const timeline = (order.timeline as unknown as
+      | OrderResponse["timeline"]
+      | undefined) ?? [];
+
     return {
       id: order.id,
       customerId: order.customerId,
       addressId: order.addressId,
       orderDate: order.orderDate.toISOString(),
-      status: (order.orderStatus[0]?.status ??
-        "PENDING") as OrderResponse["status"],
+      status: order.status as OrderResponse["status"],
+      timeline,
       items: order.orderItems.map((item) => ({
         id: item.id,
         menuItemId: item.menuItemId,
@@ -311,14 +309,6 @@ class OrderService {
         subtotal: Number(item.price) * item.quantity,
         createdAt: item.createdAt.toISOString(),
         updatedAt: item.updatedAt.toISOString(),
-      })),
-      trackings: order.orderTrackings.map((t) => ({
-        id: t.id,
-        orderId: t.orderId,
-        currentLocation: t.currentLocation,
-        estimatedDeliveryTime: t.estimatedDeliveryTime.toISOString(),
-        createdAt: t.createdAt.toISOString(),
-        updatedAt: t.updatedAt.toISOString(),
       })),
       totalPrice,
       createdAt: order.createdAt.toISOString(),
@@ -341,8 +331,7 @@ class OrderService {
       customerId: order.customerId,
       addressId: order.addressId,
       orderDate: order.orderDate.toISOString(),
-      status: (order.orderStatus[0]?.status ??
-        "PENDING") as OrderListItemResponse["status"],
+      status: order.status as OrderListItemResponse["status"],
       itemCount,
       totalPrice,
       createdAt: order.createdAt.toISOString(),

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { schemaRegistry } from "../../openapi/registry";
-import { ORDER_STATUSES } from "../orderStatus/orderStatus.model";
+import { ORDER_STATUSES } from "./order.status";
 import { PAYMENT_METHODS } from "../transaction/transaction.model";
 import {
   PaginationMetaSchema,
@@ -101,25 +101,15 @@ export const OrderItemResponseSchema = z
   })
   .meta({ id: "OrderItemResponse" });
 
-export const OrderStatusResponseSchema = z
+export const TimelineEntrySchema = z
   .object({
-    orderId: z.cuid2(),
     status: z.enum(ORDER_STATUSES),
-    createdAt: z.iso.datetime(),
-    updatedAt: z.iso.datetime(),
+    changedAt: z.iso.datetime(),
+    changedBy: z.string().optional(),
+    location: z.string().optional(),
+    estimatedDeliveryTime: z.iso.datetime().optional(),
   })
-  .meta({ id: "OrderStatusResponse" });
-
-export const OrderTrackingResponseSchema = z
-  .object({
-    id: z.cuid2(),
-    orderId: z.cuid2(),
-    currentLocation: z.string(),
-    estimatedDeliveryTime: z.iso.datetime(),
-    createdAt: z.iso.datetime(),
-    updatedAt: z.iso.datetime(),
-  })
-  .meta({ id: "OrderTrackingResponse" });
+  .meta({ id: "TimelineEntry" });
 
 export const OrderResponseSchema = z
   .object({
@@ -128,8 +118,11 @@ export const OrderResponseSchema = z
     addressId: z.cuid2(),
     orderDate: z.iso.datetime(),
     status: z.enum(ORDER_STATUSES),
+    timeline: z.array(TimelineEntrySchema).meta({
+      description:
+        "Unified chronological log of status changes and delivery tracking updates, oldest first",
+    }),
     items: z.array(OrderItemResponseSchema),
-    trackings: z.array(OrderTrackingResponseSchema),
     totalPrice: z.number().meta({
       description: "Sum of (price × quantity) for all items",
       example: 45.5,
@@ -181,8 +174,7 @@ schemaRegistry.register("AddTrackingRequest", AddTrackingRequestSchema);
 schemaRegistry.register("OrderIdParams", OrderIdParamsSchema);
 schemaRegistry.register("OrderQuery", OrderQuerySchema);
 schemaRegistry.register("OrderItemResponse", OrderItemResponseSchema);
-schemaRegistry.register("OrderStatusResponse", OrderStatusResponseSchema);
-schemaRegistry.register("OrderTrackingResponse", OrderTrackingResponseSchema);
+schemaRegistry.register("TimelineEntry", TimelineEntrySchema);
 schemaRegistry.register("OrderResponse", OrderResponseSchema);
 schemaRegistry.register("OrderListItemResponse", OrderListItemResponseSchema);
 schemaRegistry.register("OrderSuccessResponse", OrderSuccessResponseSchema);

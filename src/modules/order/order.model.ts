@@ -1,12 +1,18 @@
-import type { OrderModel, OrderItemsModel, OrderStatusModel, OrderTrackingModel } from "../../generated/prisma/models";
+import type { OrderModel, OrderItemsModel } from "../../generated/prisma/models";
+import type { OrderStatusValue } from "./order.status";
+
+export type TimelineEntry = {
+  status: OrderStatusValue;
+  changedAt: string;
+  changedBy?: string;
+  location?: string;
+  estimatedDeliveryTime?: string;
+};
 
 export type OrderWithDetails = OrderModel & {
   orderItems: OrderItemsModel[];
-  orderStatus: OrderStatusModel[];
-  orderTrackings: OrderTrackingModel[];
 };
 
 export type OrderListItem = OrderModel & {
   orderItems: OrderItemsModel[];
-  orderStatus: OrderStatusModel[];
 };

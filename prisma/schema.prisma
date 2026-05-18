@@ -150,11 +150,16 @@ model Order {
   customerId String
   addressId  String
   orderDate  DateTime @default(now())
+  /// Current effective status — mirrors the latest entry in `timeline` for
+  /// fast indexed queries (e.g. "list all PENDING orders").
+  status     String   @default("PENDING")
+  /// Append-only event log capturing status transitions and delivery tracking
+  /// updates as a single chronological stream. Each entry shape:
+  /// { status, changedAt, changedBy?, location?, estimatedDeliveryTime? }
+  timeline   Json     @default("[]")
 
-  orderStatus    OrderStatus[]
-  orderItems     OrderItems[]
-  orderTrackings OrderTracking[]
-  transactions   Transaction[]
+  orderItems   OrderItems[]
+  transactions Transaction[]
 
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
   address  Address  @relation(fields: [addressId], references: [id], onDelete: Restrict)
@@ -164,6 +169,7 @@ model Order {
 
   @@index([customerId])
   @@index([addressId])
+  @@index([status])
 }
 
 model OrderItems {
@@ -184,31 +190,6 @@ model OrderItems {
 
   @@index([orderId])
   @@index([menuItemId])
-}
-
-model OrderStatus {
-  orderId String @id
-  status  String
-
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model OrderTracking {
-  id                    String   @id @default(cuid())
-  orderId               String
-  currentLocation       String
-  estimatedDeliveryTime DateTime
-
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([orderId])
-  @@map("orderTracking")
 }
 
 // ═══════════════════════════════════════════════════════════════

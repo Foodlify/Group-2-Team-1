@@ -42,10 +42,11 @@
 | 14 | إعادة بناء Transaction Model (generic) | محضر 1 (صريح) | ✅ مُنجَز |
 | 15 | Transaction Service مستقل | محضر 1 | ✅ مُنجَز |
 | 16 | Payment Strategy Pattern (Cash) | محضر 2 (صريح) | ✅ مُنجَز |
+| 20 | Date Range Filter (pagination) | محضر 2 | ✅ مُنجَز |
+| **23** | **دمج OrderStatus + OrderTracking في Order.timeline (JSON)** | **محضر 2 سطور 171-183, 423, 428-434, 442-444** | **✅ مُنجَز (refactor كامل)** |
 | 12 | Stock Management | محضر 1 (اقتراح) | ⏸️ مؤجَّل |
 | 17 | Tax Calculation | محضر 1 (ضعيف، "ليست دائماً") | ⏸️ هامشي |
 | 18 | Shipping Fee | محضر 1 (ضعيف، عابر) | ⏸️ هامشي |
-| 20 | Date Range Filter (pagination) | محضر 2 | ✅ مُنجَز |
 | 21 | Cursor-based pagination | محضر 1 (اقتراح) | ⏸️ مؤجَّل |
 | 22 | Chain of Responsibility / Saga | محضر 2 (اقتراح) | ⏸️ مؤجَّل |
 
@@ -59,10 +60,10 @@
 
 ## 📌 الأولوية التالية
 
-بعد إكمال 14 طلباً من طلبات المراجع، المتبقي من **طلبات المراجع الفعلية**:
-- **Pagination** (نقطة 20) — مذكورة بوضوح في المحضر 1
+بعد إكمال 16 طلباً من طلبات المراجع، المتبقي **مؤجَّل أو هامشي فقط**:
 - **Stock Management** (نقطة 12) — اختيارية، اقتراح المراجع
 - **Tax / Shipping** (نقطتا 17, 18) — هامشية، قابلة للتأجيل أو تنفيذ مُبسَّط
+- **Cursor-based pagination** (نقطة 21) — اختياري، offset كافٍ حالياً
 - **Saga Pattern** (نقطة 22) — اقتراح متقدم، عادةً يُؤجَّل
 
 ---
@@ -383,6 +384,7 @@
 | ~~JWT Auth~~ ⚠️ ليست من المراجعة | 19 | متوسط | متوسطة | ⏸️ خارج النطاق |
 | Pagination (Date Range) | 20 | متوسط | منخفضة | ✅ مُنجَز |
 | Cursor-based Pagination | 21 | متوسط | منخفضة | ⏸️ مؤجَّل (اختياري) |
+| **دمج OrderStatus + OrderTracking في Order.timeline** | **23** | **كبير** | **متوسطة** | **✅ مُنجَز (refactor كامل)** |
 | Saga Pattern | 22 | كبير جداً | عالية | ⏳ معلَّق |
 
 ---
