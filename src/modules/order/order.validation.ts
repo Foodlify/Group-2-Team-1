@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { schemaRegistry } from "../../openapi/registry";
 import { ORDER_STATUSES } from "../orderStatus/orderStatus.model";
+import { PAYMENT_METHODS } from "../transaction/transaction.model";
 import { PaginationMetaSchema } from "../../shared/schemas/pagination.schema";
 
 // ═══════════════════════════════════════════════════════════════
@@ -12,6 +13,10 @@ export const PlaceOrderRequestSchema = z
     addressId: z.cuid2().meta({
       description: "ID of the delivery address",
       example: "clxyz...",
+    }),
+    paymentMethod: z.enum(PAYMENT_METHODS).meta({
+      description: "Payment method to use for this order",
+      example: "CASH",
     }),
   })
   .meta({

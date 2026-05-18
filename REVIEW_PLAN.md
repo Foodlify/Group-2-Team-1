@@ -227,20 +227,15 @@
 
 ## ⏳ المرحلة التاسعة: Payment Strategy Pattern
 
-### 1️⃣6️⃣ تطبيق Payment Strategy Pattern
-- **المراجع طلبها صراحةً في الاجتماع 2**
-- **الفكرة**: support لطرق دفع متعددة (Stripe, PayPal, Cash on Delivery, Wallet)
-- **التنفيذ**:
-  - `PaymentStrategy.interface.ts`:
-    ```typescript
-    interface PaymentStrategy {
-      pay(amount: number, metadata: PaymentMetadata): Promise<TransactionResult>;
-      refund(transactionId: string, amount?: number): Promise<TransactionResult>;
-    }
-    ```
-  - implementations: `StripeStrategy`, `PayPalStrategy`, `CashOnDeliveryStrategy`, `WalletStrategy`
-  - `PaymentContext` يختار الـ strategy بناءً على `paymentMethod`
-- **التكامل**: `orderService.placeOrder` يستقبل `paymentMethod` ويستدعي `paymentService.pay(...)`
+### 1️⃣6️⃣ Payment Strategy Pattern — Sub-Phase 9a ✅ مُنجَزة
+- **المُنفَّذ**:
+  - `src/modules/payment/payment.strategy.ts` — interface `PaymentStrategy { method, pay() }`
+  - `src/modules/payment/cash.strategy.ts` — `CashOnDeliveryStrategy` (يُرجع PENDING — الفلوس تُحصَّل عند التوصيل)
+  - `src/modules/payment/payment.service.ts` — Registry + `processPayment(method, amount, context, tx?)`
+  - `src/shared/exceptions/payment.errors.ts` — `UNSUPPORTED_METHOD`, `PAYMENT_FAILED`
+  - `order.validation.ts:PlaceOrderRequestSchema` — إضافة `paymentMethod` (enum)
+  - `order.service.ts:placeOrder` — استدعاء `paymentService.processPayment(...)` داخل الـ transaction، يُنشئ Transaction record atomically
+- **مؤجَّل**: Stripe, PayPal, Wallet strategies (يمكن إضافتها بنفس النمط)
 
 ### 1️⃣7️⃣ Tax Calculation
 - **نقاش الاجتماع 1**: المراجع تكلم عن الحاجة لحساب الضرائب وعرضها للمستخدم
@@ -324,7 +319,9 @@
 | Stock (اختياري) | 12 | كبير | متوسطة | ⏳ التالي |
 | Clear Cart | 13 | قليل | منخفضة | ✅ مُنجَزة |
 | Transaction Model | 14, 15 | كبير | متوسطة | ✅ مُنجَزة |
-| Payment Strategy | 16, 17, 18 | كبير | متوسطة | ⏳ معلَّق |
+| Payment Strategy (9a) | 16 | متوسط | متوسطة | ✅ مُنجَزة |
+| Tax Calculation (9b) | 17 | متوسط | منخفضة | ⏳ معلَّق |
+| Shipping Fee (9c) | 18 | متوسط | متوسطة | ⏳ معلَّق |
 | JWT Auth | 19 | متوسط | متوسطة | ⏳ معلَّق |
 | Pagination | 20, 21 | متوسط | منخفضة | ⏳ معلَّق |
 | Saga Pattern | 22 | كبير جداً | عالية | ⏳ معلَّق |

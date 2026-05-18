@@ -5,6 +5,7 @@ import { customerService } from "../customer/customer.service";
 import { addressService } from "../address/address.service";
 import { menuItemService } from "../menuItem/menuItem.service";
 import { cartService } from "../cart/cart.service";
+import { paymentService } from "../payment/payment.service";
 import { orderRepository } from "./order.repository";
 import { orderItemRepository } from "../orderItem/orderItem.repository";
 import { orderStatusRepository } from "../orderStatus/orderStatus.repository";
@@ -69,14 +70,20 @@ class OrderService {
         }
       }
 
-      // 4. Create order
+      // 4. Compute total amount (sum of price × quantity)
+      const totalAmount = cart.cartItems.reduce(
+        (sum, ci) => sum + Number(ci.price) * ci.quantity,
+        0,
+      );
+
+      // 5. Create order
       const order = await orderRepository.createOrder(
         { customerId, addressId: input.addressId },
         tx,
       );
       orderId = order.id;
 
-      // 5. Create order items using cart snapshots (price + name)
+      // 6. Create order items using cart snapshots (price + name)
       await orderItemRepository.createManyWithTx(
         cart.cartItems.map((ci) => ({
           orderId: order.id,
@@ -88,10 +95,18 @@ class OrderService {
         tx,
       );
 
-      // 6. Create initial status
+      // 7. Create initial status
       await orderStatusRepository.createStatus(order.id, "PENDING", tx);
 
-      // 7. Clear cart (atomic — rolled back if anything above fails)
+      // 8. Process payment via Strategy + persist Transaction
+      await paymentService.processPayment(
+        input.paymentMethod,
+        totalAmount,
+        { orderId: order.id, customerId, currency: "EGP" },
+        tx,
+      );
+
+      // 9. Clear cart (atomic — rolled back if anything above fails)
       await cartService.clearCart(customerId, tx);
     });
 
