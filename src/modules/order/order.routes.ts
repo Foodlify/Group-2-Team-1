@@ -1,11 +1,11 @@
 import { Router } from "express";
 import { validate } from "../../middlewares/validate.middleware";
 import { routeRegistry } from "../../openapi/registry";
-import { PaginationQuerySchema } from "../../shared/schemas/pagination.schema";
 import * as controller from "./order.controller";
 import {
   AddTrackingRequestSchema,
   OrderIdParamsSchema,
+  OrderQuerySchema,
   PlaceOrderRequestSchema,
   UpdateStatusRequestSchema,
 } from "./order.validation";
@@ -16,7 +16,7 @@ const router: Router = Router();
 
 router.post("/", validate({ body: PlaceOrderRequestSchema }), controller.placeOrder);
 
-router.get("/", validate({ query: PaginationQuerySchema }), controller.getMyOrders);
+router.get("/", validate({ query: OrderQuerySchema }), controller.getMyOrders);
 
 router.get(
   "/:orderId",
@@ -79,10 +79,22 @@ routeRegistry.push({
     },
     get: {
       tags: [tag],
-      summary: "Get my orders (paginated)",
+      summary: "Get my orders (paginated, with optional date range filter)",
       parameters: [
         { name: "page", in: "query", schema: { type: "integer", default: 1 } },
         { name: "limit", in: "query", schema: { type: "integer", default: 20 } },
+        {
+          name: "from",
+          in: "query",
+          schema: { type: "string", format: "date-time" },
+          description: "Filter orders created on or after this date (ISO 8601)",
+        },
+        {
+          name: "to",
+          in: "query",
+          schema: { type: "string", format: "date-time" },
+          description: "Filter orders created on or before this date (ISO 8601)",
+        },
       ],
       responses: {
         "200": {

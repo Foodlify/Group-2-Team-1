@@ -16,10 +16,10 @@ import type {
   PlaceOrderInput,
   UpdateStatusInput,
   AddTrackingInput,
+  OrderQuery,
   OrderResponse,
   OrderListItemResponse,
 } from "./order.validation";
-import type { PaginationQuery } from "../../shared/schemas/pagination.schema";
 
 class OrderService {
   // ─── Place Order ──────────────────────────────────────────────
@@ -122,18 +122,19 @@ class OrderService {
   // ─── Get My Orders (paginated) ────────────────────────────────
   async getMyOrders(
     customerId: string,
-    query: PaginationQuery,
+    query: OrderQuery,
   ): Promise<{
     data: OrderListItemResponse[];
     meta: { page: number; limit: number; total: number; totalPages: number };
   }> {
     await this.assertCustomerExists(customerId);
 
-    const result = await orderRepository.findPaginatedByCustomer(
-      customerId,
-      query.page,
-      query.limit,
-    );
+    const result = await orderRepository.findPaginatedByCustomer(customerId, {
+      page: query.page,
+      limit: query.limit,
+      from: query.from ? new Date(query.from) : undefined,
+      to: query.to ? new Date(query.to) : undefined,
+    });
 
     return {
       data: (result.data as OrderListItem[]).map((o) =>

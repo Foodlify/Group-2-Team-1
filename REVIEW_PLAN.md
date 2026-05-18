@@ -19,6 +19,54 @@
 
 ---
 
+# 🎯 التصنيف بحسب المصدر (مهم!)
+
+كل نقطة في هذه الخطة مُصنَّفة بحسب مصدرها الفعلي. النقاط التي **ليست** من المراجع موضوعة في قسم منفصل ولن تُنفَّذ كأولوية.
+
+## ✅ القسم أ — طلبات المراجع الفعلية (من المحاضر/التعليقات)
+
+| # | الطلب | المصدر | الحالة |
+|---|------|--------|--------|
+| 1 | rename `addTracking` → `addOrderStatusTracking` | تعليق كود | ✅ مُنجَز |
+| 2 | PascalCase لـ `OrderTracking` model | تعليق كود | ✅ مُنجَز |
+| 3 | Custom Exceptions (`orderErrors`, `cartErrors`) | تعليق كود | ✅ مُنجَز |
+| 4 | Service Abstraction (services بدل repos مباشرة) | محضر 2 | ✅ مُنجَز |
+| 5 | IN CLAUSE optimization (`findManyByIds`) | محضر 2 | ✅ مُنجَز |
+| 6 | إزالة fetch مكرر بعد update | محضر 2 | ✅ مُنجَز |
+| 7 | Join strategy في pagination | محضر 2 | ✅ مُنجَز (default في Prisma 7) |
+| 8 | Snapshot data في OrderItems (JSDoc) | محضر 1 | ✅ مُنجَز |
+| 9 | Cart Locking أثناء `placeOrder` | محضر 1 | ✅ مُنجَز |
+| 10 | Price Validation عند الـ checkout | محضر 1 | ✅ مُنجَز |
+| 11 | Item Availability Check | محضر 1 | ✅ مُنجَز |
+| 13 | Clear Cart بعد placeOrder | محضر 1 | ✅ مُنجَز |
+| 14 | إعادة بناء Transaction Model (generic) | محضر 1 (صريح) | ✅ مُنجَز |
+| 15 | Transaction Service مستقل | محضر 1 | ✅ مُنجَز |
+| 16 | Payment Strategy Pattern (Cash) | محضر 2 (صريح) | ✅ مُنجَز |
+| 12 | Stock Management | محضر 1 (اقتراح) | ⏸️ مؤجَّل |
+| 17 | Tax Calculation | محضر 1 (ضعيف، "ليست دائماً") | ⏸️ هامشي |
+| 18 | Shipping Fee | محضر 1 (ضعيف، عابر) | ⏸️ هامشي |
+| 20 | Date Range Filter (pagination) | محضر 2 | ✅ مُنجَز |
+| 21 | Cursor-based pagination | محضر 1 (اقتراح) | ⏸️ مؤجَّل |
+| 22 | Chain of Responsibility / Saga | محضر 2 (اقتراح) | ⏸️ مؤجَّل |
+
+## ⏸️ القسم ب — أُضيفت بواسطة Claude (ليست من المراجعة)
+
+| # | البند | لماذا أضفتها | الموقف |
+|---|-------|-------------|--------|
+| 19 | JWT Authentication | TODO في كودنا الأصلي + ضرورة للإنتاج | ⏸️ خارج نطاق المراجعة — يُؤجَّل |
+
+---
+
+## 📌 الأولوية التالية
+
+بعد إكمال 14 طلباً من طلبات المراجع، المتبقي من **طلبات المراجع الفعلية**:
+- **Pagination** (نقطة 20) — مذكورة بوضوح في المحضر 1
+- **Stock Management** (نقطة 12) — اختيارية، اقتراح المراجع
+- **Tax / Shipping** (نقطتا 17, 18) — هامشية، قابلة للتأجيل أو تنفيذ مُبسَّط
+- **Saga Pattern** (نقطة 22) — اقتراح متقدم، عادةً يُؤجَّل
+
+---
+
 ## ⚠️ ملاحظة: نتائج الفحص الأولي
 
 تم فحص الملفات الحالية ووُجد أن المشروع الحالي **أنظف من المشروع المراجَع**:
@@ -237,26 +285,31 @@
   - `order.service.ts:placeOrder` — استدعاء `paymentService.processPayment(...)` داخل الـ transaction، يُنشئ Transaction record atomically
 - **مؤجَّل**: Stripe, PayPal, Wallet strategies (يمكن إضافتها بنفس النمط)
 
-### 1️⃣7️⃣ Tax Calculation
-- **نقاش الاجتماع 1**: المراجع تكلم عن الحاجة لحساب الضرائب وعرضها للمستخدم
-- **التعديل**:
-  - إضافة `subtotal`, `taxAmount`, `total` في `OrderResponse`
-  - إنشاء `taxCalculator` service (utility function أو strategy)
-- **يحتاج نقاش**:
-  - نسبة الضريبة ثابتة (14% مثلاً)؟
-  - أم متغيرة حسب المنطقة (من `Address`)؟
-  - أم لكل `MenuItem` ضريبة مختلفة؟
+### 1️⃣7️⃣ Tax Calculation — ⚠️ هامشي
+> **سياق المحضر 1**: المراجع ذكر الضريبة 3 مرات (سطور 153, 156, 158) لكن قال:
+> - "**احياناً احياناً مش دايماً**" (سطر 158)
+> - "**ما شفتهاش في مصر**" (سطر 158)
+>
+> الهدف الأساسي من نقاشه كان **إظهار breakdown في الـ Response** (subtotal/tax/total) للتقارير، وليس بناء tax engine معقد.
+>
+> **التوصية**: إن نُفِّذت، تكون **مُبسَّطة جداً** — config flag في `.env` (e.g. `TAX_RATE=0`) + breakdown في `OrderResponse`. وإلا تُؤجَّل.
 
-### 1️⃣8️⃣ Shipping Fee
-- إضافة `shippingFee` في الطلب
-- **الحساب**: حسب `addressId` (المسافة) أو ثابت أو حسب الـ restaurant
-- **يحتاج نقاش**: business logic للحساب
+### 1️⃣8️⃣ Shipping Fee — ⚠️ هامشي
+> **سياق المحضر 1**: ذكر عابر في سطر 156 ("فلوس التوصيل"). لا تفاصيل ولا متطلبات.
+>
+> **التوصية**: تُؤجَّل لمرحلة الـ business logic لاحقاً.
 
 ---
 
-## ⏳ المرحلة العاشرة: JWT Authentication
+## ⏸️ المرحلة العاشرة: JWT Authentication — **ليست من طلبات المراجع**
 
-### 1️⃣9️⃣ تطبيق JWT Auth الكامل
+> ⚠️ **هذه المرحلة أضفتها Claude، وليست من تعليقات المراجع ولا من المحاضر.**
+>
+> **التحقق**: لا ذِكر لـ JWT/auth/login/token في `transscript_01.txt` ولا `transscript_02.txt`. والـ TODO الموجود في الكود (`req.customer.id once auth is implemented`) كتبه الفريق الأصلي قبل المراجعة.
+>
+> ستبقى هذه المرحلة في الخطة كـ **reference** لإكمال المشروع لاحقاً، لكنها **ليست أولوية** في تنفيذ تعديلات المراجع.
+
+### 1️⃣9️⃣ تطبيق JWT Auth الكامل (مؤجَّل — خارج نطاق المراجعة)
 - استبدال `TEST_CUSTOMER_ID` بـ `req.user.id` من JWT middleware
 - **الملفات المتأثرة**:
   - [src/middlewares/auth.middleware.ts](src/middlewares/auth.middleware.ts) — موجود بالفعل ✅
@@ -269,12 +322,17 @@
 
 ---
 
-## ⏳ المرحلة الحادية عشر: Pagination Improvements
+## ✅ المرحلة الحادية عشر: Pagination Improvements (مُنجَزة)
 
-### 2️⃣0️⃣ Date Range Filter للـ Orders
-- **نقاش الاجتماع**: المستخدم قد يحتاج فقط orders آخر شهر بدل كل تاريخه
-- **التعديل**: إضافة `from` و `to` query params في `getMyOrders`
-- **الفائدة**: تقليل حجم البيانات المرتجعة للـ frontend
+### 2️⃣0️⃣ Date Range Filter للـ Orders ✅
+- **مصدر الطلب**: محضر 2 سطور 498-503 (Ahmed Emad: "اخترت التاريخ هو جاب لك اخر 10 معاملات")
+- **المُنفَّذ**:
+  - `OrderQuerySchema` في `order.validation.ts` يمتد من `PaginationQuerySchema` ويضيف `from` و `to` (ISO 8601, optional)
+  - `.refine()` validation: `from <= to` يرجع 400 لو غير صحيح
+  - `OrderQuery` type مُصدَّر
+  - `orderRepository.findPaginatedByCustomer` يقبل `options: { page, limit, from?, to? }` ويبني `where.createdAt: { gte, lte }`
+  - `order.service.ts:getMyOrders` يمرر الـ query للـ repository
+  - `order.routes.ts` يستخدم `OrderQuerySchema` validator + OpenAPI docs محدّثة بـ `from`/`to` parameters
 
 ### 2️⃣1️⃣ (اختياري) Cursor-based Pagination
 - **النقطة**: المراجع تكلم عن أن offset-based pagination سيء للأداء على كميات بيانات كبيرة
@@ -320,10 +378,11 @@
 | Clear Cart | 13 | قليل | منخفضة | ✅ مُنجَزة |
 | Transaction Model | 14, 15 | كبير | متوسطة | ✅ مُنجَزة |
 | Payment Strategy (9a) | 16 | متوسط | متوسطة | ✅ مُنجَزة |
-| Tax Calculation (9b) | 17 | متوسط | منخفضة | ⏳ معلَّق |
-| Shipping Fee (9c) | 18 | متوسط | متوسطة | ⏳ معلَّق |
-| JWT Auth | 19 | متوسط | متوسطة | ⏳ معلَّق |
-| Pagination | 20, 21 | متوسط | منخفضة | ⏳ معلَّق |
+| Tax Calculation (9b) ⚠️ هامشي | 17 | متوسط | منخفضة | ⏸️ هامشي |
+| Shipping Fee (9c) ⚠️ هامشي | 18 | متوسط | متوسطة | ⏸️ هامشي |
+| ~~JWT Auth~~ ⚠️ ليست من المراجعة | 19 | متوسط | متوسطة | ⏸️ خارج النطاق |
+| Pagination (Date Range) | 20 | متوسط | منخفضة | ✅ مُنجَز |
+| Cursor-based Pagination | 21 | متوسط | منخفضة | ⏸️ مؤجَّل (اختياري) |
 | Saga Pattern | 22 | كبير جداً | عالية | ⏳ معلَّق |
 
 ---

@@ -33,17 +33,29 @@ export class OrderRepository extends BaseRepository<PrismaClient["order"]> {
     });
   }
 
-  async findPaginatedByCustomer(customerId: string, page: number, limit: number) {
+  async findPaginatedByCustomer(
+    customerId: string,
+    options: { page: number; limit: number; from?: Date; to?: Date },
+  ) {
+    const { page, limit, from, to } = options;
     const skip = (page - 1) * limit;
+
+    const where: Prisma.OrderWhereInput = { customerId };
+    if (from || to) {
+      where.createdAt = {};
+      if (from) where.createdAt.gte = from;
+      if (to) where.createdAt.lte = to;
+    }
+
     const [data, total] = await Promise.all([
       prisma.order.findMany({
-        where: { customerId },
+        where,
         include: { orderItems: true, orderStatus: true },
         orderBy: { createdAt: "desc" },
         skip,
         take: limit,
       }),
-      prisma.order.count({ where: { customerId } }),
+      prisma.order.count({ where }),
     ]);
     return {
       data,

@@ -2,7 +2,10 @@ import { z } from "zod";
 import { schemaRegistry } from "../../openapi/registry";
 import { ORDER_STATUSES } from "../orderStatus/orderStatus.model";
 import { PAYMENT_METHODS } from "../transaction/transaction.model";
-import { PaginationMetaSchema } from "../../shared/schemas/pagination.schema";
+import {
+  PaginationMetaSchema,
+  PaginationQuerySchema,
+} from "../../shared/schemas/pagination.schema";
 
 // ═══════════════════════════════════════════════════════════════
 // Request Schemas (inputs)
@@ -61,6 +64,25 @@ export const OrderIdParamsSchema = z
     }),
   })
   .meta({ id: "OrderIdParams" });
+
+export const OrderQuerySchema = PaginationQuerySchema.extend({
+  from: z.iso.datetime().optional().meta({
+    description: "Filter orders created on or after this date (ISO 8601)",
+    example: "2026-04-01T00:00:00.000Z",
+  }),
+  to: z.iso.datetime().optional().meta({
+    description: "Filter orders created on or before this date (ISO 8601)",
+    example: "2026-05-01T00:00:00.000Z",
+  }),
+})
+  .refine(
+    (data) => !data.from || !data.to || new Date(data.from) <= new Date(data.to),
+    { message: "'from' must be earlier than or equal to 'to'", path: ["from"] },
+  )
+  .meta({
+    id: "OrderQuery",
+    description: "Pagination + optional date range filter for orders",
+  });
 
 // ═══════════════════════════════════════════════════════════════
 // Response Schemas (outputs)
@@ -157,6 +179,7 @@ schemaRegistry.register("PlaceOrderRequest", PlaceOrderRequestSchema);
 schemaRegistry.register("UpdateStatusRequest", UpdateStatusRequestSchema);
 schemaRegistry.register("AddTrackingRequest", AddTrackingRequestSchema);
 schemaRegistry.register("OrderIdParams", OrderIdParamsSchema);
+schemaRegistry.register("OrderQuery", OrderQuerySchema);
 schemaRegistry.register("OrderItemResponse", OrderItemResponseSchema);
 schemaRegistry.register("OrderStatusResponse", OrderStatusResponseSchema);
 schemaRegistry.register("OrderTrackingResponse", OrderTrackingResponseSchema);
@@ -173,5 +196,6 @@ export type PlaceOrderInput = z.infer<typeof PlaceOrderRequestSchema>;
 export type UpdateStatusInput = z.infer<typeof UpdateStatusRequestSchema>;
 export type AddTrackingInput = z.infer<typeof AddTrackingRequestSchema>;
 export type OrderIdParams = z.infer<typeof OrderIdParamsSchema>;
+export type OrderQuery = z.infer<typeof OrderQuerySchema>;
 export type OrderResponse = z.infer<typeof OrderResponseSchema>;
 export type OrderListItemResponse = z.infer<typeof OrderListItemResponseSchema>;
