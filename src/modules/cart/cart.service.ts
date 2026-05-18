@@ -159,3 +159,10 @@ class CartService {
 }
 
 export const cartService = new CartService();
+
+// customer
+// customer will create an order
+// • getProfile
+// • update profile
+// • customer addres crud
+//  Customer orders , order history
