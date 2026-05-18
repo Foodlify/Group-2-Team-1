@@ -70,23 +70,27 @@
 
 ---
 
-## ⏳ المرحلة الثالثة: Service Abstraction (من نقاش الاجتماع 2)
+## ✅ المرحلة الثالثة: Service Abstraction — **مكتملة**
 
-### 4️⃣ منع استخدام Repository الخاصة بـ module آخر مباشرة
-- **المشكلة الحالية**: `orderService` يستخدم `menuItemRepository` و `customerRepository` و `addressRepository` مباشرة
-- **القاعدة من الاجتماع 2**: داخل نفس الـ module يجوز استخدام الـ repository مباشرة. خارج الـ module يجب المرور بالـ service
-- **الحل**:
-  - إنشاء `menuItemService` و `customerService` و `addressService` (لو غير موجودين)
-  - استبدال استدعاءات الـ repository بـ services
-- **استثناء**: `orderItemRepository`, `orderStatusRepository`, `orderTrackingRepository` تابعون لـ order domain، يمكن إبقاء استخدامهم المباشر
+### ✅ 4️⃣ منع استخدام Repository الخاصة بـ module آخر مباشرة
+- **القاعدة المعتمدة**: داخل نفس الـ module يجوز استخدام الـ repository مباشرة. خارج الـ module يجب المرور بالـ service
+- **الـ Services الجديدة** (thin wrappers):
+  - [src/modules/customer/customer.service.ts](src/modules/customer/customer.service.ts)
+  - [src/modules/address/address.service.ts](src/modules/address/address.service.ts)
+  - [src/modules/menuItem/menuItem.service.ts](src/modules/menuItem/menuItem.service.ts)
+- **الملفات المُعَدَّلة**:
+  - [src/modules/order/order.service.ts](src/modules/order/order.service.ts) — استبدال 3 repositories
+  - [src/modules/cart/cart.service.ts](src/modules/cart/cart.service.ts) — استبدال 2 repositories
+- ✅ **تم التنفيذ**
 
-### 5️⃣ تحسين validation الـ menu items باستخدام IN CLAUSE
+### ✅ 5️⃣ تحسين validation الـ menu items باستخدام IN CLAUSE
 - **المشكلة الحالية**: `Promise.all(items.map(findById))` = N queries
-- **الحل**: `menuItemService.findManyByIds(ids[])` = query واحد
-- **الملفات المتأثرة**:
-  - `menuItemRepository`: إضافة `findManyByIds`
-  - `menuItemService` (الجديد): wrapper للـ method
-  - `order.service.ts` السطور 30-41
+- **الحل المُطَبَّق**: `menuItemService.findManyByIds(ids[])` = query واحد
+- **الملفات المُعَدَّلة**:
+  - [src/modules/menuItem/menuItem.repository.ts](src/modules/menuItem/menuItem.repository.ts) — إضافة `findManyByIds`
+  - [src/modules/menuItem/menuItem.service.ts](src/modules/menuItem/menuItem.service.ts) — wrapper للـ method
+  - [src/modules/order/order.service.ts](src/modules/order/order.service.ts) — استخدام Map للأداء
+- ✅ **تم التنفيذ**
 
 ---
 
@@ -298,8 +302,8 @@
 | ~~تنظيف الكود~~ | ~~قديمة~~ | — | — | ✅ غير لازم (نظيف بالفعل) |
 | **إعادة التسميات** | **1, 2** | **قليل** | **منخفضة** | **✅ مكتمل** |
 | **Custom Exceptions** | **3** | **متوسط** | **منخفضة** | **✅ مكتمل** |
-| Service Abstraction | 4, 5 | متوسط | متوسطة | ⏳ التالي |
-| Order Flow Optimizations | 6, 7, 8 | متوسط | منخفضة | ⏳ معلَّق |
+| **Service Abstraction** | **4, 5** | **متوسط** | **متوسطة** | **✅ مكتمل** |
+| Order Flow Optimizations | 6, 7, 8 | متوسط | منخفضة | ⏳ التالي |
 | Cart Locking | 9, 10, 11 | كبير | متوسطة | ⏳ معلَّق |
 | Stock (اختياري) | 12 | كبير | متوسطة | ⏳ معلَّق |
 | Clear Cart | 13 | قليل | منخفضة | ⏳ معلَّق |
@@ -374,3 +378,46 @@ throw new AppError(
 - "Cart not found after update" (3 مرات: addItem, updateItem, removeItem)
 
 كل هذه ستُعالَج في المرحلة 4 (Order Flow Optimizations — إزالة fetch مكرر)
+
+---
+
+### ✅ المرحلة الثالثة — مكتملة
+
+**النقطة 4**: Service Abstraction
+- إنشاء [src/modules/customer/customer.service.ts](src/modules/customer/customer.service.ts) — thin wrapper
+- إنشاء [src/modules/address/address.service.ts](src/modules/address/address.service.ts) — thin wrapper
+- إنشاء [src/modules/menuItem/menuItem.service.ts](src/modules/menuItem/menuItem.service.ts) — thin wrapper
+- تعديل [src/modules/order/order.service.ts](src/modules/order/order.service.ts) — استبدال 3 cross-module repository imports بـ services
+- تعديل [src/modules/cart/cart.service.ts](src/modules/cart/cart.service.ts) — استبدال 2 cross-module repository imports بـ services
+
+**النقطة 5**: IN CLAUSE Optimization
+- إضافة `findManyByIds(ids[])` في [src/modules/menuItem/menuItem.repository.ts](src/modules/menuItem/menuItem.repository.ts)
+- إضافة wrapper في [src/modules/menuItem/menuItem.service.ts](src/modules/menuItem/menuItem.service.ts)
+- إعادة كتابة منطق validation menu items في `placeOrder`:
+
+```typescript
+// قبل (N queries)
+const menuItems = await Promise.all(
+  input.items.map(async (item) => {
+    const menuItem = await menuItemRepository.findById(item.menuItemId);
+    if (!menuItem) throw new AppError(...);
+    return { ...item, price, name };
+  }),
+);
+
+// بعد (1 query)
+const menuItemIds = input.items.map((i) => i.menuItemId);
+const foundMenuItems = await menuItemService.findManyByIds(menuItemIds);
+const menuItemMap = new Map(foundMenuItems.map((m) => [m.id, m]));
+
+const menuItems = input.items.map((item) => {
+  const menuItem = menuItemMap.get(item.menuItemId);
+  if (!menuItem) throw new AppError(...);
+  return { ...item, price: Number(menuItem.price), name: menuItem.name };
+});
+```
+
+**الفوائد المحققة**:
+- ✅ منع الوصول المباشر لـ DB من خارج الـ module
+- ✅ تقليل query count من N إلى 1 في `placeOrder` (إذا كان الطلب يحتوي على 10 menu items: 10 queries → 1 query)
+- ✅ سهولة إضافة caching/events/logging لاحقاً في الـ service

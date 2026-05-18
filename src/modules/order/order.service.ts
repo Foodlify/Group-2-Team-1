@@ -1,9 +1,9 @@
 import { StatusCodes } from "http-status-codes";
 import { AppError } from "../../middlewares/error.middleware";
 import { orderErrors } from "../../shared/exceptions/order.errors";
-import { customerRepository } from "../customer/customer.repository";
-import { addressRepository } from "../address/address.repository";
-import { menuItemRepository } from "../menuItem/menuItem.repository";
+import { customerService } from "../customer/customer.service";
+import { addressService } from "../address/address.service";
+import { menuItemService } from "../menuItem/menuItem.service";
 import { orderRepository } from "./order.repository";
 import { orderItemRepository } from "../orderItem/orderItem.repository";
 import { orderStatusRepository } from "../orderStatus/orderStatus.repository";
@@ -28,18 +28,20 @@ class OrderService {
     await this.assertCustomerExists(customerId);
     await this.assertAddressBelongsToCustomer(customerId, input.addressId);
 
-    const menuItems = await Promise.all(
-      input.items.map(async (item) => {
-        const menuItem = await menuItemRepository.findById(item.menuItemId);
-        if (!menuItem) {
-          throw new AppError(
-            orderErrors.MENU_ITEM_NOT_FOUND.message,
-            orderErrors.MENU_ITEM_NOT_FOUND.statusCode,
-          );
-        }
-        return { ...item, price: Number(menuItem.price), name: menuItem.name };
-      }),
-    );
+    const menuItemIds = input.items.map((i) => i.menuItemId);
+    const foundMenuItems = await menuItemService.findManyByIds(menuItemIds);
+    const menuItemMap = new Map(foundMenuItems.map((m) => [m.id, m]));
+
+    const menuItems = input.items.map((item) => {
+      const menuItem = menuItemMap.get(item.menuItemId);
+      if (!menuItem) {
+        throw new AppError(
+          orderErrors.MENU_ITEM_NOT_FOUND.message,
+          orderErrors.MENU_ITEM_NOT_FOUND.statusCode,
+        );
+      }
+      return { ...item, price: Number(menuItem.price), name: menuItem.name };
+    });
 
     let orderId: string;
 
@@ -225,7 +227,7 @@ class OrderService {
   // ─── Private Helpers ──────────────────────────────────────────
 
   private async assertCustomerExists(customerId: string): Promise<void> {
-    const customer = await customerRepository.findById(customerId);
+    const customer = await customerService.findById(customerId);
     if (!customer)
       throw new AppError(
         orderErrors.CUSTOMER_NOT_FOUND.message,
@@ -237,7 +239,7 @@ class OrderService {
     customerId: string,
     addressId: string,
   ): Promise<void> {
-    const address = await addressRepository.findById(addressId);
+    const address = await addressService.findById(addressId);
     if (!address)
       throw new AppError(
         orderErrors.ADDRESS_NOT_FOUND.message,

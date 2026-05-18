@@ -2,8 +2,8 @@ import { StatusCodes } from "http-status-codes";
 import { AppError } from "../../middlewares/error.middleware";
 import { cartErrors } from "../../shared/exceptions/cart.errors";
 import { cartItemRepository } from "../cartItem/cartItem.repository";
-import { customerRepository } from "../customer/customer.repository";
-import { menuItemRepository } from "../menuItem/menuItem.repository";
+import { customerService } from "../customer/customer.service";
+import { menuItemService } from "../menuItem/menuItem.service";
 import { cartRepository } from "./cart.repository";
 import type { CartWithItems } from "./cart.model";
 import type {
@@ -86,7 +86,7 @@ class CartService {
   // ─── Private Helpers ──────────────────────────────────
 
   private async assertCustomerExists(customerId: string): Promise<void> {
-    const customer = await customerRepository.findById(customerId);
+    const customer = await customerService.findById(customerId);
     if (!customer) {
       throw new AppError(
         cartErrors.CUSTOMER_NOT_FOUND.message,
@@ -96,7 +96,7 @@ class CartService {
   }
 
   private async fetchMenuItem(menuItemId: string, tx?: Prisma.TransactionClient) {
-    const menuItem = await menuItemRepository.findByIdWithMenu(menuItemId, tx);
+    const menuItem = await menuItemService.findByIdWithMenu(menuItemId, tx);
     if (!menuItem)
       throw new AppError(
         cartErrors.MENU_ITEM_NOT_FOUND.message,
@@ -124,7 +124,7 @@ class CartService {
     cartId: string,
     input: AddCartItemInput,
     menuItem: NonNullable<
-      Awaited<ReturnType<typeof menuItemRepository.findByIdWithMenu>>
+      Awaited<ReturnType<typeof menuItemService.findByIdWithMenu>>
     >,
     tx?: Prisma.TransactionClient,
   ) {

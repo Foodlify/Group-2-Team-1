@@ -22,6 +22,12 @@ export class MenuItemRepository extends BaseRepository<PrismaClient["menuItem"]>
       include: { menu: { select: { restaurantId: true } } },
     });
   }
+
+  async findManyByIds(ids: string[]) {
+    return prisma.menuItem.findMany({
+      where: { id: { in: ids } },
+    });
+  }
 }
 
 export const menuItemRepository = new MenuItemRepository();
