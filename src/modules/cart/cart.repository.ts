@@ -61,6 +61,17 @@ export class CartRepository extends BaseRepository<PrismaClient["cart"]> {
       },
     });
   }
+
+  /**
+   * Deletes a customer's cart. Cascades to cartItems via the schema relation.
+   * Uses deleteMany for idempotency (no-throw if cart is already gone).
+   */
+  async deleteByCustomerId(
+    customerId: string,
+    tx?: Prisma.TransactionClient,
+  ) {
+    return (tx ?? prisma).cart.deleteMany({ where: { customerId } });
+  }
 }
 
 export const cartRepository = new CartRepository();

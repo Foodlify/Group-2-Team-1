@@ -90,6 +90,9 @@ class OrderService {
 
       // 6. Create initial status
       await orderStatusRepository.createStatus(order.id, "PENDING", tx);
+
+      // 7. Clear cart (atomic — rolled back if anything above fails)
+      await cartService.clearCart(customerId, tx);
     });
 
     const order = await orderRepository.findByIdWithDetails(orderId!);

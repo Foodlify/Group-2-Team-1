@@ -74,13 +74,12 @@ class CartService {
   }
 
   // ─── Clear Cart ───────────────────────────────────────
-  async clearCart(customerId: string): Promise<void> {
+  async clearCart(
+    customerId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
     await this.assertCustomerExists(customerId);
-
-    const cart = await cartRepository.findUnique({ where: { customerId } });
-    if (!cart) return; // Nothing to clear
-
-    await cartItemRepository.deleteManyByCartId(cart.id);
+    await cartRepository.deleteByCustomerId(customerId, tx);
   }
 
   /**

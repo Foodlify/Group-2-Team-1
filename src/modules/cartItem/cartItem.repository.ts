@@ -53,12 +53,6 @@ export class CartItemRepository extends BaseRepository<PrismaClient["cartItem"]>
     return (tx ?? prisma).cartItem.create(args);
   }
 
-  /**
-   * Deletes all items in a given cart. Used by the "clear cart" endpoint.
-   */
-  async deleteManyByCartId(cartId: string) {
-    return prisma.cartItem.deleteMany({ where: { cartId } });
-  }
 }
 
 export const cartItemRepository = new CartItemRepository();

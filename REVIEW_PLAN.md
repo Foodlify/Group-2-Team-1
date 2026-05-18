@@ -168,12 +168,19 @@
 
 ---
 
-## ⏳ المرحلة السابعة: Clear Cart بعد Order
+## ✅ المرحلة السابعة: Clear Cart بعد Order (مُنجَزة)
 
-### 1️⃣3️⃣ مسح الكارت بعد إنشاء الطلب
-- **حالياً**: الكارت لا يُمسح بعد placeOrder
-- **التعديل**: استدعاء `cartService.clearCart(customerId)` داخل نفس الـ transaction
-- **يحتاج نقاش**: المسح فوري أم نترك للـ user؟ (الاجتماع لم يحسم)
+### 1️⃣3️⃣ مسح الكارت بعد إنشاء الطلب ✅
+- **القرار**: مسح فوري **داخل** الـ transaction (atomic)، وحذف الـ `Cart` row بالكامل
+- **التنفيذ**:
+  - `cartRepository.deleteByCustomerId(customerId, tx?)` — `deleteMany` (idempotent)
+  - `cartService.clearCart` يستخدمها (الـ cascade يتولى الـ items)
+  - `placeOrder` يستدعي `cartService.clearCart(customerId, tx)` كآخر خطوة في الـ transaction
+- **مزايا**:
+  - لو فشل أي شيء في الـ transaction، الكارت لا يُمسح
+  - الـ row-level lock محفوظ حتى نهاية الـ transaction
+  - عند الإضافة التالية، `resolveCart` ينشئ Cart جديداً تلقائياً
+- **تنظيف**: حذف `cartItemRepository.deleteManyByCartId` (لم يعد مستخدماً)
 
 ---
 
@@ -317,7 +324,7 @@
 | **Order Flow Optimizations** | **6, 7, 8** | **متوسط** | **منخفضة** | **✅ مكتمل** |
 | **Cart Locking** | **9, 10, 11** | **كبير** | **متوسطة** | **✅ مكتمل** |
 | Stock (اختياري) | 12 | كبير | متوسطة | ⏳ التالي |
-| Clear Cart | 13 | قليل | منخفضة | ⏳ معلَّق |
+| Clear Cart | 13 | قليل | منخفضة | ✅ مُنجَزة |
 | Transaction Model | 14, 15 | كبير | متوسطة | ⏳ معلَّق |
 | Payment Strategy | 16, 17, 18 | كبير | متوسطة | ⏳ معلَّق |
 | JWT Auth | 19 | متوسط | متوسطة | ⏳ معلَّق |
