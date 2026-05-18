@@ -1,5 +1,6 @@
 import { StatusCodes } from "http-status-codes";
 import { AppError } from "../../middlewares/error.middleware";
+import { cartErrors } from "../../shared/exceptions/cart.errors";
 import { cartItemRepository } from "../cartItem/cartItem.repository";
 import { customerRepository } from "../customer/customer.repository";
 import { menuItemRepository } from "../menuItem/menuItem.repository";
@@ -87,13 +88,20 @@ class CartService {
   private async assertCustomerExists(customerId: string): Promise<void> {
     const customer = await customerRepository.findById(customerId);
     if (!customer) {
-      throw new AppError("Customer not found", StatusCodes.NOT_FOUND);
+      throw new AppError(
+        cartErrors.CUSTOMER_NOT_FOUND.message,
+        cartErrors.CUSTOMER_NOT_FOUND.statusCode,
+      );
     }
   }
 
   private async fetchMenuItem(menuItemId: string, tx?: Prisma.TransactionClient) {
     const menuItem = await menuItemRepository.findByIdWithMenu(menuItemId, tx);
-    if (!menuItem) throw new AppError("Menu item not found", StatusCodes.NOT_FOUND);
+    if (!menuItem)
+      throw new AppError(
+        cartErrors.MENU_ITEM_NOT_FOUND.message,
+        cartErrors.MENU_ITEM_NOT_FOUND.statusCode,
+      );
     return menuItem;
   }
 
@@ -105,8 +113,8 @@ class CartService {
     const existingCart = await cartRepository.findByCustomerId(customerId, tx);
     if (existingCart && existingCart.restaurantId !== restaurantId) {
       throw new AppError(
-        "Cart already has items from a different restaurant. Clear your cart first.",
-        StatusCodes.BAD_REQUEST,
+        cartErrors.DIFFERENT_RESTAURANT.message,
+        cartErrors.DIFFERENT_RESTAURANT.statusCode,
       );
     }
     return existingCart ?? (await cartRepository.createCart({ customerId, restaurantId }, tx));
@@ -157,10 +165,16 @@ class CartService {
     const item = await cartItemRepository.findByIdWithCart(itemId);
 
     if (!item) {
-      throw new AppError("Cart item not found", StatusCodes.NOT_FOUND);
+      throw new AppError(
+        cartErrors.CART_ITEM_NOT_FOUND.message,
+        cartErrors.CART_ITEM_NOT_FOUND.statusCode,
+      );
     }
     if (item.cart.customerId !== customerId) {
-      throw new AppError("This cart item does not belong to you", StatusCodes.FORBIDDEN);
+      throw new AppError(
+        cartErrors.CART_ITEM_FORBIDDEN.message,
+        cartErrors.CART_ITEM_FORBIDDEN.statusCode,
+      );
     }
   }
 

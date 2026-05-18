@@ -55,17 +55,18 @@
 
 ---
 
-## ⏳ المرحلة الثانية: Custom Exceptions
+## ✅ المرحلة الثانية: Custom Exceptions — **مكتملة**
 
-### 3️⃣ إنشاء `OrderNotFoundException` و custom exceptions
-- استبدال `AppError` العام بـ exceptions مخصصة لكل نوع
-- **الـ exceptions المطلوبة**:
-  - `OrderNotFoundException(orderId)` — بدل `new AppError("Order not found", 404)`
-  - `OrderAccessDeniedException()` — للـ ownership validation
-  - `InvalidOrderStatusTransitionException(from, to)` — لـ state machine
-  - `CartLockedException()` — سيُستخدم في المرحلة الخامسة
-- **الملفات الجديدة**: `src/modules/order/exceptions/*.ts`
-- **الملفات المتأثرة**: `order.service.ts` — استبدال كل `new AppError(...)`
+### ✅ 3️⃣ إنشاء ملف errors بسيط لكل module
+- **النمط المختار**: object بسيط `as const` فيه أسماء الأخطاء + message + statusCode
+- **الفائدة**: لا classes، لا inheritance، لا تعقيد — مجرد constants
+- **الملف الجديد**:
+  - [src/shared/exceptions/order.errors.ts](src/shared/exceptions/order.errors.ts) — `orderErrors` object
+- **الملفات المعدَّلة**:
+  - [src/modules/order/order.service.ts](src/modules/order/order.service.ts) — استبدال 12 استخدام لـ `AppError` بـ constants من orderErrors
+- **AppError** يبقى كما هو بدون تعديل
+- **errorMiddleware** يبقى كما هو بدون تعديل
+- ✅ **تم التنفيذ**
 
 ---
 
@@ -296,8 +297,8 @@
 |---------|--------|----------------|---------|--------|
 | ~~تنظيف الكود~~ | ~~قديمة~~ | — | — | ✅ غير لازم (نظيف بالفعل) |
 | **إعادة التسميات** | **1, 2** | **قليل** | **منخفضة** | **✅ مكتمل** |
-| Custom Exceptions | 3 | متوسط | منخفضة | ⏳ التالي |
-| Service Abstraction | 4, 5 | متوسط | متوسطة | ⏳ معلَّق |
+| **Custom Exceptions** | **3** | **متوسط** | **منخفضة** | **✅ مكتمل** |
+| Service Abstraction | 4, 5 | متوسط | متوسطة | ⏳ التالي |
 | Order Flow Optimizations | 6, 7, 8 | متوسط | منخفضة | ⏳ معلَّق |
 | Cart Locking | 9, 10, 11 | كبير | متوسطة | ⏳ معلَّق |
 | Stock (اختياري) | 12 | كبير | متوسطة | ⏳ معلَّق |
@@ -324,3 +325,52 @@
 - اكتشاف: `prisma.orderTracking` delegate يبقى camelCase تلقائياً (Prisma behavior)
 
 **ملاحظة**: URL endpoint بقي `POST /api/v1/orders/:orderId/tracking` (عدم كسر API consumers)
+
+---
+
+### ✅ المرحلة الثانية — مكتملة
+
+**النقطة 3**: ملف errors بسيط لكل module
+- إنشاء [src/shared/exceptions/order.errors.ts](src/shared/exceptions/order.errors.ts) — `orderErrors` object بسيط `as const`
+- إنشاء [src/shared/exceptions/cart.errors.ts](src/shared/exceptions/cart.errors.ts) — `cartErrors` object بسيط `as const`
+- تعديل [src/modules/order/order.service.ts](src/modules/order/order.service.ts) — استبدال 12 استخدام لـ `AppError` باستخدام constants من `orderErrors`
+- تعديل [src/modules/cart/cart.service.ts](src/modules/cart/cart.service.ts) — استبدال 5 استخدامات لـ `AppError` باستخدام constants من `cartErrors`
+
+**النمط المعتمد** (بسيط جداً):
+```typescript
+// src/shared/exceptions/order.errors.ts
+export const orderErrors = {
+  ORDER_NOT_FOUND: { message: "Order not found", statusCode: 404 },
+  ORDER_FORBIDDEN: { message: "This order does not belong to you", statusCode: 403 },
+  ORDER_NOT_CANCELLABLE: { message: "Only PENDING orders can be cancelled", statusCode: 400 },
+  // ...
+} as const;
+
+// في الـ service
+throw new AppError(
+  orderErrors.ORDER_NOT_FOUND.message,
+  orderErrors.ORDER_NOT_FOUND.statusCode,
+);
+```
+
+**المفاتيح المتاحة في `orderErrors`**:
+- `ORDER_NOT_FOUND` (404)
+- `ORDER_FORBIDDEN` (403)
+- `ORDER_NOT_CANCELLABLE` (400)
+- `INVALID_STATUS_TRANSITION` (400) — مع رسالة dynamic للـ from→to
+- `MENU_ITEM_NOT_FOUND` (404)
+- `CUSTOMER_NOT_FOUND` (404)
+- `ADDRESS_NOT_FOUND` (404)
+- `ADDRESS_FORBIDDEN` (403)
+
+**ما تبقى من AppError بدون constants** (للأخطاء 500 — Internal Server Error):
+
+في `order.service.ts` (5 استخدامات):
+- "Order not found after creation" (في `placeOrder`)
+- "Order not found after update" (3 مرات: cancelOrder, updateOrderStatus, addOrderStatusTracking)
+- "Order has no status record" (updateOrderStatus)
+
+في `cart.service.ts` (3 استخدامات):
+- "Cart not found after update" (3 مرات: addItem, updateItem, removeItem)
+
+كل هذه ستُعالَج في المرحلة 4 (Order Flow Optimizations — إزالة fetch مكرر)

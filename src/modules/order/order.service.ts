@@ -1,5 +1,6 @@
 import { StatusCodes } from "http-status-codes";
 import { AppError } from "../../middlewares/error.middleware";
+import { orderErrors } from "../../shared/exceptions/order.errors";
 import { customerRepository } from "../customer/customer.repository";
 import { addressRepository } from "../address/address.repository";
 import { menuItemRepository } from "../menuItem/menuItem.repository";
@@ -32,8 +33,8 @@ class OrderService {
         const menuItem = await menuItemRepository.findById(item.menuItemId);
         if (!menuItem) {
           throw new AppError(
-            `Menu item ${item.menuItemId} not found`,
-            StatusCodes.NOT_FOUND,
+            orderErrors.MENU_ITEM_NOT_FOUND.message,
+            orderErrors.MENU_ITEM_NOT_FOUND.statusCode,
           );
         }
         return { ...item, price: Number(menuItem.price), name: menuItem.name };
@@ -102,11 +103,15 @@ class OrderService {
     orderId: string,
   ): Promise<OrderResponse> {
     const order = await orderRepository.findByIdWithDetails(orderId);
-    if (!order) throw new AppError("Order not found", StatusCodes.NOT_FOUND);
+    if (!order)
+      throw new AppError(
+        orderErrors.ORDER_NOT_FOUND.message,
+        orderErrors.ORDER_NOT_FOUND.statusCode,
+      );
     if (order.customerId !== customerId) {
       throw new AppError(
-        "This order does not belong to you",
-        StatusCodes.FORBIDDEN,
+        orderErrors.ORDER_FORBIDDEN.message,
+        orderErrors.ORDER_FORBIDDEN.statusCode,
       );
     }
     return this.toOrderResponse(order);
@@ -118,19 +123,23 @@ class OrderService {
     orderId: string,
   ): Promise<OrderResponse> {
     const order = await orderRepository.findByIdWithDetails(orderId);
-    if (!order) throw new AppError("Order not found", StatusCodes.NOT_FOUND);
+    if (!order)
+      throw new AppError(
+        orderErrors.ORDER_NOT_FOUND.message,
+        orderErrors.ORDER_NOT_FOUND.statusCode,
+      );
     if (order.customerId !== customerId) {
       throw new AppError(
-        "This order does not belong to you",
-        StatusCodes.FORBIDDEN,
+        orderErrors.ORDER_FORBIDDEN.message,
+        orderErrors.ORDER_FORBIDDEN.statusCode,
       );
     }
 
     const currentStatus = order.orderStatus[0]?.status;
     if (currentStatus !== "PENDING") {
       throw new AppError(
-        "Only PENDING orders can be cancelled",
-        StatusCodes.BAD_REQUEST,
+        orderErrors.ORDER_NOT_CANCELLABLE.message,
+        orderErrors.ORDER_NOT_CANCELLABLE.statusCode,
       );
     }
 
@@ -151,7 +160,11 @@ class OrderService {
     input: UpdateStatusInput,
   ): Promise<OrderResponse> {
     const order = await orderRepository.findByIdWithDetails(orderId);
-    if (!order) throw new AppError("Order not found", StatusCodes.NOT_FOUND);
+    if (!order)
+      throw new AppError(
+        orderErrors.ORDER_NOT_FOUND.message,
+        orderErrors.ORDER_NOT_FOUND.statusCode,
+      );
 
     const currentStatus = order.orderStatus[0]?.status as
       | keyof typeof VALID_TRANSITIONS
@@ -167,7 +180,7 @@ class OrderService {
     if (!allowed.includes(input.status as (typeof allowed)[number])) {
       throw new AppError(
         `Cannot transition from ${currentStatus} to ${input.status}`,
-        StatusCodes.BAD_REQUEST,
+        orderErrors.INVALID_STATUS_TRANSITION.statusCode,
       );
     }
 
@@ -188,7 +201,11 @@ class OrderService {
     input: AddTrackingInput,
   ): Promise<OrderResponse> {
     const order = await orderRepository.findById(orderId);
-    if (!order) throw new AppError("Order not found", StatusCodes.NOT_FOUND);
+    if (!order)
+      throw new AppError(
+        orderErrors.ORDER_NOT_FOUND.message,
+        orderErrors.ORDER_NOT_FOUND.statusCode,
+      );
 
     await orderTrackingRepository.createTracking({
       orderId,
@@ -210,7 +227,10 @@ class OrderService {
   private async assertCustomerExists(customerId: string): Promise<void> {
     const customer = await customerRepository.findById(customerId);
     if (!customer)
-      throw new AppError("Customer not found", StatusCodes.NOT_FOUND);
+      throw new AppError(
+        orderErrors.CUSTOMER_NOT_FOUND.message,
+        orderErrors.CUSTOMER_NOT_FOUND.statusCode,
+      );
   }
 
   private async assertAddressBelongsToCustomer(
@@ -219,11 +239,14 @@ class OrderService {
   ): Promise<void> {
     const address = await addressRepository.findById(addressId);
     if (!address)
-      throw new AppError("Address not found", StatusCodes.NOT_FOUND);
+      throw new AppError(
+        orderErrors.ADDRESS_NOT_FOUND.message,
+        orderErrors.ADDRESS_NOT_FOUND.statusCode,
+      );
     if (address.customerId !== customerId) {
       throw new AppError(
-        "This address does not belong to you",
-        StatusCodes.FORBIDDEN,
+        orderErrors.ADDRESS_FORBIDDEN.message,
+        orderErrors.ADDRESS_FORBIDDEN.statusCode,
       );
     }
   }
