@@ -145,15 +145,13 @@ class OrderService {
       );
     }
 
-    await orderStatusRepository.updateStatus(orderId, "CANCELLED");
+    const updatedStatus = await orderStatusRepository.updateStatus(
+      orderId,
+      "CANCELLED",
+    );
+    order.orderStatus = [updatedStatus];
 
-    const updated = await orderRepository.findByIdWithDetails(orderId);
-    if (!updated)
-      throw new AppError(
-        "Order not found after update",
-        StatusCodes.INTERNAL_SERVER_ERROR,
-      );
-    return this.toOrderResponse(updated);
+    return this.toOrderResponse(order);
   }
 
   // ─── Update Order Status (admin) ─────────────────────────────
@@ -186,15 +184,13 @@ class OrderService {
       );
     }
 
-    await orderStatusRepository.updateStatus(orderId, input.status);
+    const updatedStatus = await orderStatusRepository.updateStatus(
+      orderId,
+      input.status,
+    );
+    order.orderStatus = [updatedStatus];
 
-    const updated = await orderRepository.findByIdWithDetails(orderId);
-    if (!updated)
-      throw new AppError(
-        "Order not found after update",
-        StatusCodes.INTERNAL_SERVER_ERROR,
-      );
-    return this.toOrderResponse(updated);
+    return this.toOrderResponse(order);
   }
 
   // ─── Add Order Status Tracking ────────────────────────────────
@@ -202,26 +198,21 @@ class OrderService {
     orderId: string,
     input: AddTrackingInput,
   ): Promise<OrderResponse> {
-    const order = await orderRepository.findById(orderId);
+    const order = await orderRepository.findByIdWithDetails(orderId);
     if (!order)
       throw new AppError(
         orderErrors.ORDER_NOT_FOUND.message,
         orderErrors.ORDER_NOT_FOUND.statusCode,
       );
 
-    await orderTrackingRepository.createTracking({
+    const newTracking = await orderTrackingRepository.createTracking({
       orderId,
       currentLocation: input.currentLocation,
       estimatedDeliveryTime: new Date(input.estimatedDeliveryTime),
     });
+    order.orderTrackings = [newTracking, ...order.orderTrackings];
 
-    const updated = await orderRepository.findByIdWithDetails(orderId);
-    if (!updated)
-      throw new AppError(
-        "Order not found after update",
-        StatusCodes.INTERNAL_SERVER_ERROR,
-      );
-    return this.toOrderResponse(updated);
+    return this.toOrderResponse(order);
   }
 
   // ─── Private Helpers ──────────────────────────────────────────

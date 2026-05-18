@@ -94,22 +94,30 @@
 
 ---
 
-## ⏳ المرحلة الرابعة: Order Flow Optimizations
+## ✅ المرحلة الرابعة: Order Flow Optimizations — **مكتملة**
 
-### 6️⃣ إزالة fetch مكرر بعد update
-- **المشكلة**: في `addOrderStatusTracking` و `cancelOrder` و `updateOrderStatus`: يتم استدعاء `findByIdWithDetails` مرتين (مرة قبل update ومرة بعده)
-- **الحل**: استخدام result الـ update مباشرة أو إعادة بناء response من الـ data الموجودة
-- **السبب من الاجتماع**: round-trip latency للـ DB
+### ✅ 6️⃣ إزالة fetch مكرر بعد update
+- **3 methods تم تحسينها** في [order.service.ts](src/modules/order/order.service.ts):
+  - `cancelOrder`: حذف fetch ثاني، استخدام result من `updateStatus` + تعديل `order.orderStatus` في الذاكرة
+  - `updateOrderStatus`: نفس النهج
+  - `addOrderStatusTracking`: تغيير `findById` → `findByIdWithDetails` من الأول، ثم إضافة الـ tracking للـ array في الذاكرة
+- **النتيجة**: حذف 3 من 5 AppError 500s ("Order not found after update")
+- ✅ **تم التنفيذ**
 
-### 7️⃣ تحسين `findPaginatedByCustomer` بـ `relationLoadStrategy: "join"`
-- استخدام join بدل subqueries لتقليل round trips
-- **الملف**: [src/modules/order/order.repository.ts](src/modules/order/order.repository.ts)
+### ✅ 7️⃣ تحسين `findPaginatedByCustomer`
+- **اكتشاف**: Prisma 7.7 الجديد يستخدم `JOIN strategy` كـ **default behavior** (لا حاجة لـ `relationLoadStrategy: "join"` يدوياً)
+- **النتيجة**: الـ query الحالي محسَّن تلقائياً بـ JOIN
+- ✅ **مكتمل بالـ default**
 
-### 8️⃣ التأكد من Snapshot data في OrderItems
-- **التحقق**: الـ schema الحالي يحفظ `price` و `name` في `OrderItems` ✅ موجود
-- **التحقق**: `placeOrder` يحفظ هذه القيم وقت إنشاء الطلب ✅ موجود
-- **التعديل المطلوب**: إضافة جواز توثيق (JSDoc) يوضح أن هذه snapshots وليست references
-- **السبب من الاجتماع 1**: لو تغير سعر `MenuItem` بعد الطلب، الطلب يحتفظ بالسعر الأصلي
+### ✅ 8️⃣ توثيق Snapshot data في OrderItems
+- إضافة Prisma JSDoc (`///`) على حقلي `price` و `name` في [prisma/schema.prisma](prisma/schema.prisma):
+  ```prisma
+  /// Snapshot of menu item price at order time — never updated even if MenuItem.price changes later
+  price      Decimal
+  /// Snapshot of menu item name at order time — never updated even if MenuItem.name changes later
+  name       String
+  ```
+- ✅ **تم التنفيذ**
 
 ---
 
@@ -303,8 +311,8 @@
 | **إعادة التسميات** | **1, 2** | **قليل** | **منخفضة** | **✅ مكتمل** |
 | **Custom Exceptions** | **3** | **متوسط** | **منخفضة** | **✅ مكتمل** |
 | **Service Abstraction** | **4, 5** | **متوسط** | **متوسطة** | **✅ مكتمل** |
-| Order Flow Optimizations | 6, 7, 8 | متوسط | منخفضة | ⏳ التالي |
-| Cart Locking | 9, 10, 11 | كبير | متوسطة | ⏳ معلَّق |
+| **Order Flow Optimizations** | **6, 7, 8** | **متوسط** | **منخفضة** | **✅ مكتمل** |
+| Cart Locking | 9, 10, 11 | كبير | متوسطة | ⏳ التالي |
 | Stock (اختياري) | 12 | كبير | متوسطة | ⏳ معلَّق |
 | Clear Cart | 13 | قليل | منخفضة | ⏳ معلَّق |
 | Transaction Model | 14, 15 | كبير | متوسطة | ⏳ معلَّق |
@@ -421,3 +429,51 @@ const menuItems = input.items.map((item) => {
 - ✅ منع الوصول المباشر لـ DB من خارج الـ module
 - ✅ تقليل query count من N إلى 1 في `placeOrder` (إذا كان الطلب يحتوي على 10 menu items: 10 queries → 1 query)
 - ✅ سهولة إضافة caching/events/logging لاحقاً في الـ service
+
+---
+
+### ✅ المرحلة الرابعة — مكتملة
+
+**النقطة 6**: إزالة fetch مكرر بعد update
+- تحسين [order.service.ts](src/modules/order/order.service.ts) في 3 methods:
+
+**`cancelOrder`** (قبل/بعد):
+```typescript
+// قبل (2 DB queries بعد التحقق)
+await orderStatusRepository.updateStatus(orderId, "CANCELLED");
+const updated = await orderRepository.findByIdWithDetails(orderId);  // ← fetch ثاني
+if (!updated) throw new AppError("Order not found after update", 500);
+return this.toOrderResponse(updated);
+
+// بعد (1 DB query)
+const updatedStatus = await orderStatusRepository.updateStatus(orderId, "CANCELLED");
+order.orderStatus = [updatedStatus];  // ← update in-memory
+return this.toOrderResponse(order);
+```
+
+**`updateOrderStatus`**: نفس النمط
+**`addOrderStatusTracking`**:
+- تغيير `findById` → `findByIdWithDetails` للحصول على full details من الأول
+- بعد `createTracking`، نضيف الـ result للـ array في الذاكرة: `order.orderTrackings = [newTracking, ...order.orderTrackings]`
+
+**النقطة 7**: `relationLoadStrategy: "join"`
+- **اكتشاف**: Prisma 7.7 يستخدم JOIN strategy كـ **default** — لا حاجة للتحديد اليدوي
+- الـ query الحالي محسَّن بالفعل
+
+**النقطة 8**: JSDoc لـ Snapshot data
+- إضافة `///` Prisma comments على `OrderItems.price` و `OrderItems.name` في [prisma/schema.prisma](prisma/schema.prisma):
+  ```prisma
+  /// Snapshot of menu item price at order time — never updated even if MenuItem.price changes later
+  price      Decimal
+  /// Snapshot of menu item name at order time — never updated even if MenuItem.name changes later
+  name       String
+  ```
+
+**النتيجة الإجمالية**:
+- ✅ توفير 3 round trips للـ DB في كل update operation
+- ✅ حذف 3 من 5 AppError 500 errors (التي ستحدث نظرياً فقط لو تم حذف الـ order بين الـ queries — مشكلة race condition لم تعد قائمة)
+- ✅ الكود أنظف وأسرع
+
+**ما تبقى من AppError 500s** (2 فقط الآن):
+- "Order not found after creation" في `placeOrder` (مبرر — يحدث لو فشلت الـ transaction بشكل غير متوقع)
+- "Order has no status record" في `updateOrderStatus` (مبرر — defensive check)

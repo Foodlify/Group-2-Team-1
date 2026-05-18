@@ -170,7 +170,9 @@ model OrderItems {
   orderId    String
   menuItemId String
   quantity   Int
+  /// Snapshot of menu item price at order time — never updated even if MenuItem.price changes later
   price      Decimal
+  /// Snapshot of menu item name at order time — never updated even if MenuItem.name changes later
   name       String
 
   order    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
