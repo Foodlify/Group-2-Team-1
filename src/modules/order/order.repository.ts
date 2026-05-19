@@ -1,8 +1,7 @@
 import type { PrismaClient, Prisma } from "../../generated/prisma/client";
 import { BaseRepository } from "../../shared/repositories/base.repository";
 import prisma from "../../config/prisma";
-import type { TimelineEntry } from "./order.model";
-import type { OrderStatusValue } from "./order.status";
+import { parseTimeline, type TimelineEntry } from "./order.model";
 
 export class OrderRepository extends BaseRepository<PrismaClient["order"]> {
   constructor() {
@@ -17,19 +16,13 @@ export class OrderRepository extends BaseRepository<PrismaClient["order"]> {
     return (tx ?? prisma).order.findMany({ where: { customerId }, orderBy: { createdAt: "desc" } });
   }
 
-  /**
-   * Creates a new order with its initial PENDING entry in `timeline`. The
-   * scalar `status` mirrors the latest timeline entry for indexed queries.
-   */
   async createOrder(
     data: { customerId: string; addressId: string },
     tx?: Prisma.TransactionClient,
-    changedBy?: string,
   ) {
     const initial: TimelineEntry = {
       status: "PENDING",
       changedAt: new Date().toISOString(),
-      ...(changedBy ? { changedBy } : {}),
     };
     return (tx ?? prisma).order.create({
       data: {
@@ -41,27 +34,32 @@ export class OrderRepository extends BaseRepository<PrismaClient["order"]> {
   }
 
   /**
-   * Atomically appends a new entry to `timeline` and (when the entry carries
-   * a new status) updates the scalar `status` mirror. Must be wrapped in a
-   * transaction by the caller since it issues a read followed by a write
-   * against the same row.
+   * Atomically appends an entry to `timeline` and mirrors its status onto
+   * the `status` scalar in a single UPDATE — no read-modify-write race, no
+   * lost-update under concurrent callers (Postgres jsonb || is atomic).
    */
   async appendTimelineEntry(
     id: string,
     entry: TimelineEntry,
     tx?: Prisma.TransactionClient,
-  ) {
+  ): Promise<{ status: string; timeline: TimelineEntry[]; updatedAt: Date }> {
     const client = tx ?? prisma;
-    const current = await client.order.findUnique({ where: { id } });
-    const existing = (current?.timeline as unknown as TimelineEntry[]) ?? [];
-    const timeline = [...existing, entry];
-    return client.order.update({
-      where: { id },
-      data: {
-        status: entry.status as OrderStatusValue,
-        timeline: timeline as unknown as Prisma.InputJsonValue,
-      },
-    });
+    const rows = await client.$queryRaw<
+      Array<{ status: string; timeline: unknown; updatedAt: Date }>
+    >`
+      UPDATE "Order"
+      SET timeline = timeline || ${JSON.stringify([entry])}::jsonb,
+          status = ${entry.status},
+          "updatedAt" = NOW()
+      WHERE id = ${id}
+      RETURNING status, timeline, "updatedAt"
+    `;
+    const row = rows[0];
+    return {
+      status: row.status,
+      timeline: parseTimeline(row.timeline),
+      updatedAt: row.updatedAt,
+    };
   }
 
   async findByIdWithDetails(id: string) {

@@ -8,8 +8,13 @@ import { cartService } from "../cart/cart.service";
 import { paymentService } from "../payment/payment.service";
 import { orderRepository } from "./order.repository";
 import { orderItemRepository } from "../orderItem/orderItem.repository";
-import { VALID_TRANSITIONS } from "./order.status";
-import type { OrderWithDetails, OrderListItem, TimelineEntry } from "./order.model";
+import { VALID_TRANSITIONS, type OrderStatusValue } from "./order.status";
+import {
+  parseTimeline,
+  type OrderWithDetails,
+  type OrderListItem,
+  type TimelineEntry,
+} from "./order.model";
 import type {
   PlaceOrderInput,
   UpdateStatusInput,
@@ -31,7 +36,7 @@ class OrderService {
     let orderId: string;
 
     await orderRepository.transaction(async (tx) => {
-      // 1. Lock the cart (row-level lock until tx commits/rolls back)
+      // Row-level lock on the cart prevents concurrent mutations during checkout
       const cart = await cartService.lockByCustomerIdWithItems(customerId, tx);
       if (!cart) {
         throw new AppError(
@@ -46,7 +51,6 @@ class OrderService {
         );
       }
 
-      // 2. Verify each menu item still exists (availability check)
       const menuItemIds = cart.cartItems.map((ci) => ci.menuItemId);
       const currentMenuItems = await menuItemService.findManyByIds(menuItemIds);
       const currentMap = new Map(currentMenuItems.map((m) => [m.id, m]));
@@ -59,7 +63,7 @@ class OrderService {
             orderErrors.MENU_ITEM_UNAVAILABLE.statusCode,
           );
         }
-        // 3. Price validation: cart snapshot must match current price
+        // Cart-snapshot price must match current menu price or the order is rejected
         if (Number(current.price) !== Number(cartItem.price)) {
           throw new AppError(
             orderErrors.PRICE_CHANGED.message,
@@ -68,20 +72,17 @@ class OrderService {
         }
       }
 
-      // 4. Compute total amount (sum of price × quantity)
       const totalAmount = cart.cartItems.reduce(
         (sum, ci) => sum + Number(ci.price) * ci.quantity,
         0,
       );
 
-      // 5. Create order (status="PENDING" + initial timeline entry, atomically)
       const order = await orderRepository.createOrder(
         { customerId, addressId: input.addressId },
         tx,
       );
       orderId = order.id;
 
-      // 6. Create order items using cart snapshots (price + name)
       await orderItemRepository.createManyWithTx(
         cart.cartItems.map((ci) => ({
           orderId: order.id,
@@ -93,7 +94,6 @@ class OrderService {
         tx,
       );
 
-      // 7. Process payment via Strategy + persist Transaction
       await paymentService.processPayment(
         input.paymentMethod,
         totalAmount,
@@ -101,7 +101,6 @@ class OrderService {
         tx,
       );
 
-      // 8. Clear cart (atomic — rolled back if anything above fails)
       await cartService.clearCart(customerId, tx);
     });
 
@@ -164,35 +163,16 @@ class OrderService {
     customerId: string,
     orderId: string,
   ): Promise<OrderResponse> {
-    const order = await orderRepository.findByIdWithDetails(orderId);
-    if (!order)
-      throw new AppError(
-        orderErrors.ORDER_NOT_FOUND.message,
-        orderErrors.ORDER_NOT_FOUND.statusCode,
-      );
-    if (order.customerId !== customerId) {
-      throw new AppError(
-        orderErrors.ORDER_FORBIDDEN.message,
-        orderErrors.ORDER_FORBIDDEN.statusCode,
-      );
-    }
+    const order = await this.findOwnedOrderOrThrow(customerId, orderId);
 
-    if (order.status !== "PENDING") {
+    if ((order.status as OrderStatusValue) !== "PENDING") {
       throw new AppError(
         orderErrors.ORDER_NOT_CANCELLABLE.message,
         orderErrors.ORDER_NOT_CANCELLABLE.statusCode,
       );
     }
 
-    const entry: TimelineEntry = {
-      status: "CANCELLED",
-      changedAt: new Date().toISOString(),
-    };
-    const updated = await orderRepository.transaction((tx) =>
-      orderRepository.appendTimelineEntry(orderId, entry, tx),
-    );
-
-    return this.toOrderResponse({ ...order, ...updated });
+    return this.applyTimelineChange(order, { status: "CANCELLED" });
   }
 
   // ─── Update Order Status (admin) ─────────────────────────────
@@ -200,31 +180,18 @@ class OrderService {
     orderId: string,
     input: UpdateStatusInput,
   ): Promise<OrderResponse> {
-    const order = await orderRepository.findByIdWithDetails(orderId);
-    if (!order)
-      throw new AppError(
-        orderErrors.ORDER_NOT_FOUND.message,
-        orderErrors.ORDER_NOT_FOUND.statusCode,
-      );
+    const order = await this.findOrderOrThrow(orderId);
 
-    const currentStatus = order.status as keyof typeof VALID_TRANSITIONS;
+    const currentStatus = order.status as OrderStatusValue;
     const allowed = VALID_TRANSITIONS[currentStatus];
-    if (!allowed || !allowed.includes(input.status as (typeof allowed)[number])) {
+    if (!allowed || !allowed.includes(input.status)) {
       throw new AppError(
         `Cannot transition from ${currentStatus} to ${input.status}`,
         orderErrors.INVALID_STATUS_TRANSITION.statusCode,
       );
     }
 
-    const entry: TimelineEntry = {
-      status: input.status,
-      changedAt: new Date().toISOString(),
-    };
-    const updated = await orderRepository.transaction((tx) =>
-      orderRepository.appendTimelineEntry(orderId, entry, tx),
-    );
-
-    return this.toOrderResponse({ ...order, ...updated });
+    return this.applyTimelineChange(order, { status: input.status });
   }
 
   // ─── Add Order Status Tracking ────────────────────────────────
@@ -234,27 +201,56 @@ class OrderService {
     orderId: string,
     input: AddTrackingInput,
   ): Promise<OrderResponse> {
+    const order = await this.findOrderOrThrow(orderId);
+    return this.applyTimelineChange(order, {
+      status: order.status as OrderStatusValue,
+      location: input.currentLocation,
+      estimatedDeliveryTime: new Date(input.estimatedDeliveryTime).toISOString(),
+    });
+  }
+
+  // ─── Private Helpers ──────────────────────────────────────────
+
+  private async findOrderOrThrow(orderId: string): Promise<OrderWithDetails> {
     const order = await orderRepository.findByIdWithDetails(orderId);
     if (!order)
       throw new AppError(
         orderErrors.ORDER_NOT_FOUND.message,
         orderErrors.ORDER_NOT_FOUND.statusCode,
       );
-
-    const entry: TimelineEntry = {
-      status: order.status as TimelineEntry["status"],
-      changedAt: new Date().toISOString(),
-      location: input.currentLocation,
-      estimatedDeliveryTime: new Date(input.estimatedDeliveryTime).toISOString(),
-    };
-    const updated = await orderRepository.transaction((tx) =>
-      orderRepository.appendTimelineEntry(orderId, entry, tx),
-    );
-
-    return this.toOrderResponse({ ...order, ...updated });
+    return order;
   }
 
-  // ─── Private Helpers ──────────────────────────────────────────
+  private async findOwnedOrderOrThrow(
+    customerId: string,
+    orderId: string,
+  ): Promise<OrderWithDetails> {
+    const order = await this.findOrderOrThrow(orderId);
+    if (order.customerId !== customerId) {
+      throw new AppError(
+        orderErrors.ORDER_FORBIDDEN.message,
+        orderErrors.ORDER_FORBIDDEN.statusCode,
+      );
+    }
+    return order;
+  }
+
+  private async applyTimelineChange(
+    order: OrderWithDetails,
+    entryPartial: Omit<TimelineEntry, "changedAt">,
+  ): Promise<OrderResponse> {
+    const entry: TimelineEntry = {
+      ...entryPartial,
+      changedAt: new Date().toISOString(),
+    };
+    const updated = await orderRepository.appendTimelineEntry(order.id, entry);
+    return this.toOrderResponse({
+      ...order,
+      status: updated.status,
+      timeline: updated.timeline,
+      updatedAt: updated.updatedAt,
+    });
+  }
 
   private async assertCustomerExists(customerId: string): Promise<void> {
     const customer = await customerService.findById(customerId);
@@ -289,17 +285,13 @@ class OrderService {
       0,
     );
 
-    const timeline = (order.timeline as unknown as
-      | OrderResponse["timeline"]
-      | undefined) ?? [];
-
     return {
       id: order.id,
       customerId: order.customerId,
       addressId: order.addressId,
       orderDate: order.orderDate.toISOString(),
       status: order.status as OrderResponse["status"],
-      timeline,
+      timeline: parseTimeline(order.timeline),
       items: order.orderItems.map((item) => ({
         id: item.id,
         menuItemId: item.menuItemId,

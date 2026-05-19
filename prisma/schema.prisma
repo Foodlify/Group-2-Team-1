@@ -170,6 +170,7 @@ model Order {
   @@index([customerId])
   @@index([addressId])
   @@index([status])
+  @@index([customerId, createdAt(sort: Desc)])
 }
 
 model OrderItems {

@@ -16,3 +16,7 @@ export type OrderWithDetails = OrderModel & {
 export type OrderListItem = OrderModel & {
   orderItems: OrderItemsModel[];
 };
+
+export function parseTimeline(value: unknown): TimelineEntry[] {
+  return Array.isArray(value) ? (value as TimelineEntry[]) : [];
+}
