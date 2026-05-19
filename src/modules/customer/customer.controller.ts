@@ -13,3 +13,21 @@ export const getMyProfile = asyncHandler(
     res.status(200).json({ success: true, data: profile });
   },
 );
+
+export const getCustomerOrders = asyncHandler(
+  async (req: Request<CustomerIdParams>, res) => {
+    const { customerId } = req.params;
+    const orders = await customerService.getCustomerOrdersService(customerId);
+    res.status(200).json({ success: true, data: orders });
+  },
+);
+
+export const getCustomerOrderHistory = asyncHandler(
+  async (req: Request<CustomerIdParams>, res) => {
+    const { customerId } = req.params;
+    const orders =
+      await customerService.getCustomerOrdersHistoryService(customerId);
+
+    res.status(200).json({ success: true, data: orders });
+  },
+);

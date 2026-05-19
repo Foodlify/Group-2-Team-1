@@ -16,7 +16,8 @@ class OrderService {
   }
 
   async getOrdersByCustomer(customerId: string) {
-    const orders = await orderRepository.findManyByCustomerIdWithDetails(customerId);
+    const orders =
+      await orderRepository.findManyByCustomerIdWithDetails(customerId);
     return orders;
   }
 
@@ -43,7 +44,11 @@ class OrderService {
     return order;
   }
 
-  async updateOrder(customerId: string, orderId: string, data: { addressId?: string }) {
+  async updateOrder(
+    customerId: string,
+    orderId: string,
+    data: { addressId?: string },
+  ) {
     const existing = await orderRepository.findByIdWithDetails(orderId);
     if (!existing) {
       throw new AppError("Order not found", 404);
@@ -70,3 +75,5 @@ class OrderService {
 }
 
 export const orderService = new OrderService();
+
+// order history
