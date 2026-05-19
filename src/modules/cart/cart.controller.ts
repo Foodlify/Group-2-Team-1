@@ -8,6 +8,7 @@ import type { CartItemIdParams } from "./cart.validation";
 // For now, reads from env or falls back to a hardcoded default.
 export const getCurrentUserId = (_req: Request): string => {
   const id = process.env.TEST_USER_ID;
+  console.log("req in controller", _req);
   if (!id) {
     throw new Error(
       "TEST_USER_ID is not set in .env — set it to the seeded user's ID",

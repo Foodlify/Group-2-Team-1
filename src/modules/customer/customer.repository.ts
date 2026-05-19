@@ -2,17 +2,19 @@ import type { PrismaClient } from "../../generated/prisma/client";
 import { BaseRepository } from "../../shared/repositories/base.repository";
 import prisma from "../../config/prisma";
 
-export class CustomerRepository extends BaseRepository<PrismaClient["customer"]> {
+export class CustomerRepository extends BaseRepository<
+  PrismaClient["customer"]
+> {
   constructor() {
     super(prisma.customer);
   }
 
-  /**
-   * Convenience method — find by primary key id.
-   * Entity-specific query methods should be added here as the application grows.
-   */
   async findById(id: string) {
-    return this.findUnique({ where: { id } });
+    return this.findUnique({ where: { id }, include: { user: true } });
+  }
+
+  async findByUserId(userId: string) {
+    return this.findUnique({ where: { userId }, include: { user: true } });
   }
 }
 
