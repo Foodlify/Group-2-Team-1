@@ -7,7 +7,7 @@ import { cartService } from "../cart/cart.service";
 import { paymentService } from "../payment/payment.service";
 import { orderRepository } from "./order.repository";
 import { orderItemRepository } from "../orderItem/orderItem.repository";
-import { transactionRepository } from "../transaction/transaction.repository";
+import { transactionRepository, TransactionRepository } from "../transaction/transaction.repository";
 import { VALID_TRANSITIONS, type OrderStatusValue } from "./order.status";
 import {
   parseTimeline,
@@ -158,22 +158,21 @@ class OrderService {
     customerId: string,
     orderId: string,
   ): Promise<OrderResponse> {
-    // Lightweight read for existence and ownership only
-    const order = await orderRepository.findById(orderId);
-    if (!order) {
-      throw new AppError(
-        orderErrors.ORDER_NOT_FOUND.message,
-        orderErrors.ORDER_NOT_FOUND.statusCode,
-      );
-    }
-    if (order.customerId !== customerId) {
-      throw new AppError(
-        orderErrors.ORDER_FORBIDDEN.message,
-        orderErrors.ORDER_FORBIDDEN.statusCode,
-      );
-    }
-
     return orderRepository.transaction(async (tx) => {
+      const order = await orderRepository.findById(orderId, tx);
+      if (!order) {
+        throw new AppError(
+          orderErrors.ORDER_NOT_FOUND.message,
+          orderErrors.ORDER_NOT_FOUND.statusCode,
+        );
+      }
+      if (order.customerId !== customerId) {
+        throw new AppError(
+          orderErrors.ORDER_FORBIDDEN.message,
+          orderErrors.ORDER_FORBIDDEN.statusCode,
+        );
+      }
+
       const entry: TimelineEntry = {
         status: "CANCELLED",
         changedAt: new Date().toISOString(),
@@ -213,25 +212,24 @@ class OrderService {
     orderId: string,
     input: UpdateStatusInput,
   ): Promise<OrderResponse> {
-    // Lightweight read for current status (no need for orderItems here)
-    const order = await orderRepository.findById(orderId);
-    if (!order) {
-      throw new AppError(
-        orderErrors.ORDER_NOT_FOUND.message,
-        orderErrors.ORDER_NOT_FOUND.statusCode,
-      );
-    }
-
-    const currentStatus = order.status as OrderStatusValue;
-    const allowed = VALID_TRANSITIONS[currentStatus];
-    if (!allowed || !allowed.includes(input.status)) {
-      throw new AppError(
-        `Cannot transition from ${currentStatus} to ${input.status}`,
-        orderErrors.INVALID_STATUS_TRANSITION.statusCode,
-      );
-    }
-
     return orderRepository.transaction(async (tx) => {
+      const order = await orderRepository.findById(orderId, tx);
+      if (!order) {
+        throw new AppError(
+          orderErrors.ORDER_NOT_FOUND.message,
+          orderErrors.ORDER_NOT_FOUND.statusCode,
+        );
+      }
+
+      const currentStatus = order.status as OrderStatusValue;
+      const allowed = VALID_TRANSITIONS[currentStatus];
+      if (!allowed || !allowed.includes(input.status)) {
+        throw new AppError(
+          `Cannot transition from ${currentStatus} to ${input.status}`,
+          orderErrors.INVALID_STATUS_TRANSITION.statusCode,
+        );
+      }
+
       const entry: TimelineEntry = {
         status: input.status,
         changedAt: new Date().toISOString(),
@@ -300,6 +298,7 @@ class OrderService {
             status: "SUCCESS",
             paymentMethod: t.paymentMethod,
             orderId,
+            internalTxNumber: TransactionRepository.generateRefundTxNumber(orderId),
           },
           tx,
         );

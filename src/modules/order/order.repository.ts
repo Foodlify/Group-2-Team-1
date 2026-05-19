@@ -8,8 +8,8 @@ export class OrderRepository extends BaseRepository<PrismaClient["order"]> {
     super(prisma.order);
   }
 
-  async findById(id: string) {
-    return this.findUnique({ where: { id } });
+  async findById(id: string, tx?: Prisma.TransactionClient) {
+    return (tx ?? prisma).order.findUnique({ where: { id } });
   }
 
   async findByCustomerId(customerId: string, tx?: Prisma.TransactionClient) {

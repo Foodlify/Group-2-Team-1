@@ -52,6 +52,11 @@ export class TransactionRepository extends BaseRepository<
     });
   }
 
+  // Generates a human-readable internal transaction number for refunds
+  static generateRefundTxNumber(orderId: string): string {
+    return `REF-${orderId}-${Date.now()}`;
+  }
+
   async updateStatus(
     id: string,
     status: TransactionStatus,
