@@ -24,6 +24,15 @@ export class OrderItemRepository extends BaseRepository<PrismaClient["orderItems
   ) {
     return tx.orderItems.createManyAndReturn({ data: items });
   }
+  async findManyByOrderIdWithTx(
+    orderId: string,
+    tx: Prisma.TransactionClient,
+  ) {
+    return tx.orderItems.findMany({
+      where: { orderId },
+      orderBy: { createdAt: "asc" },
+    });
+  }
 }
 
 export const orderItemRepository = new OrderItemRepository();

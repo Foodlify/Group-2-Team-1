@@ -15,6 +15,7 @@ import {
   type OrderListItem,
   type TimelineEntry,
 } from "./order.model";
+import type { Prisma } from "../../generated/prisma/client";
 import type {
   PlaceOrderInput,
   UpdateStatusInput,
@@ -190,30 +191,12 @@ class OrderService {
         );
       }
 
-      // Update linked transactions: mark pending as FAILED, create REFUND for successful ones
-      const txs = await transactionRepository.findByOrderId(orderId, tx);
-      for (const t of txs) {
-        if (t.status === "SUCCESS") {
-          await transactionRepository.createTransaction(
-            {
-              type: "REFUND",
-              amount: Number(t.amount),
-              currency: t.currency,
-              status: "SUCCESS",
-              paymentMethod: t.paymentMethod,
-              orderId,
-            },
-            tx,
-          );
-        } else {
-          await transactionRepository.updateStatus(t.id, "FAILED", tx);
-        }
-      }
+      await this.reconcileTransactionsOnCancel(orderId, tx);
 
-      const items = await tx.orderItems.findMany({
-        where: { orderId },
-        orderBy: { createdAt: "asc" },
-      });
+      const items = await orderItemRepository.findManyByOrderIdWithTx(
+        orderId,
+        tx,
+      );
 
       return this.toOrderResponse({
         ...order,
@@ -266,10 +249,14 @@ class OrderService {
         );
       }
 
-      const items = await tx.orderItems.findMany({
-        where: { orderId },
-        orderBy: { createdAt: "asc" },
-      });
+      if (input.status === "CANCELLED") {
+        await this.reconcileTransactionsOnCancel(orderId, tx);
+      }
+
+      const items = await orderItemRepository.findManyByOrderIdWithTx(
+        orderId,
+        tx,
+      );
 
       return this.toOrderResponse({
         ...order,
@@ -297,6 +284,30 @@ class OrderService {
   }
 
   // ─── Private Helpers ──────────────────────────────────────────
+
+  private async reconcileTransactionsOnCancel(
+    orderId: string,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const txs = await transactionRepository.findByOrderId(orderId, tx);
+    for (const t of txs) {
+      if (t.status === "SUCCESS") {
+        await transactionRepository.createTransaction(
+          {
+            type: "REFUND",
+            amount: Number(t.amount),
+            currency: t.currency,
+            status: "SUCCESS",
+            paymentMethod: t.paymentMethod,
+            orderId,
+          },
+          tx,
+        );
+      } else {
+        await transactionRepository.updateStatus(t.id, "FAILED", tx);
+      }
+    }
+  }
 
   private async findOrderOrThrow(orderId: string): Promise<OrderWithDetails> {
     const order = await orderRepository.findByIdWithDetails(orderId);
@@ -342,12 +353,22 @@ class OrderService {
         orderErrors.INVALID_STATUS_TRANSITION.statusCode,
       );
     }
+
+    let orderItems = order.orderItems;
+    if (!orderItems || orderItems.length === 0) {
+      orderItems = await orderItemRepository.findMany({
+        where: { orderId: order.id },
+        orderBy: { createdAt: "asc" },
+      });
+    }
+
     return this.toOrderResponse({
       ...order,
       status: updated.status,
       timeline: updated.timeline,
       updatedAt: updated.updatedAt,
-    });
+      orderItems,
+    } as OrderWithDetails);
   }
 
   private async assertCustomerExists(customerId: string): Promise<void> {

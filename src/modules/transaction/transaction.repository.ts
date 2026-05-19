@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import type { PrismaClient, Prisma } from "../../generated/prisma/client";
 import { BaseRepository } from "../../shared/repositories/base.repository";
 import prisma from "../../config/prisma";
@@ -43,7 +44,12 @@ export class TransactionRepository extends BaseRepository<
     },
     tx?: Prisma.TransactionClient,
   ) {
-    return (tx ?? prisma).transaction.create({ data });
+    return (tx ?? prisma).transaction.create({
+      data: {
+        ...data,
+        internalTxNumber: data.internalTxNumber ?? randomUUID(),
+      },
+    });
   }
 
   async updateStatus(

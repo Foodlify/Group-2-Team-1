@@ -227,7 +227,7 @@ model Transaction {
   status         TransactionStatus
   paymentMethod  PaymentMethod
   /// Internal system financial reference number, separate from external gateway IDs
-  internalTxNumber String?       @unique
+  internalTxNumber String       @unique
   externalRef    String?
   orderId        String?
   metadata       Json?
