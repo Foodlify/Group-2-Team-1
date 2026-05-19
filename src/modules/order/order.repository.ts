@@ -37,24 +37,29 @@ export class OrderRepository extends BaseRepository<PrismaClient["order"]> {
    * Atomically appends an entry to `timeline` and mirrors its status onto
    * the `status` scalar in a single UPDATE — no read-modify-write race, no
    * lost-update under concurrent callers (Postgres jsonb || is atomic).
+   *
+   * Pass `expectedStatus` to enforce the update only succeeds when the order
+   * is currently in that state, eliminating an extra read roundtrip.
+   * Returns `null` when no row matched (e.g. status precondition failed).
    */
   async appendTimelineEntry(
     id: string,
     entry: TimelineEntry,
+    expectedStatus?: string,
     tx?: Prisma.TransactionClient,
-  ): Promise<{ status: string; timeline: TimelineEntry[]; updatedAt: Date }> {
+  ): Promise<{ status: string; timeline: TimelineEntry[]; updatedAt: Date } | null> {
     const client = tx ?? prisma;
-    const rows = await client.$queryRaw<
+    const query = expectedStatus
+      ? `UPDATE "Order" SET timeline = timeline || $1::jsonb, status = $2, "updatedAt" = NOW() WHERE id = $3 AND status = $4 RETURNING status, timeline, "updatedAt"`
+      : `UPDATE "Order" SET timeline = timeline || $1::jsonb, status = $2, "updatedAt" = NOW() WHERE id = $3 RETURNING status, timeline, "updatedAt"`;
+    const params = expectedStatus
+      ? [JSON.stringify([entry]), entry.status, id, expectedStatus]
+      : [JSON.stringify([entry]), entry.status, id];
+    const rows = await client.$queryRawUnsafe<
       Array<{ status: string; timeline: unknown; updatedAt: Date }>
-    >`
-      UPDATE "Order"
-      SET timeline = timeline || ${JSON.stringify([entry])}::jsonb,
-          status = ${entry.status},
-          "updatedAt" = NOW()
-      WHERE id = ${id}
-      RETURNING status, timeline, "updatedAt"
-    `;
+    >(query, ...params);
     const row = rows[0];
+    if (!row) return null;
     return {
       status: row.status,
       timeline: parseTimeline(row.timeline),

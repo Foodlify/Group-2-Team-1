@@ -1,4 +1,3 @@
-import { StatusCodes } from "http-status-codes";
 import { AppError } from "../../middlewares/error.middleware";
 import { orderErrors } from "../../shared/exceptions/order.errors";
 import { customerService } from "../customer/customer.service";
@@ -8,6 +7,7 @@ import { cartService } from "../cart/cart.service";
 import { paymentService } from "../payment/payment.service";
 import { orderRepository } from "./order.repository";
 import { orderItemRepository } from "../orderItem/orderItem.repository";
+import { transactionRepository } from "../transaction/transaction.repository";
 import { VALID_TRANSITIONS, type OrderStatusValue } from "./order.status";
 import {
   parseTimeline,
@@ -33,9 +33,7 @@ class OrderService {
     await this.assertCustomerExists(customerId);
     await this.assertAddressBelongsToCustomer(customerId, input.addressId);
 
-    let orderId: string;
-
-    await orderRepository.transaction(async (tx) => {
+    const result = await orderRepository.transaction(async (tx) => {
       // Row-level lock on the cart prevents concurrent mutations during checkout
       const cart = await cartService.lockByCustomerIdWithItems(customerId, tx);
       if (!cart) {
@@ -81,9 +79,8 @@ class OrderService {
         { customerId, addressId: input.addressId },
         tx,
       );
-      orderId = order.id;
 
-      await orderItemRepository.createManyWithTx(
+      const createdItems = await orderItemRepository.createManyWithTx(
         cart.cartItems.map((ci) => ({
           orderId: order.id,
           menuItemId: ci.menuItemId,
@@ -102,15 +99,12 @@ class OrderService {
       );
 
       await cartService.clearCart(customerId, tx);
+
+      return { order, createdItems, totalAmount };
     });
 
-    const order = await orderRepository.findByIdWithDetails(orderId!);
-    if (!order)
-      throw new AppError(
-        "Order not found after creation",
-        StatusCodes.INTERNAL_SERVER_ERROR,
-      );
-    return this.toOrderResponse(order);
+    // Build response directly from in-memory objects — no extra DB roundtrip
+    return this.buildOrderResponse(result.order, result.createdItems, result.totalAmount);
   }
 
   // ─── Get My Orders (paginated) ────────────────────────────────
@@ -163,16 +157,72 @@ class OrderService {
     customerId: string,
     orderId: string,
   ): Promise<OrderResponse> {
-    const order = await this.findOwnedOrderOrThrow(customerId, orderId);
-
-    if ((order.status as OrderStatusValue) !== "PENDING") {
+    // Lightweight read for existence and ownership only
+    const order = await orderRepository.findById(orderId);
+    if (!order) {
       throw new AppError(
-        orderErrors.ORDER_NOT_CANCELLABLE.message,
-        orderErrors.ORDER_NOT_CANCELLABLE.statusCode,
+        orderErrors.ORDER_NOT_FOUND.message,
+        orderErrors.ORDER_NOT_FOUND.statusCode,
+      );
+    }
+    if (order.customerId !== customerId) {
+      throw new AppError(
+        orderErrors.ORDER_FORBIDDEN.message,
+        orderErrors.ORDER_FORBIDDEN.statusCode,
       );
     }
 
-    return this.applyTimelineChange(order, { status: "CANCELLED" });
+    return orderRepository.transaction(async (tx) => {
+      const entry: TimelineEntry = {
+        status: "CANCELLED",
+        changedAt: new Date().toISOString(),
+      };
+      const updated = await orderRepository.appendTimelineEntry(
+        orderId,
+        entry,
+        "PENDING",
+        tx,
+      );
+      if (!updated) {
+        throw new AppError(
+          orderErrors.ORDER_NOT_CANCELLABLE.message,
+          orderErrors.ORDER_NOT_CANCELLABLE.statusCode,
+        );
+      }
+
+      // Update linked transactions: mark pending as FAILED, create REFUND for successful ones
+      const txs = await transactionRepository.findByOrderId(orderId, tx);
+      for (const t of txs) {
+        if (t.status === "SUCCESS") {
+          await transactionRepository.createTransaction(
+            {
+              type: "REFUND",
+              amount: Number(t.amount),
+              currency: t.currency,
+              status: "SUCCESS",
+              paymentMethod: t.paymentMethod,
+              orderId,
+            },
+            tx,
+          );
+        } else {
+          await transactionRepository.updateStatus(t.id, "FAILED", tx);
+        }
+      }
+
+      const items = await tx.orderItems.findMany({
+        where: { orderId },
+        orderBy: { createdAt: "asc" },
+      });
+
+      return this.toOrderResponse({
+        ...order,
+        status: updated.status,
+        timeline: updated.timeline,
+        updatedAt: updated.updatedAt,
+        orderItems: items,
+      } as OrderWithDetails);
+    });
   }
 
   // ─── Update Order Status (admin) ─────────────────────────────
@@ -180,7 +230,14 @@ class OrderService {
     orderId: string,
     input: UpdateStatusInput,
   ): Promise<OrderResponse> {
-    const order = await this.findOrderOrThrow(orderId);
+    // Lightweight read for current status (no need for orderItems here)
+    const order = await orderRepository.findById(orderId);
+    if (!order) {
+      throw new AppError(
+        orderErrors.ORDER_NOT_FOUND.message,
+        orderErrors.ORDER_NOT_FOUND.statusCode,
+      );
+    }
 
     const currentStatus = order.status as OrderStatusValue;
     const allowed = VALID_TRANSITIONS[currentStatus];
@@ -191,7 +248,37 @@ class OrderService {
       );
     }
 
-    return this.applyTimelineChange(order, { status: input.status });
+    return orderRepository.transaction(async (tx) => {
+      const entry: TimelineEntry = {
+        status: input.status,
+        changedAt: new Date().toISOString(),
+      };
+      const updated = await orderRepository.appendTimelineEntry(
+        orderId,
+        entry,
+        currentStatus,
+        tx,
+      );
+      if (!updated) {
+        throw new AppError(
+          orderErrors.INVALID_STATUS_TRANSITION.message,
+          orderErrors.INVALID_STATUS_TRANSITION.statusCode,
+        );
+      }
+
+      const items = await tx.orderItems.findMany({
+        where: { orderId },
+        orderBy: { createdAt: "asc" },
+      });
+
+      return this.toOrderResponse({
+        ...order,
+        status: updated.status,
+        timeline: updated.timeline,
+        updatedAt: updated.updatedAt,
+        orderItems: items,
+      } as OrderWithDetails);
+    });
   }
 
   // ─── Add Order Status Tracking ────────────────────────────────
@@ -238,12 +325,23 @@ class OrderService {
   private async applyTimelineChange(
     order: OrderWithDetails,
     entryPartial: Omit<TimelineEntry, "changedAt">,
+    expectedStatus?: string,
   ): Promise<OrderResponse> {
     const entry: TimelineEntry = {
       ...entryPartial,
       changedAt: new Date().toISOString(),
     };
-    const updated = await orderRepository.appendTimelineEntry(order.id, entry);
+    const updated = await orderRepository.appendTimelineEntry(
+      order.id,
+      entry,
+      expectedStatus,
+    );
+    if (!updated) {
+      throw new AppError(
+        orderErrors.INVALID_STATUS_TRANSITION.message,
+        orderErrors.INVALID_STATUS_TRANSITION.statusCode,
+      );
+    }
     return this.toOrderResponse({
       ...order,
       status: updated.status,
@@ -277,6 +375,34 @@ class OrderService {
         orderErrors.ADDRESS_FORBIDDEN.statusCode,
       );
     }
+  }
+
+  private buildOrderResponse(
+    order: Awaited<ReturnType<typeof orderRepository.createOrder>>,
+    items: Awaited<ReturnType<typeof orderItemRepository.createManyWithTx>>,
+    totalPrice: number,
+  ): OrderResponse {
+    return {
+      id: order.id,
+      customerId: order.customerId,
+      addressId: order.addressId,
+      orderDate: order.orderDate.toISOString(),
+      status: order.status as OrderResponse["status"],
+      timeline: parseTimeline(order.timeline),
+      items: items.map((item) => ({
+        id: item.id,
+        menuItemId: item.menuItemId,
+        name: item.name,
+        quantity: item.quantity,
+        price: Number(item.price),
+        subtotal: Number(item.price) * item.quantity,
+        createdAt: item.createdAt.toISOString(),
+        updatedAt: item.updatedAt.toISOString(),
+      })),
+      totalPrice,
+      createdAt: order.createdAt.toISOString(),
+      updatedAt: order.updatedAt.toISOString(),
+    };
   }
 
   toOrderResponse(order: OrderWithDetails): OrderResponse {

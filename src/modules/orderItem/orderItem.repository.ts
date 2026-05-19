@@ -13,6 +13,7 @@ export class OrderItemRepository extends BaseRepository<PrismaClient["orderItems
 
   async createManyWithTx(
     items: Array<{
+      id?: string;
       orderId: string;
       menuItemId: string;
       quantity: number;
@@ -21,7 +22,7 @@ export class OrderItemRepository extends BaseRepository<PrismaClient["orderItems
     }>,
     tx: Prisma.TransactionClient,
   ) {
-    return tx.orderItems.createMany({ data: items });
+    return tx.orderItems.createManyAndReturn({ data: items });
   }
 }
 

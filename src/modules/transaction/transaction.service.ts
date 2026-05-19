@@ -26,6 +26,7 @@ class TransactionService {
       currency?: string;
       status: TransactionStatus;
       paymentMethod: PaymentMethod;
+      internalTxNumber?: string;
       externalRef?: string;
       orderId?: string;
       metadata?: Prisma.InputJsonValue;

@@ -197,19 +197,40 @@ model OrderItems {
 // Payments / Transactions
 // ═══════════════════════════════════════════════════════════════
 
+enum TransactionType {
+  ORDER_PAYMENT
+  REFUND
+  PARTIAL_REFUND
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum PaymentMethod {
+  CASH
+  CREDIT_CARD
+  PAYPAL
+  WALLET
+}
+
 /// Generic financial transaction record. Supports order payments, refunds,
 /// and external gateway integrations (Stripe, PayPal, etc.). The optional
 /// orderId allows future non-order transactions (wallet top-ups, etc.).
 model Transaction {
-  id            String   @id @default(cuid())
-  type          String
-  amount        Decimal
-  currency      String   @default("EGP")
-  status        String
-  paymentMethod String
-  externalRef   String?
-  orderId       String?
-  metadata      Json?
+  id             String          @id @default(cuid())
+  type           TransactionType
+  amount         Decimal
+  currency       String          @default("EGP")
+  status         TransactionStatus
+  paymentMethod  PaymentMethod
+  /// Internal system financial reference number, separate from external gateway IDs
+  internalTxNumber String?       @unique
+  externalRef    String?
+  orderId        String?
+  metadata       Json?
 
   order Order? @relation(fields: [orderId], references: [id], onDelete: Restrict)
 

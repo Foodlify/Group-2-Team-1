@@ -18,8 +18,8 @@ export class TransactionRepository extends BaseRepository<
     return this.findUnique({ where: { id } });
   }
 
-  async findByOrderId(orderId: string) {
-    return prisma.transaction.findMany({
+  async findByOrderId(orderId: string, tx?: Prisma.TransactionClient) {
+    return (tx ?? prisma).transaction.findMany({
       where: { orderId },
       orderBy: { createdAt: "desc" },
     });
@@ -36,6 +36,7 @@ export class TransactionRepository extends BaseRepository<
       currency?: string;
       status: TransactionStatus;
       paymentMethod: PaymentMethod;
+      internalTxNumber?: string;
       externalRef?: string;
       orderId?: string;
       metadata?: Prisma.InputJsonValue;
