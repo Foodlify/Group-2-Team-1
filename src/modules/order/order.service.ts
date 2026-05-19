@@ -77,7 +77,7 @@ class OrderService {
       );
 
       const order = await orderRepository.createOrder(
-        { customerId, addressId: input.addressId },
+        { customerId, addressId: input.addressId, totalAmount },
         tx,
       );
 
@@ -101,11 +101,11 @@ class OrderService {
 
       await cartService.clearCart(customerId, tx);
 
-      return { order, createdItems, totalAmount };
+      return { order, createdItems };
     });
 
     // Build response directly from in-memory objects — no extra DB roundtrip
-    return this.buildOrderResponse(result.order, result.createdItems, result.totalAmount);
+    return this.buildOrderResponse(result.order, result.createdItems);
   }
 
   // ─── Get My Orders (paginated) ────────────────────────────────
@@ -400,7 +400,6 @@ class OrderService {
   private buildOrderResponse(
     order: Awaited<ReturnType<typeof orderRepository.createOrder>>,
     items: Awaited<ReturnType<typeof orderItemRepository.createManyWithTx>>,
-    totalPrice: number,
   ): OrderResponse {
     return {
       id: order.id,
@@ -419,18 +418,13 @@ class OrderService {
         createdAt: item.createdAt.toISOString(),
         updatedAt: item.updatedAt.toISOString(),
       })),
-      totalPrice,
+      totalPrice: Number(order.totalAmount),
       createdAt: order.createdAt.toISOString(),
       updatedAt: order.updatedAt.toISOString(),
     };
   }
 
   toOrderResponse(order: OrderWithDetails): OrderResponse {
-    const totalPrice = order.orderItems.reduce(
-      (sum, item) => sum + Number(item.price) * item.quantity,
-      0,
-    );
-
     return {
       id: order.id,
       customerId: order.customerId,
@@ -448,17 +442,13 @@ class OrderService {
         createdAt: item.createdAt.toISOString(),
         updatedAt: item.updatedAt.toISOString(),
       })),
-      totalPrice,
+      totalPrice: Number(order.totalAmount),
       createdAt: order.createdAt.toISOString(),
       updatedAt: order.updatedAt.toISOString(),
     };
   }
 
   private toOrderListItemResponse(order: OrderListItem): OrderListItemResponse {
-    const totalPrice = order.orderItems.reduce(
-      (sum, item) => sum + Number(item.price) * item.quantity,
-      0,
-    );
     const itemCount = order.orderItems.reduce(
       (sum, item) => sum + item.quantity,
       0,
@@ -471,7 +461,7 @@ class OrderService {
       orderDate: order.orderDate.toISOString(),
       status: order.status as OrderListItemResponse["status"],
       itemCount,
-      totalPrice,
+      totalPrice: Number(order.totalAmount),
       createdAt: order.createdAt.toISOString(),
       updatedAt: order.updatedAt.toISOString(),
     };

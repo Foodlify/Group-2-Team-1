@@ -153,6 +153,9 @@ model Order {
   /// Current effective status — mirrors the latest entry in `timeline` for
   /// fast indexed queries (e.g. "list all PENDING orders").
   status     String   @default("PENDING")
+  /// Snapshot of the order total at checkout time — frozen at order creation
+  /// and never recomputed from OrderItems. Survives later price changes.
+  totalAmount Decimal
   /// Append-only event log capturing status transitions and delivery tracking
   /// updates as a single chronological stream. Each entry shape:
   /// { status, changedAt, changedBy?, location?, estimatedDeliveryTime? }

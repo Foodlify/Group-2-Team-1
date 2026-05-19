@@ -17,7 +17,7 @@ export class OrderRepository extends BaseRepository<PrismaClient["order"]> {
   }
 
   async createOrder(
-    data: { customerId: string; addressId: string },
+    data: { customerId: string; addressId: string; totalAmount: number },
     tx?: Prisma.TransactionClient,
   ) {
     const initial: TimelineEntry = {
