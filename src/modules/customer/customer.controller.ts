@@ -31,3 +31,29 @@ export const getCustomerOrderHistory = asyncHandler(
     res.status(200).json({ success: true, data: orders });
   },
 );
+
+export const updateMyProfile = asyncHandler(
+  async (req: Request<CustomerIdParams>, res) => {
+    const { customerId } = req.params;
+    const data = await customerService.updateMyProfileService(
+      customerId,
+      req.body,
+    );
+    res.status(200).json({ success: true, data });
+  },
+);
+
+export const updateCustomerAddress = asyncHandler(
+  async (req: Request, res) => {
+    const { customerId, addressId } = req.params as {
+      customerId: string;
+      addressId: string;
+    };
+    const data = await customerService.updateCustomerAddressService(
+      customerId,
+      addressId,
+      req.body,
+    );
+    res.status(200).json({ success: true, data });
+  },
+);
