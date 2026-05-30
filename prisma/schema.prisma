@@ -64,8 +64,9 @@ model Restaurant {
   id   String @id @default(cuid())
   name String
 
-  menus Menu[]
-  carts Cart[]
+  menus  Menu[]
+  carts  Cart[]
+  orders Order[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -145,33 +146,45 @@ model CartItem {
 // Orders
 // ═══════════════════════════════════════════════════════════════
 
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+
 model Order {
-  id         String   @id @default(cuid())
-  customerId String
-  addressId  String
-  orderDate  DateTime @default(now())
+  id           String      @id @default(cuid())
+  customerId   String
+  addressId    String
+  restaurantId String
+  orderDate    DateTime    @default(now())
   /// Current effective status — mirrors the latest entry in `timeline` for
   /// fast indexed queries (e.g. "list all PENDING orders").
-  status     String   @default("PENDING")
+  status       OrderStatus @default(PENDING)
   /// Snapshot of the order total at checkout time — frozen at order creation
   /// and never recomputed from OrderItems. Survives later price changes.
-  totalAmount Decimal
+  totalAmount  Decimal
   /// Append-only event log capturing status transitions and delivery tracking
   /// updates as a single chronological stream. Each entry shape:
   /// { status, changedAt, changedBy?, location?, estimatedDeliveryTime? }
-  timeline   Json     @default("[]")
+  timeline     Json        @default("[]")
 
   orderItems   OrderItems[]
   transactions Transaction[]
 
-  customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  address  Address  @relation(fields: [addressId], references: [id], onDelete: Restrict)
+  customer   Customer    @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  address    Address     @relation(fields: [addressId], references: [id], onDelete: Restrict)
+  restaurant Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([customerId])
   @@index([addressId])
+  @@index([restaurantId])
   @@index([status])
   @@index([customerId, createdAt(sort: Desc)])
 }

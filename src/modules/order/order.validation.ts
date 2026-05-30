@@ -116,6 +116,9 @@ export const OrderResponseSchema = z
     id: z.cuid2(),
     customerId: z.cuid2(),
     addressId: z.cuid2(),
+    restaurantId: z.cuid2().meta({
+      description: "Restaurant that fulfilled this order",
+    }),
     orderDate: z.iso.datetime(),
     status: z.enum(ORDER_STATUSES),
     timeline: z.array(TimelineEntrySchema).meta({
@@ -137,6 +140,7 @@ export const OrderListItemResponseSchema = z
     id: z.cuid2(),
     customerId: z.cuid2(),
     addressId: z.cuid2(),
+    restaurantId: z.cuid2(),
     orderDate: z.iso.datetime(),
     status: z.enum(ORDER_STATUSES),
     itemCount: z.number().int().nonnegative().meta({

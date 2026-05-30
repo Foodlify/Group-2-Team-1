@@ -1,6 +1,7 @@
 import type { PrismaClient, Prisma } from "../../generated/prisma/client";
 import { BaseRepository } from "../../shared/repositories/base.repository";
 import prisma from "../../config/prisma";
+import { OrderStatus } from "./order.status";
 import { parseTimeline, type TimelineEntry } from "./order.model";
 
 export class OrderRepository extends BaseRepository<PrismaClient["order"]> {
@@ -17,17 +18,22 @@ export class OrderRepository extends BaseRepository<PrismaClient["order"]> {
   }
 
   async createOrder(
-    data: { customerId: string; addressId: string; totalAmount: number },
+    data: {
+      customerId: string;
+      addressId: string;
+      totalAmount: number;
+      restaurantId: string;
+    },
     tx?: Prisma.TransactionClient,
   ) {
     const initial: TimelineEntry = {
-      status: "PENDING",
+      status: OrderStatus.PENDING,
       changedAt: new Date().toISOString(),
     };
     return (tx ?? prisma).order.create({
       data: {
         ...data,
-        status: "PENDING",
+        status: OrderStatus.PENDING,
         timeline: [initial] as unknown as Prisma.InputJsonValue,
       },
     });
@@ -50,8 +56,8 @@ export class OrderRepository extends BaseRepository<PrismaClient["order"]> {
   ): Promise<{ status: string; timeline: TimelineEntry[]; updatedAt: Date } | null> {
     const client = tx ?? prisma;
     const query = expectedStatus
-      ? `UPDATE "Order" SET timeline = timeline || $1::jsonb, status = $2, "updatedAt" = NOW() WHERE id = $3 AND status = $4 RETURNING status, timeline, "updatedAt"`
-      : `UPDATE "Order" SET timeline = timeline || $1::jsonb, status = $2, "updatedAt" = NOW() WHERE id = $3 RETURNING status, timeline, "updatedAt"`;
+      ? `UPDATE "Order" SET timeline = timeline || $1::jsonb, status = $2::"OrderStatus", "updatedAt" = NOW() WHERE id = $3 AND status = $4::"OrderStatus" RETURNING status, timeline, "updatedAt"`
+      : `UPDATE "Order" SET timeline = timeline || $1::jsonb, status = $2::"OrderStatus", "updatedAt" = NOW() WHERE id = $3 RETURNING status, timeline, "updatedAt"`;
     const params = expectedStatus
       ? [JSON.stringify([entry]), entry.status, id, expectedStatus]
       : [JSON.stringify([entry]), entry.status, id];

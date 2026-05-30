@@ -77,7 +77,12 @@ class OrderService {
       );
 
       const order = await orderRepository.createOrder(
-        { customerId, addressId: input.addressId, totalAmount },
+        {
+          customerId,
+          addressId: input.addressId,
+          totalAmount,
+          restaurantId: cart.restaurantId,
+        },
         tx,
       );
 
@@ -281,19 +286,7 @@ class OrderService {
     return order;
   }
 
-  private async findOwnedOrderOrThrow(
-    customerId: string,
-    orderId: string,
-  ): Promise<OrderWithDetails> {
-    const order = await this.findOrderOrThrow(orderId);
-    if (order.customerId !== customerId) {
-      throw new AppError(
-        orderErrors.ORDER_FORBIDDEN.message,
-        orderErrors.ORDER_FORBIDDEN.statusCode,
-      );
-    }
-    return order;
-  }
+
 
   private async applyTimelineChange(
     order: OrderWithDetails,
@@ -366,6 +359,7 @@ class OrderService {
       id: order.id,
       customerId: order.customerId,
       addressId: order.addressId,
+      restaurantId: order.restaurantId,
       orderDate: order.orderDate.toISOString(),
       status: order.status as OrderResponse["status"],
       timeline: parseTimeline(order.timeline),
@@ -390,6 +384,7 @@ class OrderService {
       id: order.id,
       customerId: order.customerId,
       addressId: order.addressId,
+      restaurantId: order.restaurantId,
       orderDate: order.orderDate.toISOString(),
       status: updated.status as OrderResponse["status"],
       timeline: updated.timeline,
@@ -425,6 +420,7 @@ class OrderService {
       id: order.id,
       customerId: order.customerId,
       addressId: order.addressId,
+      restaurantId: order.restaurantId,
       orderDate: order.orderDate.toISOString(),
       status: order.status as OrderListItemResponse["status"],
       itemCount,
