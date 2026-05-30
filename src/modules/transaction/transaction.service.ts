@@ -1,5 +1,5 @@
 import type { Prisma } from "../../generated/prisma/client";
-import { transactionRepository } from "./transaction.repository";
+import { transactionRepository, TransactionRepository } from "./transaction.repository";
 import type {
   TransactionType,
   TransactionStatus,
@@ -42,6 +42,37 @@ class TransactionService {
     tx?: Prisma.TransactionClient,
   ) {
     return transactionRepository.updateStatus(id, status, tx);
+  }
+
+  /**
+   * Reconciles an order's transactions when it is cancelled: issues a
+   * matching REFUND for every successful payment, and marks any
+   * still-pending payment as FAILED. Runs inside the caller's transaction.
+   */
+  async refundOrderTransactions(
+    orderId: string,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const txs = await transactionRepository.findByOrderId(orderId, tx);
+    for (const t of txs) {
+      if (t.status === "SUCCESS") {
+        await transactionRepository.createTransaction(
+          {
+            type: "REFUND",
+            amount: Number(t.amount),
+            currency: t.currency,
+            status: "SUCCESS",
+            paymentMethod: t.paymentMethod,
+            orderId,
+            internalTxNumber:
+              TransactionRepository.generateRefundTxNumber(orderId),
+          },
+          tx,
+        );
+      } else {
+        await transactionRepository.updateStatus(t.id, "FAILED", tx);
+      }
+    }
   }
 }
 

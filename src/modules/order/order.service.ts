@@ -7,7 +7,7 @@ import { cartService } from "../cart/cart.service";
 import { paymentService } from "../payment/payment.service";
 import { orderRepository } from "./order.repository";
 import { orderItemRepository } from "../orderItem/orderItem.repository";
-import { transactionRepository, TransactionRepository } from "../transaction/transaction.repository";
+import { transactionService } from "../transaction/transaction.service";
 import { VALID_TRANSITIONS, type OrderStatusValue } from "./order.status";
 import {
   parseTimeline,
@@ -15,7 +15,7 @@ import {
   type OrderListItem,
   type TimelineEntry,
 } from "./order.model";
-import type { Prisma } from "../../generated/prisma/client";
+import type { OrderModel, OrderItemsModel } from "../../generated/prisma/models";
 import type {
   PlaceOrderInput,
   UpdateStatusInput,
@@ -190,20 +190,14 @@ class OrderService {
         );
       }
 
-      await this.reconcileTransactionsOnCancel(orderId, tx);
+      await transactionService.refundOrderTransactions(orderId, tx);
 
       const items = await orderItemRepository.findManyByOrderIdWithTx(
         orderId,
         tx,
       );
 
-      return this.toOrderResponse({
-        ...order,
-        status: updated.status,
-        timeline: updated.timeline,
-        updatedAt: updated.updatedAt,
-        orderItems: items,
-      } as OrderWithDetails);
+      return this.composeOrderResponse(order, updated, items);
     });
   }
 
@@ -248,7 +242,7 @@ class OrderService {
       }
 
       if (input.status === "CANCELLED") {
-        await this.reconcileTransactionsOnCancel(orderId, tx);
+        await transactionService.refundOrderTransactions(orderId, tx);
       }
 
       const items = await orderItemRepository.findManyByOrderIdWithTx(
@@ -256,13 +250,7 @@ class OrderService {
         tx,
       );
 
-      return this.toOrderResponse({
-        ...order,
-        status: updated.status,
-        timeline: updated.timeline,
-        updatedAt: updated.updatedAt,
-        orderItems: items,
-      } as OrderWithDetails);
+      return this.composeOrderResponse(order, updated, items);
     });
   }
 
@@ -282,31 +270,6 @@ class OrderService {
   }
 
   // ─── Private Helpers ──────────────────────────────────────────
-
-  private async reconcileTransactionsOnCancel(
-    orderId: string,
-    tx: Prisma.TransactionClient,
-  ): Promise<void> {
-    const txs = await transactionRepository.findByOrderId(orderId, tx);
-    for (const t of txs) {
-      if (t.status === "SUCCESS") {
-        await transactionRepository.createTransaction(
-          {
-            type: "REFUND",
-            amount: Number(t.amount),
-            currency: t.currency,
-            status: "SUCCESS",
-            paymentMethod: t.paymentMethod,
-            orderId,
-            internalTxNumber: TransactionRepository.generateRefundTxNumber(orderId),
-          },
-          tx,
-        );
-      } else {
-        await transactionRepository.updateStatus(t.id, "FAILED", tx);
-      }
-    }
-  }
 
   private async findOrderOrThrow(orderId: string): Promise<OrderWithDetails> {
     const order = await orderRepository.findByIdWithDetails(orderId);
@@ -361,13 +324,7 @@ class OrderService {
       });
     }
 
-    return this.toOrderResponse({
-      ...order,
-      status: updated.status,
-      timeline: updated.timeline,
-      updatedAt: updated.updatedAt,
-      orderItems,
-    } as OrderWithDetails);
+    return this.composeOrderResponse(order, updated, orderItems);
   }
 
   private async assertCustomerExists(customerId: string): Promise<void> {
@@ -401,27 +358,7 @@ class OrderService {
     order: Awaited<ReturnType<typeof orderRepository.createOrder>>,
     items: Awaited<ReturnType<typeof orderItemRepository.createManyWithTx>>,
   ): OrderResponse {
-    return {
-      id: order.id,
-      customerId: order.customerId,
-      addressId: order.addressId,
-      orderDate: order.orderDate.toISOString(),
-      status: order.status as OrderResponse["status"],
-      timeline: parseTimeline(order.timeline),
-      items: items.map((item) => ({
-        id: item.id,
-        menuItemId: item.menuItemId,
-        name: item.name,
-        quantity: item.quantity,
-        price: Number(item.price),
-        subtotal: Number(item.price) * item.quantity,
-        createdAt: item.createdAt.toISOString(),
-        updatedAt: item.updatedAt.toISOString(),
-      })),
-      totalPrice: Number(order.totalAmount),
-      createdAt: order.createdAt.toISOString(),
-      updatedAt: order.updatedAt.toISOString(),
-    };
+    return this.toOrderResponse({ ...order, orderItems: items });
   }
 
   toOrderResponse(order: OrderWithDetails): OrderResponse {
@@ -432,19 +369,49 @@ class OrderService {
       orderDate: order.orderDate.toISOString(),
       status: order.status as OrderResponse["status"],
       timeline: parseTimeline(order.timeline),
-      items: order.orderItems.map((item) => ({
-        id: item.id,
-        menuItemId: item.menuItemId,
-        name: item.name,
-        quantity: item.quantity,
-        price: Number(item.price),
-        subtotal: Number(item.price) * item.quantity,
-        createdAt: item.createdAt.toISOString(),
-        updatedAt: item.updatedAt.toISOString(),
-      })),
+      items: order.orderItems.map((item) => this.toOrderItemResponse(item)),
       totalPrice: Number(order.totalAmount),
       createdAt: order.createdAt.toISOString(),
       updatedAt: order.updatedAt.toISOString(),
+    };
+  }
+
+  /**
+   * Builds a response for an order whose status/timeline were just updated.
+   * Takes status, timeline and updatedAt straight from the update result and
+   * the rest from the base order row — avoiding an `as OrderWithDetails` cast.
+   */
+  private composeOrderResponse(
+    order: OrderModel,
+    updated: { status: string; timeline: TimelineEntry[]; updatedAt: Date },
+    orderItems: OrderItemsModel[],
+  ): OrderResponse {
+    return {
+      id: order.id,
+      customerId: order.customerId,
+      addressId: order.addressId,
+      orderDate: order.orderDate.toISOString(),
+      status: updated.status as OrderResponse["status"],
+      timeline: updated.timeline,
+      items: orderItems.map((item) => this.toOrderItemResponse(item)),
+      totalPrice: Number(order.totalAmount),
+      createdAt: order.createdAt.toISOString(),
+      updatedAt: updated.updatedAt.toISOString(),
+    };
+  }
+
+  private toOrderItemResponse(
+    item: OrderItemsModel,
+  ): OrderResponse["items"][number] {
+    return {
+      id: item.id,
+      menuItemId: item.menuItemId,
+      name: item.name,
+      quantity: item.quantity,
+      price: Number(item.price),
+      subtotal: Number(item.price) * item.quantity,
+      createdAt: item.createdAt.toISOString(),
+      updatedAt: item.updatedAt.toISOString(),
     };
   }
 

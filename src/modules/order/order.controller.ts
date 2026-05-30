@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import { asyncHandler } from "../../utils/asyncHandler";
 import { orderService } from "./order.service";
-import type { OrderIdParams } from "./order.validation";
+import type { OrderIdParams, OrderQuery } from "./order.validation";
 
 // TODO: Replace with `req.customer.id` once auth is implemented.
 const getCurrentCustomerId = (_req: Request): string => {
@@ -28,7 +28,10 @@ export const placeOrder = asyncHandler(
 export const getMyOrders = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const customerId = getCurrentCustomerId(req);
-    const result = await orderService.getMyOrders(customerId, req.query as never);
+    const result = await orderService.getMyOrders(
+      customerId,
+      req.query as unknown as OrderQuery,
+    );
     res.status(StatusCodes.OK).json({ success: true, data: result.data, meta: result.meta });
   },
 );
