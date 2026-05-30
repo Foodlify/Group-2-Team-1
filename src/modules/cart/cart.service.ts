@@ -120,16 +120,28 @@ class CartService {
   private async resolveCart(
     customerId: string,
     restaurantId: string,
-    tx?: Prisma.TransactionClient,
+    tx: Prisma.TransactionClient,
   ) {
-    const existingCart = await cartRepository.findByCustomerId(customerId, tx);
-    if (existingCart && existingCart.restaurantId !== restaurantId) {
-      throw new AppError(
-        cartErrors.DIFFERENT_RESTAURANT.message,
-        cartErrors.DIFFERENT_RESTAURANT.statusCode,
-      );
+    // Lock the cart row up-front (no-op UPDATE) so a concurrent checkout can't
+    // read-and-clear the cart while we add an item — which would otherwise drop
+    // the just-added item via clearCart's cascade. The lock is held until this
+    // transaction commits. A `false` result means there's no cart yet (or it was
+    // checked out while we waited on the lock) — fall through and create a fresh
+    // one; the read below runs under the held lock so it can't race a checkout.
+    const cartExists = await cartRepository.lockByCustomerId(customerId, tx);
+    if (cartExists) {
+      const existingCart = await cartRepository.findByCustomerId(customerId, tx);
+      if (existingCart) {
+        if (existingCart.restaurantId !== restaurantId) {
+          throw new AppError(
+            cartErrors.DIFFERENT_RESTAURANT.message,
+            cartErrors.DIFFERENT_RESTAURANT.statusCode,
+          );
+        }
+        return existingCart;
+      }
     }
-    return existingCart ?? (await cartRepository.createCart({ customerId, restaurantId }, tx));
+    return cartRepository.createCart({ customerId, restaurantId }, tx);
   }
 
   private async upsertCartItem(

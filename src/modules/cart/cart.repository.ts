@@ -39,9 +39,12 @@ export class CartRepository extends BaseRepository<PrismaClient["cart"]> {
 
   /**
    * Acquires a row-level lock on the cart and returns it with items.
-   * Uses a no-op UPDATE to force Postgres row locking — the lock is held
-   * until the surrounding transaction commits or rolls back, preventing
-   * concurrent modifications of the cart during checkout.
+   * Uses a no-op UPDATE to force Postgres row locking — held until the
+   * surrounding transaction commits or rolls back. Item additions take the
+   * same lock via `lockByCustomerId`, so this serializes checkout against
+   * concurrent adds (and other checkouts) for the same cart, preventing a
+   * just-added item from being dropped by clearCart. Quantity updates and
+   * removals are not lock-protected (their concurrent loss is benign).
    * Must be called inside a Prisma transaction.
    */
   async lockByCustomerIdWithItems(
@@ -60,6 +63,25 @@ export class CartRepository extends BaseRepository<PrismaClient["cart"]> {
         },
       },
     });
+  }
+
+  /**
+   * Acquires a row-level lock on the customer's cart via a no-op UPDATE,
+   * held until the surrounding transaction commits or rolls back. Uses
+   * updateMany so a missing cart yields `false` instead of throwing P2025 —
+   * letting the add-item flow lock-or-detect in one round-trip without a
+   * separate existence check racing the lock. Returns whether an existing
+   * cart was locked. Must be called inside a Prisma transaction.
+   */
+  async lockByCustomerId(
+    customerId: string,
+    tx: Prisma.TransactionClient,
+  ): Promise<boolean> {
+    const { count } = await tx.cart.updateMany({
+      where: { customerId },
+      data: { updatedAt: new Date() },
+    });
+    return count > 0;
   }
 
   /**
