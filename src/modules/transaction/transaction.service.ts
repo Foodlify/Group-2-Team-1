@@ -45,6 +45,28 @@ class TransactionService {
   }
 
   /**
+   * Settles cash-on-delivery payments for a delivered order — marks their
+   * PENDING transaction SUCCESS once the courier has collected the money.
+   * Called when order status transitions to DELIVERED.
+   *
+   * Scoped to CASH on purpose: gateway-backed payments (card, wallet) settle
+   * via their own success/webhook flow, never by a delivery status change —
+   * marking a stuck-PENDING online payment SUCCESS here would claim funds
+   * that were never actually received.
+   */
+  async settleOrderTransactions(
+    orderId: string,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const txs = await transactionRepository.findByOrderId(orderId, tx);
+    for (const t of txs) {
+      if (t.status === "PENDING" && t.paymentMethod === "CASH") {
+        await transactionRepository.updateStatus(t.id, "SUCCESS", tx);
+      }
+    }
+  }
+
+  /**
    * Reconciles an order's transactions when it is cancelled: issues a
    * matching REFUND for every successful payment, and marks any
    * still-pending payment as FAILED. Runs inside the caller's transaction.

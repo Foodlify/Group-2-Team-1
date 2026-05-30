@@ -15,6 +15,7 @@ import {
   type OrderListItem,
   type TimelineEntry,
 } from "./order.model";
+import type { Prisma } from "../../generated/prisma/client";
 import type { OrderModel, OrderItemsModel } from "../../generated/prisma/models";
 import type {
   PlaceOrderInput,
@@ -195,7 +196,7 @@ class OrderService {
         );
       }
 
-      await transactionService.refundOrderTransactions(orderId, tx);
+      await this.applyStatusSideEffects(orderId, "CANCELLED", tx);
 
       const items = await orderItemRepository.findManyByOrderIdWithTx(
         orderId,
@@ -246,9 +247,7 @@ class OrderService {
         );
       }
 
-      if (input.status === "CANCELLED") {
-        await transactionService.refundOrderTransactions(orderId, tx);
-      }
+      await this.applyStatusSideEffects(orderId, input.status, tx);
 
       const items = await orderItemRepository.findManyByOrderIdWithTx(
         orderId,
@@ -286,7 +285,23 @@ class OrderService {
     return order;
   }
 
-
+  /**
+   * Applies the financial side-effect of an order entering `status`, inside
+   * the caller's transaction. Single source of truth for the status→effect
+   * mapping so every path that changes status (cancel, admin update) stays
+   * consistent. Statuses with no monetary effect are a no-op.
+   */
+  private async applyStatusSideEffects(
+    orderId: string,
+    status: OrderStatusValue,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    if (status === "CANCELLED") {
+      await transactionService.refundOrderTransactions(orderId, tx);
+    } else if (status === "DELIVERED") {
+      await transactionService.settleOrderTransactions(orderId, tx);
+    }
+  }
 
   private async applyTimelineChange(
     order: OrderWithDetails,
