@@ -92,17 +92,49 @@ export class OrderRepository extends BaseRepository<PrismaClient["order"]> {
       status?: OrderStatus;
     },
   ) {
-    const { page, limit, from, to, status } = options;
-    const skip = (page - 1) * limit;
+    return this.findPaginatedWhere(
+      this.buildOrderFilter(options, customerId),
+      options.page,
+      options.limit,
+    );
+  }
 
-    const where: Prisma.OrderWhereInput = { customerId };
-    if (status) where.status = status;
-    if (from || to) {
+  /** Admin: paginated list across all customers, same optional filters. */
+  async findPaginatedAll(options: {
+    page: number;
+    limit: number;
+    from?: Date;
+    to?: Date;
+    status?: OrderStatus;
+  }) {
+    return this.findPaginatedWhere(
+      this.buildOrderFilter(options),
+      options.page,
+      options.limit,
+    );
+  }
+
+  private buildOrderFilter(
+    options: { from?: Date; to?: Date; status?: OrderStatus },
+    customerId?: string,
+  ): Prisma.OrderWhereInput {
+    const where: Prisma.OrderWhereInput = {};
+    if (customerId) where.customerId = customerId;
+    if (options.status) where.status = options.status;
+    if (options.from || options.to) {
       where.createdAt = {};
-      if (from) where.createdAt.gte = from;
-      if (to) where.createdAt.lte = to;
+      if (options.from) where.createdAt.gte = options.from;
+      if (options.to) where.createdAt.lte = options.to;
     }
+    return where;
+  }
 
+  private async findPaginatedWhere(
+    where: Prisma.OrderWhereInput,
+    page: number,
+    limit: number,
+  ) {
+    const skip = (page - 1) * limit;
     const [data, total] = await Promise.all([
       prisma.order.findMany({
         where,
@@ -115,12 +147,7 @@ export class OrderRepository extends BaseRepository<PrismaClient["order"]> {
     ]);
     return {
       data,
-      meta: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
+      meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };
   }
 }

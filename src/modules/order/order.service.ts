@@ -140,6 +140,37 @@ class OrderService {
     };
   }
 
+  // ─── Admin: list all orders (paginated) ──────────────────────
+  async listAllOrders(query: OrderQuery): Promise<{
+    data: OrderListItemResponse[];
+    meta: { page: number; limit: number; total: number; totalPages: number };
+  }> {
+    const result = await orderRepository.findPaginatedAll({
+      page: query.page,
+      limit: query.limit,
+      from: query.from ? new Date(query.from) : undefined,
+      to: query.to ? new Date(query.to) : undefined,
+      status: query.status,
+    });
+    return {
+      data: (result.data as OrderListItem[]).map((o) =>
+        this.toOrderListItemResponse(o),
+      ),
+      meta: result.meta,
+    };
+  }
+
+  // ─── Admin: get any order by ID (no ownership check) ─────────
+  async getAnyOrder(orderId: string): Promise<OrderResponse> {
+    const order = await orderRepository.findByIdWithDetails(orderId);
+    if (!order)
+      throw new AppError(
+        orderErrors.ORDER_NOT_FOUND.message,
+        orderErrors.ORDER_NOT_FOUND.statusCode,
+      );
+    return this.toOrderResponse(order);
+  }
+
   // ─── Get Order By ID ──────────────────────────────────────────
   async getOrderById(
     customerId: string,

@@ -22,6 +22,21 @@ router.post("/", validate({ body: PlaceOrderRequestSchema }), controller.placeOr
 
 router.get("/", validate({ query: OrderQuerySchema }), controller.getMyOrders);
 
+// Admin order management (declared before "/:orderId" so "/admin" isn't
+// captured as an order id).
+router.get(
+  "/admin",
+  authorize("ADMIN"),
+  validate({ query: OrderQuerySchema }),
+  controller.listAllOrders,
+);
+router.get(
+  "/admin/:orderId",
+  authorize("ADMIN"),
+  validate({ params: OrderIdParamsSchema }),
+  controller.getAnyOrder,
+);
+
 router.get(
   "/:orderId",
   validate({ params: OrderIdParamsSchema }),
@@ -226,6 +241,49 @@ routeRegistry.push({
             },
           },
         },
+        "404": { description: "Order not found", content: { "application/json": { schema: errorRef } } },
+      },
+    },
+  },
+});
+
+routeRegistry.push({
+  path: "/api/v1/orders/admin",
+  pathItem: {
+    get: {
+      tags: [tag],
+      security,
+      summary: "List all orders across customers (ADMIN, paginated, optional status)",
+      parameters: [
+        { name: "page", in: "query", schema: { type: "integer", default: 1 } },
+        { name: "limit", in: "query", schema: { type: "integer", default: 20 } },
+        { name: "status", in: "query", schema: { type: "string" }, description: "Filter by order status" },
+      ],
+      responses: {
+        "200": {
+          description: "Orders",
+          content: { "application/json": { schema: { $ref: "#/components/schemas/OrderListSuccessResponse" } } },
+        },
+        "403": { description: "Forbidden", content: { "application/json": { schema: errorRef } } },
+      },
+    },
+  },
+});
+
+routeRegistry.push({
+  path: "/api/v1/orders/admin/{orderId}",
+  pathItem: {
+    get: {
+      tags: [tag],
+      security,
+      summary: "Get any order by ID (ADMIN)",
+      parameters: [orderIdParam],
+      responses: {
+        "200": {
+          description: "Order",
+          content: { "application/json": { schema: { $ref: "#/components/schemas/OrderSuccessResponse" } } },
+        },
+        "403": { description: "Forbidden", content: { "application/json": { schema: errorRef } } },
         "404": { description: "Order not found", content: { "application/json": { schema: errorRef } } },
       },
     },

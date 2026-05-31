@@ -39,6 +39,24 @@ export const getOrderById = asyncHandler(
   },
 );
 
+// ─── Admin handlers ───────────────────────────────────────
+
+export const listAllOrders = asyncHandler(
+  async (req: Request, res: Response): Promise<void> => {
+    const result = await orderService.listAllOrders(
+      req.query as unknown as OrderQuery,
+    );
+    res.status(StatusCodes.OK).json({ success: true, data: result.data, meta: result.meta });
+  },
+);
+
+export const getAnyOrder = asyncHandler(
+  async (req: Request<OrderIdParams>, res: Response): Promise<void> => {
+    const order = await orderService.getAnyOrder(req.params.orderId);
+    res.status(StatusCodes.OK).json({ success: true, data: order });
+  },
+);
+
 export const cancelOrder = asyncHandler(
   async (req: Request<OrderIdParams>, res: Response): Promise<void> => {
     const customerId = await getCurrentCustomerId(req);
