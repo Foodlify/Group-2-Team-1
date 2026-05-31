@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { validate } from "../../middlewares/validate.middleware";
+import { authenticate } from "../../middlewares/auth.middleware";
 import { routeRegistry } from "../../openapi/registry";
 import * as controller from "./order.controller";
 import {
@@ -11,6 +12,9 @@ import {
 } from "./order.validation";
 
 const router: Router = Router();
+
+// All order routes require an authenticated user.
+router.use(authenticate);
 
 // ─── Handlers ────────────────────────────────────────────
 

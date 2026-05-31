@@ -1,25 +1,20 @@
 import type { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import { asyncHandler } from "../../utils/asyncHandler";
+import { customerService } from "../customer/customer.service";
 import { orderService } from "./order.service";
 import type { OrderIdParams, OrderQuery } from "./order.validation";
 
-// TODO: Replace with `req.customer.id` once auth is implemented.
-const getCurrentCustomerId = (_req: Request): string => {
-  const id = process.env.TEST_CUSTOMER_ID;
-  if (!id) {
-    throw new Error(
-      "TEST_CUSTOMER_ID is not set in .env — set it to the seeded customer's ID",
-    );
-  }
-  return id;
-};
+// Resolves the current customer id from the authenticated user (set by
+// `authenticate`). Throws 403 if the account is not a customer.
+const getCurrentCustomerId = (req: Request): Promise<string> =>
+  customerService.requireCustomerIdByUserId(req.user!.id);
 
 // ─── Handlers ────────────────────────────────────────────
 
 export const placeOrder = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
-    const customerId = getCurrentCustomerId(req);
+    const customerId = await getCurrentCustomerId(req);
     const order = await orderService.placeOrder(customerId, req.body);
     res.status(StatusCodes.CREATED).json({ success: true, data: order });
   },
@@ -27,7 +22,7 @@ export const placeOrder = asyncHandler(
 
 export const getMyOrders = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
-    const customerId = getCurrentCustomerId(req);
+    const customerId = await getCurrentCustomerId(req);
     const result = await orderService.getMyOrders(
       customerId,
       req.query as unknown as OrderQuery,
@@ -38,7 +33,7 @@ export const getMyOrders = asyncHandler(
 
 export const getOrderById = asyncHandler(
   async (req: Request<OrderIdParams>, res: Response): Promise<void> => {
-    const customerId = getCurrentCustomerId(req);
+    const customerId = await getCurrentCustomerId(req);
     const order = await orderService.getOrderById(customerId, req.params.orderId);
     res.status(StatusCodes.OK).json({ success: true, data: order });
   },
@@ -46,7 +41,7 @@ export const getOrderById = asyncHandler(
 
 export const cancelOrder = asyncHandler(
   async (req: Request<OrderIdParams>, res: Response): Promise<void> => {
-    const customerId = getCurrentCustomerId(req);
+    const customerId = await getCurrentCustomerId(req);
     const order = await orderService.cancelOrder(customerId, req.params.orderId);
     res.status(StatusCodes.OK).json({ success: true, data: order });
   },

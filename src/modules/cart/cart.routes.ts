@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { validate } from "../../middlewares/validate.middleware";
+import { authenticate } from "../../middlewares/auth.middleware";
 import { routeRegistry } from "../../openapi/registry";
 import * as controller from "./cart.controller";
 import {
@@ -9,6 +10,9 @@ import {
 } from "./cart.validation";
 
 const router: Router = Router();
+
+// All cart routes require an authenticated customer.
+router.use(authenticate);
 
 // ─── Handlers ────────────────────────────────────────────
 

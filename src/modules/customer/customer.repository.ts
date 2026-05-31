@@ -14,6 +14,11 @@ export class CustomerRepository extends BaseRepository<PrismaClient["customer"]>
   async findById(id: string) {
     return this.findUnique({ where: { id } });
   }
+
+  /** Resolves the customer linked to a user account (1:1 via userId). */
+  async findByUserId(userId: string) {
+    return this.findUnique({ where: { userId } });
+  }
 }
 
 export const customerRepository = new CustomerRepository();
