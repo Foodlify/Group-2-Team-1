@@ -6,6 +6,7 @@ import env from "../config/env";
 import "../shared/schemas/error.schema";
 import "../shared/schemas/pagination.schema";
 import "../modules/user/user.validation";
+import "../modules/customer/customer.validation";
 import "../modules/cart/cart.validation";
 import "../modules/order/order.validation";
 

@@ -14,6 +14,14 @@ export class AddressRepository extends BaseRepository<PrismaClient["address"]> {
   async findById(id: string) {
     return this.findUnique({ where: { id } });
   }
+
+  /** All addresses for a customer, oldest first. */
+  async findByCustomerId(customerId: string) {
+    return prisma.address.findMany({
+      where: { customerId },
+      orderBy: { createdAt: "asc" },
+    });
+  }
 }
 
 export const addressRepository = new AddressRepository();
