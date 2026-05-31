@@ -2,6 +2,7 @@ import { Router } from "express";
 import cartRouter from "../modules/cart/cart.routes";
 import orderRouter from "../modules/order/order.routes";
 import { authRouter, usersRouter } from "../modules/user/user.routes";
+import customerRouter from "../modules/customer/customer.routes";
 import restaurantRouter from "../modules/restaurant/restaurant.routes";
 import menuRouter from "../modules/menu/menu.routes";
 import menuItemRouter from "../modules/menuItem/menuItem.routes";
@@ -10,6 +11,7 @@ const router: Router = Router();
 
 router.use("/auth", authRouter);
 router.use("/users", usersRouter);
+router.use("/customers", customerRouter);
 router.use("/restaurants", restaurantRouter);
 router.use("/menus", menuRouter);
 router.use("/menu-items", menuItemRouter);
