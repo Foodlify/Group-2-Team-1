@@ -6,6 +6,9 @@ import env from "../config/env";
 import "../shared/schemas/error.schema";
 import "../shared/schemas/pagination.schema";
 import "../modules/user/user.validation";
+import "../modules/menuItem/menuItem.validation";
+import "../modules/menu/menu.validation";
+import "../modules/restaurant/restaurant.validation";
 import "../modules/cart/cart.validation";
 import "../modules/order/order.validation";
 

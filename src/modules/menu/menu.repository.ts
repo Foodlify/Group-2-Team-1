@@ -14,6 +14,22 @@ export class MenuRepository extends BaseRepository<PrismaClient["menu"]> {
   async findById(id: string) {
     return this.findUnique({ where: { id } });
   }
+
+  /** Menus belonging to a restaurant, oldest first. */
+  async findByRestaurantId(restaurantId: string) {
+    return prisma.menu.findMany({
+      where: { restaurantId },
+      orderBy: { createdAt: "asc" },
+    });
+  }
+
+  /** Menu with its items eagerly loaded. */
+  async findByIdWithItems(id: string) {
+    return prisma.menu.findUnique({
+      where: { id },
+      include: { menuItems: { orderBy: { createdAt: "asc" } } },
+    });
+  }
 }
 
 export const menuRepository = new MenuRepository();

@@ -28,6 +28,14 @@ export class MenuItemRepository extends BaseRepository<PrismaClient["menuItem"]>
       where: { id: { in: ids } },
     });
   }
+
+  /** All items belonging to a menu, oldest first. */
+  async findByMenuId(menuId: string) {
+    return prisma.menuItem.findMany({
+      where: { menuId },
+      orderBy: { createdAt: "asc" },
+    });
+  }
 }
 
 export const menuItemRepository = new MenuItemRepository();
