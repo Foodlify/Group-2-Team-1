@@ -24,6 +24,9 @@ const EnvSchema = z.object({
     (value) => (value === undefined || value === "" ? "7d" : value),
     z.string(),
   ),
+  // Comma-separated list of allowed CORS origins. Empty = reflect request
+  // origin (dev convenience). Required for httpOnly-cookie auth from a browser.
+  CORS_ORIGIN: z.string().trim().optional(),
 });
 
 export type EnvConfig = z.infer<typeof EnvSchema>;

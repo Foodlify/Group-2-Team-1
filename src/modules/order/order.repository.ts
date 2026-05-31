@@ -84,12 +84,19 @@ export class OrderRepository extends BaseRepository<PrismaClient["order"]> {
 
   async findPaginatedByCustomer(
     customerId: string,
-    options: { page: number; limit: number; from?: Date; to?: Date },
+    options: {
+      page: number;
+      limit: number;
+      from?: Date;
+      to?: Date;
+      status?: OrderStatus;
+    },
   ) {
-    const { page, limit, from, to } = options;
+    const { page, limit, from, to, status } = options;
     const skip = (page - 1) * limit;
 
     const where: Prisma.OrderWhereInput = { customerId };
+    if (status) where.status = status;
     if (from || to) {
       where.createdAt = {};
       if (from) where.createdAt.gte = from;

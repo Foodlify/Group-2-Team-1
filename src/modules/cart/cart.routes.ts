@@ -50,12 +50,14 @@ const errorRef = {
 const validationErrorRef = {
   $ref: "#/components/schemas/ValidationErrorResponse",
 };
+const security: Record<string, string[]>[] = [{ cookieAuth: [] }, { BearerAuth: [] }];
 
 routeRegistry.push({
   path: "/api/v1/carts",
   pathItem: {
     get: {
       tags: [tag],
+      security,
       summary: "Get my cart",
       responses: {
         "200": {
@@ -70,6 +72,7 @@ routeRegistry.push({
     },
     delete: {
       tags: [tag],
+      security,
       summary: "Clear my cart (delete all items)",
       responses: {
         "200": {
@@ -90,6 +93,7 @@ routeRegistry.push({
   pathItem: {
     post: {
       tags: [tag],
+      security,
       summary: "Add item to cart (upserts quantity if item exists)",
       requestBody: {
         required: true,
@@ -128,6 +132,7 @@ routeRegistry.push({
   pathItem: {
     patch: {
       tags: [tag],
+      security,
       summary: "Update item quantity",
       parameters: [
         {
@@ -166,6 +171,7 @@ routeRegistry.push({
     },
     delete: {
       tags: [tag],
+      security,
       summary: "Remove a specific item from cart",
       parameters: [
         {

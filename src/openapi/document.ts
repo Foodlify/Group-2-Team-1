@@ -31,7 +31,7 @@ export const buildOpenApiDocument = (): ReturnType<typeof createDocument> => {
       title: "Food Delivery API",
       version: "1.0.0",
       description:
-        "REST API for the currently exposed cart workflow in a food delivery platform. Users, restaurants, menus, orders, and payments are planned or internal modules unless routes are explicitly exposed.",
+        "REST API for a food delivery platform. Exposes authentication (customer + admin), user management, catalog browsing (restaurants, menus, items), cart, and orders. Authentication uses JWT access/refresh tokens delivered as httpOnly cookies.",
     },
     servers: [
       {
@@ -42,11 +42,17 @@ export const buildOpenApiDocument = (): ReturnType<typeof createDocument> => {
     components: {
       schemas: schemaRegistry.getAll(),
       securitySchemes: {
+        cookieAuth: {
+          type: "apiKey",
+          in: "cookie",
+          name: "accessToken",
+          description: "httpOnly access-token cookie set on login/register",
+        },
         BearerAuth: {
           type: "http",
           scheme: "bearer",
           bearerFormat: "JWT",
-          description: "JWT obtained from /auth/login",
+          description: "Fallback: JWT access token as a Bearer header",
         },
       },
     },

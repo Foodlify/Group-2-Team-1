@@ -1,15 +1,28 @@
 import express, { Application, Request, Response, NextFunction } from "express";
 import cookieParser from "cookie-parser";
+import cors from "cors";
 import { StatusCodes } from "http-status-codes";
 import router from "./routes/index";
 import { errorMiddleware } from "./middlewares/error.middleware";
 import logger from "./config/logger";
 import prisma from "./config/prisma";
+import env from "./config/env";
 import { serveOpenApi } from "./openapi/serve";
 
 const app: Application = express();
 
 // ── Middlewares ──────────────────────────────────────
+// CORS with credentials so browsers send/receive the httpOnly auth cookies.
+// `CORS_ORIGIN` (comma-separated) restricts origins in production; when unset
+// we reflect the request origin (dev convenience).
+app.use(
+  cors({
+    origin: env.CORS_ORIGIN
+      ? env.CORS_ORIGIN.split(",").map((o) => o.trim())
+      : true,
+    credentials: true,
+  }),
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());

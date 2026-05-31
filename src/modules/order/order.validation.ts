@@ -74,6 +74,10 @@ export const OrderQuerySchema = PaginationQuerySchema.extend({
     description: "Filter orders created on or before this date (ISO 8601)",
     example: "2026-05-01T00:00:00.000Z",
   }),
+  status: z.enum(ORDER_STATUSES).optional().meta({
+    description: "Filter by order status (e.g. DELIVERED for order history)",
+    example: "DELIVERED",
+  }),
 })
   .refine(
     (data) => !data.from || !data.to || new Date(data.from) <= new Date(data.to),

@@ -129,6 +129,7 @@ class OrderService {
       limit: query.limit,
       from: query.from ? new Date(query.from) : undefined,
       to: query.to ? new Date(query.to) : undefined,
+      status: query.status,
     });
 
     return {

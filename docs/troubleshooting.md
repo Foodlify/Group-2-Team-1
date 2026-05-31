@@ -172,26 +172,23 @@ psql -U postgres -c "ALTER USER postgres CREATEDB;"
 
 ## Prisma Client Issues
 
-### TEST_CUSTOMER_ID is not set in .env
+### 401 "No token provided" on cart/order/customer endpoints
 
-**Error (at runtime, when hitting a cart endpoint):**
-```
-Error: TEST_CUSTOMER_ID is not set in .env — set it to the seeded customer's ID
-```
+**What this means:** These routes require authentication. Tokens are delivered as
+**httpOnly cookies**, so you must log in first and send the cookies back.
 
-**What this means:** The cart controller uses `process.env.TEST_CUSTOMER_ID` as a
-stand-in for an authenticated customer. You haven't seeded the database or haven't
-copied the seed output into `.env` yet.
-
-**Fix:**
+**Fix:** seed the database (`npx prisma db seed`), then log in and reuse the cookies:
 ```bash
-npx prisma db seed
+curl -X POST localhost:4444/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"test@example.com","password":"Password123!"}' -c cookies.txt
+curl localhost:4444/api/v1/carts -b cookies.txt
 ```
-Then copy the `customerId` from the output and add it to `.env`:
-```env
-TEST_CUSTOMER_ID=<paste-here>
-```
-Restart the server.
+For admin-only routes (user management, order status) use
+`POST /api/v1/auth/admin/login` with `admin@example.com` / `Admin123!`.
+
+> **Browser clients:** ensure CORS is configured (`CORS_ORIGIN`) and requests are
+> sent with credentials, otherwise the cookies won't be stored/sent.
 
 ---
 

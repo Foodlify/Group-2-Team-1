@@ -121,8 +121,10 @@ POSTGRES_PORT=5432
 
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/G2T1M
 
-# Temporary (remove when auth is implemented)
-TEST_CUSTOMER_ID=<paste-customer-id-from-seed-output>
+# Optional auth/CORS overrides (sensible defaults applied) — see .env.example
+# JWT_ACCESS_EXPIRES=15m
+# JWT_REFRESH_EXPIRES=7d
+# CORS_ORIGIN=http://localhost:3000
 ```
 
 > **Generate a JWT secret:**
@@ -171,9 +173,12 @@ Choose **one** of the following options.
    npx prisma db seed
    ```
 
-   Copy the `customerId` from the output and put it in `.env` as `TEST_CUSTOMER_ID=...`
+   The seed creates ready-to-use accounts (printed in the output):
+   - **Customer:** `test@example.com` / `Password123!`
+   - **Admin:** `admin@example.com` / `Admin123!`
 
-   > **Note:** The `TEST_CUSTOMER_ID` environment variable and seed-based customer selection are temporary conveniences until user/auth management is implemented. They will be removed in a future iteration.
+   > **Note:** Auth is implemented — log in via `POST /api/v1/auth/login` (customer) or
+   > `POST /api/v1/auth/admin/login` (admin); tokens are returned as httpOnly cookies.
 
 5. (Optional) Open Prisma Studio to inspect your tables:
    ```bash
@@ -243,9 +248,12 @@ docker compose logs -f postgres  # View database logs
    npx prisma db seed
    ```
 
-   Copy the `customerId` from the output and put it in `.env` as `TEST_CUSTOMER_ID=...`
+   The seed creates ready-to-use accounts (printed in the output):
+   - **Customer:** `test@example.com` / `Password123!`
+   - **Admin:** `admin@example.com` / `Admin123!`
 
-   > **Note:** The `TEST_CUSTOMER_ID` environment variable and seed-based customer selection are temporary conveniences until user/auth management is implemented. They will be removed in a future iteration.
+   > **Note:** Auth is implemented — log in via `POST /api/v1/auth/login` (customer) or
+   > `POST /api/v1/auth/admin/login` (admin); tokens are returned as httpOnly cookies.
 
 ---
 
@@ -301,7 +309,7 @@ The API ships with two documentation UIs, both generated from the same OpenAPI 3
 | `GET /openapi.json`     | Raw OpenAPI 3.1 spec as JSON                         |
 | `GET /health`           | Liveness + DB connectivity check                     |
 
-**Available features:** Cart management endpoints are live. Visit `/api-docs` to explore them interactively with full request/response schemas.
+**Available features:** Authentication (customer + admin), user management, catalog browsing (restaurants/menus/items), cart, and orders are live. Visit `/api-docs` to explore them interactively with full request/response schemas.
 
 ### How documentation is generated
 
@@ -710,6 +718,9 @@ After running `npx prisma db seed`, you'll see output similar to:
     "customerId": "cmokc9lkd000124ap0i1men3u",
     "userId": "cmokc9lk6000024ap6ogg7t7j",
     "userEmail": "test@example.com",
+    "addressId": "cmok...",
+    "customerLogin": { "email": "test@example.com", "password": "Password123!" },
+    "adminLogin": { "email": "admin@example.com", "password": "Admin123!" },
     "menuItemIds": [
       { "id": "cmo8k38mk0006iiapa4wdjh7j", "name": "Margherita Pizza" },
       { "id": "cmo8k38mm0007iiapvytskboq", "name": "Pepperoni Pizza" },
@@ -719,7 +730,7 @@ After running `npx prisma db seed`, you'll see output similar to:
 }
 ```
 
-Copy the `customerId` value and paste it into your `.env` file as `TEST_CUSTOMER_ID`.
+Use the printed `customerLogin` / `adminLogin` credentials to log in via `POST /api/v1/auth/login` (or `/auth/admin/login`); the API sets httpOnly auth cookies.
 
 ---
 

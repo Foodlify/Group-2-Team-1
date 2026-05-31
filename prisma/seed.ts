@@ -35,6 +35,23 @@ const seed = async (): Promise<void> => {
     create: { userId: testUser.id, phone: "+201000000000" },
   });
 
+  // ─── Address (for the test customer) ────────────────
+  // Enables placing an order end-to-end (placeOrder needs a valid addressId).
+  let testAddress = await prisma.address.findFirst({
+    where: { customerId: testCustomer.id },
+  });
+  if (!testAddress) {
+    testAddress = await prisma.address.create({
+      data: {
+        customerId: testCustomer.id,
+        addressLine1: "12 Tahrir St",
+        city: "Cairo",
+        postalCode: "11511",
+        country: "Egypt",
+      },
+    });
+  }
+
   // ─── Admin User (for dashboard auth testing) ────────
   const adminPasswordHash = await hashPassword("Admin123!");
   const adminUser = await prisma.user.upsert({
@@ -97,6 +114,7 @@ const seed = async (): Promise<void> => {
     customerId: testCustomer.id,
     userId: testUser.id,
     userEmail: testUser.email,
+    addressId: testAddress.id,
     customerLogin: { email: "test@example.com", password: "Password123!" },
     adminUserId: adminUser.id,
     adminLogin: { email: "admin@example.com", password: "Admin123!" },

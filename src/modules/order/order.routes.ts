@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { validate } from "../../middlewares/validate.middleware";
-import { authenticate } from "../../middlewares/auth.middleware";
+import { authenticate, authorize } from "../../middlewares/auth.middleware";
 import { routeRegistry } from "../../openapi/registry";
 import * as controller from "./order.controller";
 import {
@@ -34,14 +34,17 @@ router.delete(
   controller.cancelOrder,
 );
 
+// Status & delivery-tracking changes are operational/admin actions.
 router.patch(
   "/:orderId/status",
+  authorize("ADMIN"),
   validate({ params: OrderIdParamsSchema, body: UpdateStatusRequestSchema }),
   controller.updateOrderStatus,
 );
 
 router.post(
   "/:orderId/tracking",
+  authorize("ADMIN"),
   validate({ params: OrderIdParamsSchema, body: AddTrackingRequestSchema }),
   controller.addOrderStatusTracking,
 );
@@ -52,12 +55,14 @@ const tag = "Orders";
 const errorRef = { $ref: "#/components/schemas/ErrorResponse" };
 const validationErrorRef = { $ref: "#/components/schemas/ValidationErrorResponse" };
 const orderIdParam = { name: "orderId", in: "path", required: true, schema: { type: "string" as const } } as const;
+const security: Record<string, string[]>[] = [{ cookieAuth: [] }, { BearerAuth: [] }];
 
 routeRegistry.push({
   path: "/api/v1/orders",
   pathItem: {
     post: {
       tags: [tag],
+      security,
       summary: "Place a new order",
       requestBody: {
         required: true,
@@ -83,6 +88,7 @@ routeRegistry.push({
     },
     get: {
       tags: [tag],
+      security,
       summary: "Get my orders (paginated, with optional date range filter)",
       parameters: [
         { name: "page", in: "query", schema: { type: "integer", default: 1 } },
@@ -98,6 +104,12 @@ routeRegistry.push({
           in: "query",
           schema: { type: "string", format: "date-time" },
           description: "Filter orders created on or before this date (ISO 8601)",
+        },
+        {
+          name: "status",
+          in: "query",
+          schema: { type: "string" },
+          description: "Filter by status (e.g. DELIVERED for order history)",
         },
       ],
       responses: {
@@ -119,6 +131,7 @@ routeRegistry.push({
   pathItem: {
     get: {
       tags: [tag],
+      security,
       summary: "Get order by ID",
       parameters: [orderIdParam],
       responses: {
@@ -136,6 +149,7 @@ routeRegistry.push({
     },
     delete: {
       tags: [tag],
+      security,
       summary: "Cancel an order (PENDING only)",
       parameters: [orderIdParam],
       responses: {
@@ -160,6 +174,7 @@ routeRegistry.push({
   pathItem: {
     patch: {
       tags: [tag],
+      security,
       summary: "Update order status (follows valid transitions)",
       parameters: [orderIdParam],
       requestBody: {
@@ -191,6 +206,7 @@ routeRegistry.push({
   pathItem: {
     post: {
       tags: [tag],
+      security,
       summary: "Add a tracking update to an order",
       parameters: [orderIdParam],
       requestBody: {

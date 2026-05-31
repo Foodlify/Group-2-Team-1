@@ -285,7 +285,7 @@ sequenceDiagram
     end
 
     Validate->>Ctrl: next()
-    Ctrl->>Ctrl: getCurrentCustomerId()<br/>(حاليًا من TEST_CUSTOMER_ID)
+    Ctrl->>Ctrl: getCurrentCustomerId()<br/>(من req.user.id بعد المصادقة)
     Ctrl->>Svc: addItem(customerId, input)
 
     Svc->>MIRepo: findById(menuItemId)
@@ -473,16 +473,16 @@ graph TB
 **س: أين أضع الـ business logic؟**
 في **Service layer** فقط. الـ Controller مهمته الوحيدة استقبال `req` وإرجاع `res`. الـ Repository مهمته الوحيدة CRUD.
 
-**س: كيف تعمل الـ Authentication حاليًا؟**
-الـ middleware موجود في [src/middlewares/auth.middleware.ts](../src/middlewares/auth.middleware.ts) (JWT) لكنه **غير مُفعَّل حاليًا**. الـ Cart controller يقرأ `customerId` من متغير `TEST_CUSTOMER_ID` في `.env` مؤقتًا لحين تفعيل نظام التسجيل.
+**س: كيف تعمل الـ Authentication؟**
+عبر JWT (access + refresh) يُسلَّمان كـ **httpOnly cookies**. الـ middleware [src/middlewares/auth.middleware.ts](../src/middlewares/auth.middleware.ts) (`authenticate`) يقرأ الـ access token من الكوكي (أو `Authorization: Bearer` كبديل)، و`authorize("ADMIN")` يحمي مسارات الإدارة. التسجيل/الدخول في موديول `user` (`/api/v1/auth/*`). الـ controllers تقرأ هوية المستخدم من `req.user.id` (لا `TEST_CUSTOMER_ID`).
 
 **س: أين أرى كل الـ endpoints المتاحة؟**
 شغّل السيرفر ثم افتح:
 - `http://localhost:<PORT>/api-docs` (Scalar)
 - `http://localhost:<PORT>/api-docs/swagger` (Swagger UI)
 
-**س: ما هو الموديول الوحيد المُفعَّل حاليًا؟**
-`cart` فقط. باقي الـ 22 موديول مُعلَّق في [src/routes/index.ts](../src/routes/index.ts) وسيُفعَّل تدريجيًا.
+**س: ما هي الموديولات المُفعَّلة حاليًا؟**
+`auth` + `user` (مصادقة وإدارة مستخدمين)، `customer` (ملف + عناوين)، `restaurant`/`menu`/`menuItem` (تصفّح الكتالوج — قراءة)، `cart`، `order`. الباقي يُفعَّل تدريجيًا عبر [src/routes/index.ts](../src/routes/index.ts).
 
 ---
 
