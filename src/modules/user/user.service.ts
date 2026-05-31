@@ -1,0 +1,219 @@
+import { AppError } from "../../middlewares/error.middleware";
+import { userErrors } from "../../shared/exceptions/user.errors";
+import {
+  comparePassword,
+  hashPassword,
+} from "../../shared/auth/password.helper";
+import {
+  signAccessToken,
+  signRefreshToken,
+  verifyRefreshToken,
+} from "../../shared/auth/jwt.helper";
+import { userRepository } from "./user.repository";
+import type { UserModel } from "../../generated/prisma/models";
+import type {
+  AdminLoginInput,
+  CreateUserInput,
+  LoginInput,
+  RegisterInput,
+  UpdateUserInput,
+  UserQuery,
+  UserResponse,
+} from "./user.validation";
+
+interface AuthTokens {
+  accessToken: string;
+  refreshToken: string;
+}
+
+interface AuthResult {
+  user: UserResponse;
+  tokens: AuthTokens;
+}
+
+// ─── Prisma unique-violation helpers (P2002) ─────────────
+const isUniqueViolation = (e: unknown): e is { meta?: unknown } =>
+  typeof e === "object" && e !== null && (e as { code?: unknown }).code === "P2002";
+
+/**
+ * Detects whether a P2002 unique violation involves the given field. Handles
+ * Prisma 7's driver-adapter shape (`meta.driverAdapterError.cause.constraint.fields`)
+ * and the classic `meta.target` (array or string).
+ */
+const violationIncludes = (e: { meta?: unknown }, field: string): boolean => {
+  const meta = (e.meta ?? {}) as {
+    target?: unknown;
+    driverAdapterError?: { cause?: { constraint?: { fields?: unknown } } };
+  };
+  const fields = meta.driverAdapterError?.cause?.constraint?.fields;
+  if (Array.isArray(fields)) return fields.some((f) => String(f).includes(field));
+  if (Array.isArray(meta.target)) {
+    return meta.target.some((t) => String(t).includes(field));
+  }
+  return typeof meta.target === "string" && meta.target.includes(field);
+};
+
+const appError = (def: { message: string; statusCode: number }): AppError =>
+  new AppError(def.message, def.statusCode);
+
+class UserService {
+  // ─── Customer auth ────────────────────────────────────
+  async register(input: RegisterInput): Promise<AuthResult> {
+    if (await userRepository.findByEmail(input.email)) {
+      throw appError(userErrors.EMAIL_ALREADY_EXISTS);
+    }
+    if (await userRepository.phoneExists(input.phone)) {
+      throw appError(userErrors.PHONE_ALREADY_EXISTS);
+    }
+
+    const password = await hashPassword(input.password);
+
+    let user: UserModel;
+    try {
+      user = await userRepository.createCustomerUser({
+        name: input.name,
+        email: input.email,
+        password,
+        phone: input.phone,
+      });
+    } catch (e) {
+      // Fallback for a concurrent insert racing the pre-checks above.
+      if (isUniqueViolation(e)) {
+        throw violationIncludes(e, "phone")
+          ? appError(userErrors.PHONE_ALREADY_EXISTS)
+          : appError(userErrors.EMAIL_ALREADY_EXISTS);
+      }
+      throw e;
+    }
+
+    const tokens = await this.issueTokens(user);
+    return { user: this.toUserResponse(user), tokens };
+  }
+
+  async login(input: LoginInput): Promise<AuthResult> {
+    const user = await userRepository.findByEmail(input.email);
+    if (!user || !(await comparePassword(input.password, user.password))) {
+      throw appError(userErrors.INVALID_CREDENTIALS);
+    }
+    const tokens = await this.issueTokens(user);
+    return { user: this.toUserResponse(user), tokens };
+  }
+
+  // ─── Admin auth ───────────────────────────────────────
+  async adminLogin(input: AdminLoginInput): Promise<AuthResult> {
+    const user = await userRepository.findByEmail(input.email);
+    if (
+      !user ||
+      user.role !== "ADMIN" ||
+      !(await comparePassword(input.password, user.password))
+    ) {
+      throw appError(userErrors.INVALID_CREDENTIALS);
+    }
+    const tokens = await this.issueTokens(user);
+    return { user: this.toUserResponse(user), tokens };
+  }
+
+  // ─── Refresh / Logout ─────────────────────────────────
+  async refresh(refreshToken: string | undefined): Promise<AuthResult> {
+    if (!refreshToken) throw appError(userErrors.INVALID_REFRESH_TOKEN);
+
+    let payload: { id: string };
+    try {
+      payload = verifyRefreshToken(refreshToken);
+    } catch {
+      throw appError(userErrors.INVALID_REFRESH_TOKEN);
+    }
+
+    const user = await userRepository.findById(payload.id);
+    if (!user || user.refreshToken !== refreshToken) {
+      throw appError(userErrors.INVALID_REFRESH_TOKEN);
+    }
+
+    const tokens = await this.issueTokens(user); // rotates the refresh token
+    return { user: this.toUserResponse(user), tokens };
+  }
+
+  async logout(userId: string): Promise<void> {
+    await userRepository.updateRefreshToken(userId, null);
+  }
+
+  // ─── Admin user management (CRUD) ─────────────────────
+  async create(input: CreateUserInput): Promise<UserResponse> {
+    const existing = await userRepository.findByEmail(input.email);
+    if (existing) throw appError(userErrors.EMAIL_ALREADY_EXISTS);
+
+    const password = await hashPassword(input.password);
+    const user = await userRepository.create({
+      data: {
+        name: input.name,
+        email: input.email,
+        password,
+        role: input.role,
+      },
+    });
+    return this.toUserResponse(user);
+  }
+
+  async list(query: UserQuery): Promise<{
+    data: UserResponse[];
+    meta: { page: number; limit: number; total: number; totalPages: number };
+  }> {
+    const result = await userRepository.listPaginated(query.page, query.limit);
+    return {
+      data: result.data.map((u) => this.toUserResponse(u)),
+      meta: result.meta,
+    };
+  }
+
+  async findById(id: string): Promise<UserResponse> {
+    const user = await this.assertExists(id);
+    return this.toUserResponse(user);
+  }
+
+  async update(id: string, input: UpdateUserInput): Promise<UserResponse> {
+    await this.assertExists(id);
+    try {
+      const user = await userRepository.update({ where: { id }, data: input });
+      return this.toUserResponse(user);
+    } catch (e) {
+      if (isUniqueViolation(e)) throw appError(userErrors.EMAIL_ALREADY_EXISTS);
+      throw e;
+    }
+  }
+
+  async remove(id: string): Promise<void> {
+    await this.assertExists(id);
+    await userRepository.delete({ where: { id } });
+  }
+
+  // ─── Private helpers ──────────────────────────────────
+  private async assertExists(id: string): Promise<UserModel> {
+    const user = await userRepository.findById(id);
+    if (!user) throw appError(userErrors.USER_NOT_FOUND);
+    return user;
+  }
+
+  private async issueTokens(user: UserModel): Promise<AuthTokens> {
+    const accessToken = signAccessToken({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+    });
+    const refreshToken = signRefreshToken({ id: user.id });
+    await userRepository.updateRefreshToken(user.id, refreshToken);
+    return { accessToken, refreshToken };
+  }
+
+  private toUserResponse(user: UserModel): UserResponse {
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      createdAt: user.createdAt.toISOString(),
+      updatedAt: user.updatedAt.toISOString(),
+    };
+  }
+}
+
+export const userService = new UserService();

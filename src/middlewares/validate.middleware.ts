@@ -25,8 +25,14 @@ export const validate =
       }
       if (schemas.query) {
         const parsedQuery = await schemas.query.parseAsync(req.query);
-        // `req.query` is read-only on Express 5; mutate its properties instead of reassigning
-        Object.assign(req.query as object, parsedQuery);
+        // In Express 5 `req.query` is a getter that re-parses the URL on every
+        // access, so mutating it doesn't persist. Redefine it as a static value
+        // so the validated/coerced query reaches the controller.
+        Object.defineProperty(req, "query", {
+          value: parsedQuery,
+          writable: true,
+          configurable: true,
+        });
       }
       if (schemas.params) {
         const parsedParams = await schemas.params.parseAsync(req.params);

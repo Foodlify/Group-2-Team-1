@@ -2,6 +2,7 @@ export interface ApiResponse<T> {
   success: boolean;
   message: string;
   data?: T;
+  meta?: unknown;
   error?: string;
 }
 
@@ -10,12 +11,13 @@ export const sendSuccess = <T>(
   data: T,
   message: string = "Success",
   statusCode: number = 200,
+  meta?: unknown,
 ): void => {
-  res.status(statusCode).json({
-    success: true,
-    message,
-    data,
-  } as ApiResponse<T>);
+  const body: ApiResponse<T> = { success: true, message, data };
+  if (meta !== undefined) {
+    body.meta = meta;
+  }
+  res.status(statusCode).json(body);
 };
 
 export const sendError = (

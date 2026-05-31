@@ -19,18 +19,35 @@ declare global {
   }
 }
 
+/**
+ * Resolves the access token from the httpOnly cookie first (primary transport),
+ * falling back to the `Authorization: Bearer` header for tooling/tests.
+ */
+const extractAccessToken = (req: Request): string | undefined => {
+  const cookieToken = req.cookies?.accessToken as string | undefined;
+  if (cookieToken) {
+    return cookieToken;
+  }
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith("Bearer ")) {
+    return authHeader.slice("Bearer ".length);
+  }
+  return undefined;
+};
+
 export const authenticate = asyncHandler(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const authHeader = req.headers.authorization;
+    const token = extractAccessToken(req);
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    if (!token) {
       throw new AppError("No token provided", StatusCodes.UNAUTHORIZED);
     }
 
-    const token = authHeader.split(" ")[1];
-
-    const decoded = jwt.verify(token, env.JWT_SECRET) as JwtPayload;
-    req.user = decoded;
+    try {
+      req.user = jwt.verify(token, env.JWT_SECRET) as JwtPayload;
+    } catch {
+      throw new AppError("Invalid or expired token", StatusCodes.UNAUTHORIZED);
+    }
 
     next();
   },

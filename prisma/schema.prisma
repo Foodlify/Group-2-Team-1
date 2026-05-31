@@ -12,10 +12,21 @@ datasource db {
 // Users & Access Control
 // ═══════════════════════════════════════════════════════════════
 
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
 model User {
   id    String @id @default(cuid())
   name  String
   email String @unique
+  /// Hashed password (bcrypt). Never returned in any API response.
+  password String
+  /// Account role — CUSTOMER for storefront users, ADMIN for dashboard.
+  role     Role   @default(CUSTOMER)
+  /// Current valid refresh token (rotated on refresh, cleared on logout).
+  refreshToken String?
 
   customer Customer?
 
@@ -26,6 +37,8 @@ model User {
 model Customer {
   id     String @id @default(cuid())
   userId String @unique
+  /// Contact phone — required and unique per customer.
+  phone  String @unique
 
   cart      Cart?
   addresses Address[]

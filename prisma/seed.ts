@@ -1,5 +1,6 @@
 import prisma from "../src/config/prisma";
 import logger from "../src/config/logger";
+import { hashPassword } from "../src/shared/auth/password.helper";
 
 /**
  * Seeds the database with the minimum data needed for cart testing:
@@ -14,13 +15,16 @@ import logger from "../src/config/logger";
 const seed = async (): Promise<void> => {
   logger.info("🌱 Starting seed...");
 
-  // ─── Test User ──────────────────────────────────────
+  // ─── Test User (CUSTOMER) ───────────────────────────
+  const customerPasswordHash = await hashPassword("Password123!");
   const testUser = await prisma.user.upsert({
     where: { email: "test@example.com" },
-    update: {},
+    update: { password: customerPasswordHash },
     create: {
       email: "test@example.com",
       name: "Test User",
+      password: customerPasswordHash,
+      role: "CUSTOMER",
     },
   });
 
@@ -28,7 +32,20 @@ const seed = async (): Promise<void> => {
   const testCustomer = await prisma.customer.upsert({
     where: { userId: testUser.id },
     update: {},
-    create: { userId: testUser.id },
+    create: { userId: testUser.id, phone: "+201000000000" },
+  });
+
+  // ─── Admin User (for dashboard auth testing) ────────
+  const adminPasswordHash = await hashPassword("Admin123!");
+  const adminUser = await prisma.user.upsert({
+    where: { email: "admin@example.com" },
+    update: { password: adminPasswordHash, role: "ADMIN" },
+    create: {
+      email: "admin@example.com",
+      name: "Admin User",
+      password: adminPasswordHash,
+      role: "ADMIN",
+    },
   });
 
   // ─── Restaurant ─────────────────────────────────────
@@ -80,6 +97,9 @@ const seed = async (): Promise<void> => {
     customerId: testCustomer.id,
     userId: testUser.id,
     userEmail: testUser.email,
+    customerLogin: { email: "test@example.com", password: "Password123!" },
+    adminUserId: adminUser.id,
+    adminLogin: { email: "admin@example.com", password: "Admin123!" },
     menuItemIds: menuItems.map((m) => ({ id: m.id, name: m.name })),
   });
 };

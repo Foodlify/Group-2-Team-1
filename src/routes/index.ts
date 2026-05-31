@@ -1,11 +1,12 @@
 import { Router } from "express";
 import cartRouter from "../modules/cart/cart.routes";
 import orderRouter from "../modules/order/order.routes";
-// import userRouter from "../modules/user/user.routes";
+import { authRouter, usersRouter } from "../modules/user/user.routes";
 
 const router: Router = Router();
 
-// router.use("/users", userRouter);
+router.use("/auth", authRouter);
+router.use("/users", usersRouter);
 router.use("/carts", cartRouter);
 router.use("/orders", orderRouter);
 

@@ -1,4 +1,5 @@
 import express, { Application, Request, Response, NextFunction } from "express";
+import cookieParser from "cookie-parser";
 import { StatusCodes } from "http-status-codes";
 import router from "./routes/index";
 import { errorMiddleware } from "./middlewares/error.middleware";
@@ -11,6 +12,7 @@ const app: Application = express();
 // ── Middlewares ──────────────────────────────────────
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
 // ── Request Logger ───────────────────────────────────
 app.use((req: Request, res: Response, next: NextFunction): void => {

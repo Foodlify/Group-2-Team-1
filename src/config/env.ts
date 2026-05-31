@@ -14,6 +14,16 @@ const EnvSchema = z.object({
   ),
   DATABASE_URL: z.string().trim().min(1, "DATABASE_URL is required"),
   JWT_SECRET: z.string().trim().min(1, "JWT_SECRET is required"),
+  // Optional refresh-token secret; falls back to JWT_SECRET in the JWT helper.
+  JWT_REFRESH_SECRET: z.string().trim().optional(),
+  JWT_ACCESS_EXPIRES: z.preprocess(
+    (value) => (value === undefined || value === "" ? "15m" : value),
+    z.string(),
+  ),
+  JWT_REFRESH_EXPIRES: z.preprocess(
+    (value) => (value === undefined || value === "" ? "7d" : value),
+    z.string(),
+  ),
 });
 
 export type EnvConfig = z.infer<typeof EnvSchema>;
