@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { schemaRegistry } from "../../openapi/registry";
 import { ORDER_STATUSES } from "./order.status";
-import { PAYMENT_METHODS } from "../transaction/transaction.model";
+import { SUPPORTED_PAYMENT_METHODS } from "../transaction/transaction.model";
 import {
   PaginationMetaSchema,
   PaginationQuerySchema,
@@ -17,8 +17,8 @@ export const PlaceOrderRequestSchema = z
       description: "ID of the delivery address",
       example: "clxyz...",
     }),
-    paymentMethod: z.enum(PAYMENT_METHODS).meta({
-      description: "Payment method to use for this order",
+    paymentMethod: z.enum(SUPPORTED_PAYMENT_METHODS).meta({
+      description: "Payment method (only CASH is currently supported)",
       example: "CASH",
     }),
   })

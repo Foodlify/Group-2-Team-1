@@ -8,7 +8,9 @@ import {
   signAccessToken,
   signRefreshToken,
   verifyRefreshToken,
+  hashToken,
 } from "../../shared/auth/jwt.helper";
+import { customerService } from "../customer/customer.service";
 import { userRepository } from "./user.repository";
 import type { UserModel } from "../../generated/prisma/models";
 import type {
@@ -125,7 +127,9 @@ class UserService {
     }
 
     const user = await userRepository.findById(payload.id);
-    if (!user || user.refreshToken !== refreshToken) {
+    // Stored value is a SHA-256 hash, so compare against the hash of the
+    // presented token (never the raw token).
+    if (!user || user.refreshToken !== hashToken(refreshToken)) {
       throw appError(userErrors.INVALID_REFRESH_TOKEN);
     }
 
@@ -133,8 +137,20 @@ class UserService {
     return { user: this.toUserResponse(user), tokens };
   }
 
-  async logout(userId: string): Promise<void> {
-    await userRepository.updateRefreshToken(userId, null);
+  /**
+   * Revokes the session identified by the refresh cookie. Works even when the
+   * access token has expired (logout no longer depends on `authenticate`).
+   * Invalid/absent tokens are a no-op — the caller still clears the cookies.
+   */
+  async logout(refreshToken: string | undefined): Promise<void> {
+    if (!refreshToken) return;
+    let payload: { id: string };
+    try {
+      payload = verifyRefreshToken(refreshToken);
+    } catch {
+      return;
+    }
+    await userRepository.updateRefreshToken(payload.id, null);
   }
 
   // ─── Admin user management (CRUD) ─────────────────────
@@ -143,6 +159,33 @@ class UserService {
     if (existing) throw appError(userErrors.EMAIL_ALREADY_EXISTS);
 
     const password = await hashPassword(input.password);
+
+    // A CUSTOMER account is only usable with a matching Customer profile (cart/
+    // order flows require it). Create both atomically so an admin can't mint a
+    // half-provisioned customer that 403s everywhere. `phone` is mandatory here.
+    if (input.role === "CUSTOMER") {
+      if (!input.phone) throw appError(userErrors.PHONE_REQUIRED);
+      if (await userRepository.phoneExists(input.phone)) {
+        throw appError(userErrors.PHONE_ALREADY_EXISTS);
+      }
+      try {
+        const user = await userRepository.createCustomerUser({
+          name: input.name,
+          email: input.email,
+          password,
+          phone: input.phone,
+        });
+        return this.toUserResponse(user);
+      } catch (e) {
+        if (isUniqueViolation(e)) {
+          throw violationIncludes(e, "phone")
+            ? appError(userErrors.PHONE_ALREADY_EXISTS)
+            : appError(userErrors.EMAIL_ALREADY_EXISTS);
+        }
+        throw e;
+      }
+    }
+
     const user = await userRepository.create({
       data: {
         name: input.name,
@@ -172,6 +215,12 @@ class UserService {
 
   async update(id: string, input: UpdateUserInput): Promise<UserResponse> {
     await this.assertExists(id);
+    // Promoting an account to CUSTOMER without a Customer profile would create
+    // the same half-provisioned state `create` guards against — block it.
+    if (input.role === "CUSTOMER") {
+      const customer = await customerService.findByUserId(id);
+      if (!customer) throw appError(userErrors.CUSTOMER_PROFILE_REQUIRED);
+    }
     try {
       const user = await userRepository.update({ where: { id }, data: input });
       return this.toUserResponse(user);
@@ -200,7 +249,8 @@ class UserService {
       role: user.role,
     });
     const refreshToken = signRefreshToken({ id: user.id });
-    await userRepository.updateRefreshToken(user.id, refreshToken);
+    // Persist only a hash so a DB leak can't expose usable refresh tokens.
+    await userRepository.updateRefreshToken(user.id, hashToken(refreshToken));
     return { accessToken, refreshToken };
   }
 

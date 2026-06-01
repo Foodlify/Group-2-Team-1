@@ -51,10 +51,14 @@ export class CartRepository extends BaseRepository<PrismaClient["cart"]> {
     customerId: string,
     tx: Prisma.TransactionClient,
   ) {
-    await tx.cart.update({
+    // updateMany (not update) so a missing cart yields count === 0 instead of
+    // throwing P2025 — letting checkout return a clean 404 CART_NOT_FOUND
+    // rather than a 500. Mirrors `lockByCustomerId`.
+    const { count } = await tx.cart.updateMany({
       where: { customerId },
       data: { updatedAt: new Date() },
     });
+    if (count === 0) return null;
     return tx.cart.findUnique({
       where: { customerId },
       include: {

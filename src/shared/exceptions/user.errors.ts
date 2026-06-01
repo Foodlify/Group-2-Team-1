@@ -7,6 +7,15 @@ export const userErrors = {
     message: "Phone already registered",
     statusCode: 409,
   },
+  PHONE_REQUIRED: {
+    message: "phone is required when role is CUSTOMER",
+    statusCode: 400,
+  },
+  CUSTOMER_PROFILE_REQUIRED: {
+    message:
+      "Cannot set role to CUSTOMER for an account without a customer profile; register the customer via /auth/register",
+    statusCode: 400,
+  },
   INVALID_CREDENTIALS: {
     message: "Invalid email or password",
     statusCode: 401,

@@ -1,12 +1,18 @@
 import type { CookieOptions, Response } from "express";
 import env from "../../config/env";
+import {
+  ACCESS_TOKEN_TTL_MS,
+  REFRESH_TOKEN_TTL_MS,
+} from "./jwt.helper";
 
 export const ACCESS_COOKIE = "accessToken";
 export const REFRESH_COOKIE = "refreshToken";
 
-// Cookie lifetimes (ms). Mirror the JWT defaults (access 15m, refresh 7d).
-const ACCESS_MAX_AGE = 15 * 60 * 1000;
-const REFRESH_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
+// Cookie lifetimes (ms) derived from the SAME env values used to sign the
+// tokens (JWT_ACCESS_EXPIRES / JWT_REFRESH_EXPIRES) so a cookie never outlives
+// or expires before its token.
+const ACCESS_MAX_AGE = ACCESS_TOKEN_TTL_MS;
+const REFRESH_MAX_AGE = REFRESH_TOKEN_TTL_MS;
 
 const baseOptions = (): CookieOptions => ({
   httpOnly: true,

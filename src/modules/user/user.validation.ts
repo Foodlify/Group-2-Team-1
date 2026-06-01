@@ -41,6 +41,14 @@ export const CreateUserRequestSchema = z
     email: z.email(),
     password: z.string().min(8),
     role: z.enum(ROLES).meta({ description: "Account role", example: "ADMIN" }),
+    phone: z
+      .string()
+      .min(6)
+      .optional()
+      .meta({
+        description: "Required when role is CUSTOMER (a Customer profile is created)",
+        example: "+201000000000",
+      }),
   })
   .meta({ id: "CreateUserRequest", description: "Admin-created user payload" });
 

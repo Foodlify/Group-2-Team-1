@@ -15,7 +15,7 @@ import {
   type OrderListItem,
   type TimelineEntry,
 } from "./order.model";
-import type { Prisma } from "../../generated/prisma/client";
+import { Prisma } from "../../generated/prisma/client";
 import type { OrderModel, OrderItemsModel } from "../../generated/prisma/models";
 import type {
   PlaceOrderInput,
@@ -63,8 +63,9 @@ class OrderService {
             orderErrors.MENU_ITEM_UNAVAILABLE.statusCode,
           );
         }
-        // Cart-snapshot price must match current menu price or the order is rejected
-        if (Number(current.price) !== Number(cartItem.price)) {
+        // Cart-snapshot price must match current menu price or the order is
+        // rejected — exact Decimal comparison (no float coercion).
+        if (!new Prisma.Decimal(current.price).equals(cartItem.price)) {
           throw new AppError(
             orderErrors.PRICE_CHANGED.message,
             orderErrors.PRICE_CHANGED.statusCode,
@@ -72,9 +73,10 @@ class OrderService {
         }
       }
 
+      // Accumulate the order total in Decimal for exact money arithmetic.
       const totalAmount = cart.cartItems.reduce(
-        (sum, ci) => sum + Number(ci.price) * ci.quantity,
-        0,
+        (sum, ci) => sum.plus(new Prisma.Decimal(ci.price).times(ci.quantity)),
+        new Prisma.Decimal(0),
       );
 
       const order = await orderRepository.createOrder(
@@ -100,7 +102,7 @@ class OrderService {
 
       await paymentService.processPayment(
         input.paymentMethod,
-        totalAmount,
+        totalAmount.toNumber(),
         { orderId: order.id, customerId, currency: "EGP" },
         tx,
       );

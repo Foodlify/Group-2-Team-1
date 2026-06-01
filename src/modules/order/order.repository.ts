@@ -21,7 +21,7 @@ export class OrderRepository extends BaseRepository<PrismaClient["order"]> {
     data: {
       customerId: string;
       addressId: string;
-      totalAmount: number;
+      totalAmount: Prisma.Decimal | number;
       restaurantId: string;
     },
     tx?: Prisma.TransactionClient,

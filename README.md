@@ -430,8 +430,10 @@ All repositories extend a generic, fully type-safe `BaseRepository<TDelegate>` a
 - `findPaginated({ page, limit, where?, include?, orderBy? })`
 
 The base class is generic over a Prisma delegate (e.g., `PrismaClient["user"]`), so
-every method returns correctly typed results with full IDE autocomplete — no `any`,
-no manual type assertions needed in repositories.
+every method returns correctly typed results with full IDE autocomplete — no `any`
+and no manual type assertions needed **in repositories (the subclasses)**. The base
+class itself uses a few localized `as unknown as` casts internally to call across the
+generic delegate; these are a deliberate implementation detail and never leak past it.
 
 **Entity-specific queries** (beyond basic CRUD) belong in the individual repository
 classes. For example, `CartRepository.findByUserId(userId)` or more complex joins that
@@ -520,10 +522,10 @@ stable and lets features merge independently.
 
    const router = Router();
 
-   // Note: Auth middleware is not yet implemented — examples showing `authenticate`
-   // are aspirational and will apply once auth lands.
+   // Auth middleware reads the httpOnly access-token cookie (Bearer header as a
+   // fallback). Mount it per-route or once for the whole router via router.use.
    router.post(
-     "/items",
+     "/",
      authenticate,
      validate({ body: AddToCartRequestSchema }),
      controller.addItem,
@@ -531,11 +533,11 @@ stable and lets features merge independently.
 
    // Document the route for OpenAPI
    routeRegistry.push({
-     path: "/api/v1/carts/items",
+     path: "/api/v1/carts",
      pathItem: {
        post: {
          tags: ["Cart"],
-         security: [{ BearerAuth: [] }],
+         security: [{ cookieAuth: [] }, { BearerAuth: [] }],
          requestBody: {
            content: { "application/json": { schema: AddToCartRequestSchema } },
          },

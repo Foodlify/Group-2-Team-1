@@ -47,7 +47,10 @@ export const refresh = asyncHandler(
 
 export const logout = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
-    await userService.logout(req.user!.id);
+    // Revoke via the refresh cookie so logout works even if the access token
+    // has already expired. Always clear cookies regardless.
+    const token = req.cookies?.[REFRESH_COOKIE] as string | undefined;
+    await userService.logout(token);
     clearAuthCookies(res);
     sendSuccess(res, null, "Logged out successfully");
   },

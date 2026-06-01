@@ -41,7 +41,8 @@ router.delete(
 const tag = "Customer";
 const errorRef = { $ref: "#/components/schemas/ErrorResponse" };
 const validationErrorRef = { $ref: "#/components/schemas/ValidationErrorResponse" };
-const security = [{ BearerAuth: [] }];
+// Cookie is the primary transport; Bearer header is the documented fallback.
+const security: Record<string, string[]>[] = [{ cookieAuth: [] }, { BearerAuth: [] }];
 const addressIdParam = {
   name: "addressId",
   in: "path",

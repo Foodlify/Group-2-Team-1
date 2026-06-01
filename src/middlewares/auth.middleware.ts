@@ -1,9 +1,8 @@
 import { Request, Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
 import { StatusCodes } from "http-status-codes";
-import env from "../config/env";
 import { AppError } from "./error.middleware";
 import { asyncHandler } from "../utils/asyncHandler";
+import { verifyAccessToken } from "../shared/auth/jwt.helper";
 
 export interface JwtPayload {
   id: string;
@@ -44,7 +43,8 @@ export const authenticate = asyncHandler(
     }
 
     try {
-      req.user = jwt.verify(token, env.JWT_SECRET) as JwtPayload;
+      // Rejects refresh tokens and malformed payloads — not just any valid JWT.
+      req.user = verifyAccessToken(token);
     } catch {
       throw new AppError("Invalid or expired token", StatusCodes.UNAUTHORIZED);
     }

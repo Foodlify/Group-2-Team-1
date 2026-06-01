@@ -13,6 +13,19 @@ import "../modules/restaurant/restaurant.validation";
 import "../modules/cart/cart.validation";
 import "../modules/order/order.validation";
 
+// Ensure every route's OpenAPI path is registered too. Routes push into
+// `routeRegistry` as a side effect of being imported; importing them here (not
+// only via app.ts) makes `buildOpenApiDocument()` deterministic even when
+// called outside the Express app (e.g. a spec-generation script). ES modules
+// are singletons, so these imports never double-register.
+import "../modules/user/user.routes";
+import "../modules/customer/customer.routes";
+import "../modules/restaurant/restaurant.routes";
+import "../modules/menu/menu.routes";
+import "../modules/menuItem/menuItem.routes";
+import "../modules/cart/cart.routes";
+import "../modules/order/order.routes";
+
 
 /**
  * Build the OpenAPI 3.1 document by combining:

@@ -29,6 +29,14 @@ type DelegateReturn<
  * Each method is a thin wrapper around the Prisma delegate. Business logic
  * (authorization, transformations, cross-entity operations) belongs in the
  * service layer, not here.
+ *
+ * Note on type-safety: the PUBLIC surface is fully typed — every method's
+ * arguments and return type are derived from the concrete delegate via
+ * `DelegateArg`/`DelegateReturn`, so SUBCLASSES and callers need no manual
+ * assertions. The internal `as unknown as { … }` casts below are a deliberate,
+ * localized implementation detail: TypeScript can't structurally call a method
+ * across the generic `TDelegate` union, so we erase-then-restore the type at
+ * the call boundary only. The casts never leak past this base class.
  */
 export abstract class BaseRepository<
   TDelegate extends {

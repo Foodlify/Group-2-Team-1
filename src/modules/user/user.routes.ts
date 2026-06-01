@@ -19,11 +19,12 @@ export const authRouter: Router = Router();
 authRouter.post("/register", validate({ body: RegisterRequestSchema }), controller.register);
 authRouter.post("/login", validate({ body: LoginRequestSchema }), controller.login);
 authRouter.post("/refresh-token", controller.refresh);
-authRouter.post("/logout", authenticate, controller.logout);
+// Logout revokes via the refresh cookie — no valid access token required.
+authRouter.post("/logout", controller.logout);
 
 authRouter.post("/admin/login", validate({ body: AdminLoginRequestSchema }), controller.adminLogin);
 authRouter.post("/admin/refresh-token", controller.refresh);
-authRouter.post("/admin/logout", authenticate, authorize("ADMIN"), controller.logout);
+authRouter.post("/admin/logout", controller.logout);
 
 // ─── Users router (mounted at /api/v1/users, ADMIN only) ──
 export const usersRouter: Router = Router();
@@ -104,8 +105,8 @@ routeRegistry.push({
   pathItem: {
     post: {
       tags: [authTag],
-      summary: "Logout (clears cookies, revokes refresh token)",
-      security: [{ BearerAuth: [] }],
+      summary: "Logout (clears cookies, revokes refresh token via refresh cookie)",
+      security: [{ cookieAuth: [] }],
       responses: { "200": { description: "Logged out" } },
     },
   },

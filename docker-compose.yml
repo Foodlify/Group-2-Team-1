@@ -1,4 +1,21 @@
 services:
+  # One-shot job: applies pending Prisma migrations before the API boots.
+  # Uses the `build` stage (which still has the Prisma CLI + full deps) since
+  # the lean runtime image omits devDependencies. Runs to completion and exits.
+  migrate:
+    build:
+      context: .
+      target: build
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    command: ["npx", "prisma", "migrate", "deploy"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build:
       context: .
@@ -12,6 +29,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   postgres:
     image: postgres:17-alpine

@@ -14,7 +14,8 @@ const EnvSchema = z.object({
   ),
   DATABASE_URL: z.string().trim().min(1, "DATABASE_URL is required"),
   JWT_SECRET: z.string().trim().min(1, "JWT_SECRET is required"),
-  // Optional refresh-token secret; falls back to JWT_SECRET in the JWT helper.
+  // Dedicated refresh-token secret. Falls back to JWT_SECRET in dev for
+  // convenience, but is REQUIRED in production (enforced in superRefine below).
   JWT_REFRESH_SECRET: z.string().trim().optional(),
   JWT_ACCESS_EXPIRES: z.preprocess(
     (value) => (value === undefined || value === "" ? "15m" : value),
@@ -24,10 +25,29 @@ const EnvSchema = z.object({
     (value) => (value === undefined || value === "" ? "7d" : value),
     z.string(),
   ),
-  // Comma-separated list of allowed CORS origins. Empty = reflect request
-  // origin (dev convenience). Required for httpOnly-cookie auth from a browser.
+  // Comma-separated allowlist of CORS origins. Empty = reflect request origin
+  // (dev convenience only). REQUIRED in production (enforced in superRefine
+  // below) because the app authenticates via httpOnly cookies + credentials.
   CORS_ORIGIN: z.string().trim().optional(),
-});
+})
+  .superRefine((data, ctx) => {
+    if (data.NODE_ENV !== "production") return;
+    // Fail fast at boot rather than silently shipping insecure defaults.
+    if (!data.JWT_REFRESH_SECRET) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["JWT_REFRESH_SECRET"],
+        message: "JWT_REFRESH_SECRET is required in production",
+      });
+    }
+    if (!data.CORS_ORIGIN) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["CORS_ORIGIN"],
+        message: "CORS_ORIGIN is required in production",
+      });
+    }
+  });
 
 export type EnvConfig = z.infer<typeof EnvSchema>;
 

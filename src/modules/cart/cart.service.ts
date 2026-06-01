@@ -11,7 +11,7 @@ import type {
   CartResponse,
   UpdateCartItemInput,
 } from "./cart.validation";
-import type { Prisma } from "../../generated/prisma/client";
+import { Prisma } from "../../generated/prisma/client";
 
 class CartService {
   // ─── Read ─────────────────────────────────────────────
@@ -207,10 +207,14 @@ class CartService {
    * computing derived fields (totalPrice, itemCount).
    */
   private toCartResponse(cart: CartWithItems): CartResponse {
-    const totalPrice = cart.cartItems.reduce(
-      (sum, item) => sum + Number(item.price) * item.quantity,
-      0,
-    );
+    // Accumulate in Decimal to avoid binary-float rounding drift, converting to
+    // Number only at the response boundary (totalPrice is a JSON number).
+    const totalPrice = cart.cartItems
+      .reduce(
+        (sum, item) => sum.plus(new Prisma.Decimal(item.price).times(item.quantity)),
+        new Prisma.Decimal(0),
+      )
+      .toNumber();
     const itemCount = cart.cartItems.reduce(
       (count, item) => count + item.quantity,
       0,
