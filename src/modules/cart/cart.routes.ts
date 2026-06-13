@@ -1,206 +1,82 @@
-import { Router } from "express";
-import { validate } from "../../middlewares/validate.middleware";
-import { authenticate } from "../../middlewares/auth.middleware";
-import { routeRegistry } from "../../openapi/registry";
+import type { Router } from "express";
+import { defineRoutes } from "../../openapi/route-builder";
+import {
+  ErrorResponseSchema,
+  ValidationErrorResponseSchema,
+} from "../../shared/schemas/error.schema";
 import * as controller from "./cart.controller";
 import {
   AddCartItemRequestSchema,
   CartItemIdParamsSchema,
+  CartSuccessResponseSchema,
+  EmptySuccessResponseSchema,
   UpdateCartItemRequestSchema,
 } from "./cart.validation";
 
-const router: Router = Router();
-
-// All cart routes require an authenticated customer.
-router.use(authenticate);
-
-// ─── Handlers ────────────────────────────────────────────
-
-router.get("/", controller.getMyCart);
-
-router.post(
-  "/",
-  validate({ body: AddCartItemRequestSchema }),
-  controller.addItem,
-);
-
-router.patch(
-  "/:itemId",
-  validate({
-    body: UpdateCartItemRequestSchema,
-    params: CartItemIdParamsSchema,
-  }),
-  controller.updateItem,
-);
-
-router.delete(
-  "/:itemId",
-  validate({ params: CartItemIdParamsSchema }),
-  controller.removeItem,
-);
-
-router.delete("/", controller.clearCart);
-
-// ─── OpenAPI Documentation ───────────────────────────────
-
-const tag = "Cart";
-const errorRef = {
-  $ref: "#/components/schemas/ErrorResponse",
-};
-const validationErrorRef = {
-  $ref: "#/components/schemas/ValidationErrorResponse",
-};
-const security: Record<string, string[]>[] = [{ cookieAuth: [] }, { BearerAuth: [] }];
-
-routeRegistry.push({
-  path: "/api/v1/carts",
-  pathItem: {
-    get: {
-      tags: [tag],
-      security,
+const router: Router = defineRoutes({
+  basePath: "/api/v1/carts",
+  tag: "Cart",
+  routes: [
+    {
+      method: "get",
+      path: "/",
+      auth: "user",
       summary: "Get my cart",
       responses: {
-        "200": {
-          description: "Cart retrieved successfully",
-          content: {
-            "application/json": {
-              schema: { $ref: "#/components/schemas/CartSuccessResponse" },
-            },
-          },
-        },
+        200: { description: "Cart retrieved successfully", schema: CartSuccessResponseSchema },
       },
+      handler: controller.getMyCart,
     },
-    delete: {
-      tags: [tag],
-      security,
+    {
+      method: "post",
+      path: "/",
+      auth: "user",
+      summary: "Add item to cart (upserts quantity if item exists)",
+      request: { body: AddCartItemRequestSchema },
+      responses: {
+        201: { description: "Item added", schema: CartSuccessResponseSchema },
+        400: { description: "Validation failed", schema: ValidationErrorResponseSchema },
+        404: { description: "Menu item not found", schema: ErrorResponseSchema },
+      },
+      handler: controller.addItem,
+    },
+    {
+      method: "patch",
+      path: "/:itemId",
+      auth: "user",
+      summary: "Update item quantity",
+      request: { params: CartItemIdParamsSchema, body: UpdateCartItemRequestSchema },
+      responses: {
+        200: { description: "Item updated", schema: CartSuccessResponseSchema },
+        403: { description: "Item does not belong to you", schema: ErrorResponseSchema },
+        404: { description: "Item not found", schema: ErrorResponseSchema },
+      },
+      handler: controller.updateItem,
+    },
+    {
+      method: "delete",
+      path: "/:itemId",
+      auth: "user",
+      summary: "Remove a specific item from cart",
+      request: { params: CartItemIdParamsSchema },
+      responses: {
+        200: { description: "Item removed", schema: CartSuccessResponseSchema },
+        403: { description: "Item does not belong to you", schema: ErrorResponseSchema },
+        404: { description: "Item not found", schema: ErrorResponseSchema },
+      },
+      handler: controller.removeItem,
+    },
+    {
+      method: "delete",
+      path: "/",
+      auth: "user",
       summary: "Clear my cart (delete all items)",
       responses: {
-        "200": {
-          description: "Cart cleared",
-          content: {
-            "application/json": {
-              schema: { $ref: "#/components/schemas/EmptySuccessResponse" },
-            },
-          },
-        },
+        200: { description: "Cart cleared", schema: EmptySuccessResponseSchema },
       },
+      handler: controller.clearCart,
     },
-  },
-});
-
-routeRegistry.push({
-  path: "/api/v1/carts",
-  pathItem: {
-    post: {
-      tags: [tag],
-      security,
-      summary: "Add item to cart (upserts quantity if item exists)",
-      requestBody: {
-        required: true,
-        content: {
-          "application/json": {
-            schema: { $ref: "#/components/schemas/AddCartItemRequest" },
-          },
-        },
-      },
-      responses: {
-        "201": {
-          description: "Item added",
-          content: {
-            "application/json": {
-              schema: { $ref: "#/components/schemas/CartSuccessResponse" },
-            },
-          },
-        },
-        "400": {
-          description: "Validation failed",
-          content: {
-            "application/json": { schema: validationErrorRef },
-          },
-        },
-        "404": {
-          description: "Menu item not found",
-          content: { "application/json": { schema: errorRef } },
-        },
-      },
-    },
-  },
-});
-
-routeRegistry.push({
-  path: "/api/v1/carts/{itemId}",
-  pathItem: {
-    patch: {
-      tags: [tag],
-      security,
-      summary: "Update item quantity",
-      parameters: [
-        {
-          name: "itemId",
-          in: "path",
-          required: true,
-          schema: { type: "string" },
-        },
-      ],
-      requestBody: {
-        required: true,
-        content: {
-          "application/json": {
-            schema: { $ref: "#/components/schemas/UpdateCartItemRequest" },
-          },
-        },
-      },
-      responses: {
-        "200": {
-          description: "Item updated",
-          content: {
-            "application/json": {
-              schema: { $ref: "#/components/schemas/CartSuccessResponse" },
-            },
-          },
-        },
-        "404": {
-          description: "Item not found",
-          content: { "application/json": { schema: errorRef } },
-        },
-        "403": {
-          description: "Item does not belong to you",
-          content: { "application/json": { schema: errorRef } },
-        },
-      },
-    },
-    delete: {
-      tags: [tag],
-      security,
-      summary: "Remove a specific item from cart",
-      parameters: [
-        {
-          name: "itemId",
-          in: "path",
-          required: true,
-          schema: { type: "string" },
-        },
-      ],
-      responses: {
-        "200": {
-          description: "Item removed",
-          content: {
-            "application/json": {
-              schema: { $ref: "#/components/schemas/CartSuccessResponse" },
-            },
-          },
-        },
-        "404": {
-          description: "Item not found",
-          content: { "application/json": { schema: errorRef } },
-        },
-        "403": {
-          description: "Item does not belong to you",
-          content: { "application/json": { schema: errorRef } },
-        },
-      },
-    },
-  },
+  ],
 });
 
 export default router;

@@ -1,4 +1,4 @@
-import type { PrismaClient, Prisma } from "../../generated/prisma/client";
+import { Prisma, type PrismaClient } from "../../generated/prisma/client";
 import { BaseRepository } from "../../shared/repositories/base.repository";
 import prisma from "../../config/prisma";
 import { OrderStatus } from "./order.status";
@@ -55,15 +55,22 @@ export class OrderRepository extends BaseRepository<PrismaClient["order"]> {
     tx?: Prisma.TransactionClient,
   ): Promise<{ status: string; timeline: TimelineEntry[]; updatedAt: Date } | null> {
     const client = tx ?? prisma;
-    const query = expectedStatus
-      ? `UPDATE "Order" SET timeline = timeline || $1::jsonb, status = $2::"OrderStatus", "updatedAt" = NOW() WHERE id = $3 AND status = $4::"OrderStatus" RETURNING status, timeline, "updatedAt"`
-      : `UPDATE "Order" SET timeline = timeline || $1::jsonb, status = $2::"OrderStatus", "updatedAt" = NOW() WHERE id = $3 RETURNING status, timeline, "updatedAt"`;
-    const params = expectedStatus
-      ? [JSON.stringify([entry]), entry.status, id, expectedStatus]
-      : [JSON.stringify([entry]), entry.status, id];
-    const rows = await client.$queryRawUnsafe<
+    // Tagged-template `$queryRaw` (not the `Unsafe` variant): every interpolated
+    // value is a bound parameter, and the optional precondition is composed with
+    // `Prisma.sql`/`Prisma.empty` rather than string concatenation.
+    const statusPrecondition = expectedStatus
+      ? Prisma.sql`AND status = ${expectedStatus}::"OrderStatus"`
+      : Prisma.empty;
+    const rows = await client.$queryRaw<
       Array<{ status: string; timeline: unknown; updatedAt: Date }>
-    >(query, ...params);
+    >(Prisma.sql`
+      UPDATE "Order"
+      SET timeline = timeline || ${JSON.stringify([entry])}::jsonb,
+          status = ${entry.status}::"OrderStatus",
+          "updatedAt" = NOW()
+      WHERE id = ${id} ${statusPrecondition}
+      RETURNING status, timeline, "updatedAt"
+    `);
     const row = rows[0];
     if (!row) return null;
     return {

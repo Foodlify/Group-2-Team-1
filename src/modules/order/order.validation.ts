@@ -159,6 +159,7 @@ export const OrderListItemResponseSchema = z
 export const OrderSuccessResponseSchema = z
   .object({
     success: z.literal(true),
+    message: z.string(),
     data: OrderResponseSchema,
   })
   .meta({ id: "OrderSuccessResponse" });
@@ -166,6 +167,7 @@ export const OrderSuccessResponseSchema = z
 export const OrderListSuccessResponseSchema = z
   .object({
     success: z.literal(true),
+    message: z.string(),
     data: z.array(OrderListItemResponseSchema),
     meta: PaginationMetaSchema,
   })

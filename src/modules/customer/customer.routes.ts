@@ -1,135 +1,97 @@
-import { Router } from "express";
-import { validate } from "../../middlewares/validate.middleware";
-import { authenticate } from "../../middlewares/auth.middleware";
-import { routeRegistry } from "../../openapi/registry";
+import type { Router } from "express";
+import { defineRoutes } from "../../openapi/route-builder";
+import {
+  ErrorResponseSchema,
+  ValidationErrorResponseSchema,
+} from "../../shared/schemas/error.schema";
 import * as controller from "./customer.controller";
 import {
   AddressIdParamsSchema,
+  AddressListSuccessResponseSchema,
+  AddressSuccessResponseSchema,
   CreateAddressRequestSchema,
+  CustomerSuccessResponseSchema,
   UpdateAddressRequestSchema,
   UpdateCustomerRequestSchema,
 } from "./customer.validation";
 
-const router: Router = Router();
-
-// All customer routes require an authenticated user.
-router.use(authenticate);
-
-// ─── Profile ─────────────────────────────────────────────
-router.get("/me", controller.getMe);
-router.patch("/me", validate({ body: UpdateCustomerRequestSchema }), controller.updateMe);
-
-// ─── Addresses ───────────────────────────────────────────
-router.get("/me/addresses", controller.listAddresses);
-router.post(
-  "/me/addresses",
-  validate({ body: CreateAddressRequestSchema }),
-  controller.addAddress,
-);
-router.patch(
-  "/me/addresses/:addressId",
-  validate({ params: AddressIdParamsSchema, body: UpdateAddressRequestSchema }),
-  controller.updateAddress,
-);
-router.delete(
-  "/me/addresses/:addressId",
-  validate({ params: AddressIdParamsSchema }),
-  controller.deleteAddress,
-);
-
-// ─── OpenAPI Documentation ───────────────────────────────
-const tag = "Customer";
-const errorRef = { $ref: "#/components/schemas/ErrorResponse" };
-const validationErrorRef = { $ref: "#/components/schemas/ValidationErrorResponse" };
-// Cookie is the primary transport; Bearer header is the documented fallback.
-const security: Record<string, string[]>[] = [{ cookieAuth: [] }, { BearerAuth: [] }];
-const addressIdParam = {
-  name: "addressId",
-  in: "path",
-  required: true,
-  schema: { type: "string" as const },
-} as const;
-const jsonRef = (ref: string) => ({
-  "application/json": { schema: { $ref: `#/components/schemas/${ref}` } },
-});
-
-routeRegistry.push({
-  path: "/api/v1/customers/me",
-  pathItem: {
-    get: {
-      tags: [tag],
+const router: Router = defineRoutes({
+  basePath: "/api/v1/customers",
+  tag: "Customer",
+  routes: [
+    {
+      method: "get",
+      path: "/me",
+      auth: "user",
       summary: "Get my customer profile",
-      security,
       responses: {
-        "200": { description: "Profile", content: jsonRef("CustomerSuccessResponse") },
-        "403": { description: "Not a customer account", content: jsonRef("ErrorResponse") },
+        200: { description: "Profile", schema: CustomerSuccessResponseSchema },
+        403: { description: "Not a customer account", schema: ErrorResponseSchema },
       },
+      handler: controller.getMe,
     },
-    patch: {
-      tags: [tag],
+    {
+      method: "patch",
+      path: "/me",
+      auth: "user",
       summary: "Update my profile (name / phone)",
-      security,
-      requestBody: { required: true, content: jsonRef("UpdateCustomerRequest") },
+      request: { body: UpdateCustomerRequestSchema },
       responses: {
-        "200": { description: "Updated", content: jsonRef("CustomerSuccessResponse") },
-        "400": { description: "Validation failed", content: { "application/json": { schema: validationErrorRef } } },
-        "409": { description: "Phone already registered", content: { "application/json": { schema: errorRef } } },
+        200: { description: "Updated", schema: CustomerSuccessResponseSchema },
+        400: { description: "Validation failed", schema: ValidationErrorResponseSchema },
+        409: { description: "Phone already registered", schema: ErrorResponseSchema },
       },
+      handler: controller.updateMe,
     },
-  },
-});
-
-routeRegistry.push({
-  path: "/api/v1/customers/me/addresses",
-  pathItem: {
-    get: {
-      tags: [tag],
+    {
+      method: "get",
+      path: "/me/addresses",
+      auth: "user",
       summary: "List my addresses",
-      security,
       responses: {
-        "200": { description: "Addresses", content: jsonRef("AddressListSuccessResponse") },
+        200: { description: "Addresses", schema: AddressListSuccessResponseSchema },
       },
+      handler: controller.listAddresses,
     },
-    post: {
-      tags: [tag],
+    {
+      method: "post",
+      path: "/me/addresses",
+      auth: "user",
       summary: "Add an address",
-      security,
-      requestBody: { required: true, content: jsonRef("CreateAddressRequest") },
+      request: { body: CreateAddressRequestSchema },
       responses: {
-        "201": { description: "Created", content: jsonRef("AddressSuccessResponse") },
-        "400": { description: "Validation failed", content: { "application/json": { schema: validationErrorRef } } },
+        201: { description: "Created", schema: AddressSuccessResponseSchema },
+        400: { description: "Validation failed", schema: ValidationErrorResponseSchema },
       },
+      handler: controller.addAddress,
     },
-  },
-});
-
-routeRegistry.push({
-  path: "/api/v1/customers/me/addresses/{addressId}",
-  pathItem: {
-    patch: {
-      tags: [tag],
+    {
+      method: "patch",
+      path: "/me/addresses/:addressId",
+      auth: "user",
       summary: "Update one of my addresses",
-      security,
-      parameters: [addressIdParam],
-      requestBody: { required: true, content: jsonRef("UpdateAddressRequest") },
+      request: { params: AddressIdParamsSchema, body: UpdateAddressRequestSchema },
       responses: {
-        "200": { description: "Updated", content: jsonRef("AddressSuccessResponse") },
-        "403": { description: "Address not yours", content: { "application/json": { schema: errorRef } } },
-        "404": { description: "Address not found", content: { "application/json": { schema: errorRef } } },
+        200: { description: "Updated", schema: AddressSuccessResponseSchema },
+        403: { description: "Address not yours", schema: ErrorResponseSchema },
+        404: { description: "Address not found", schema: ErrorResponseSchema },
       },
+      handler: controller.updateAddress,
     },
-    delete: {
-      tags: [tag],
+    {
+      method: "delete",
+      path: "/me/addresses/:addressId",
+      auth: "user",
       summary: "Delete one of my addresses",
-      security,
-      parameters: [addressIdParam],
+      request: { params: AddressIdParamsSchema },
       responses: {
-        "200": { description: "Deleted" },
-        "403": { description: "Address not yours", content: { "application/json": { schema: errorRef } } },
-        "404": { description: "Address not found", content: { "application/json": { schema: errorRef } } },
+        200: { description: "Deleted" },
+        403: { description: "Address not yours", schema: ErrorResponseSchema },
+        404: { description: "Address not found", schema: ErrorResponseSchema },
       },
+      handler: controller.deleteAddress,
     },
-  },
+  ],
 });
 
 export default router;

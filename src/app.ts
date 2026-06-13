@@ -1,9 +1,11 @@
 import express, { Application, Request, Response, NextFunction } from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
+import helmet from "helmet";
 import { StatusCodes } from "http-status-codes";
 import router from "./routes/index";
 import { errorMiddleware } from "./middlewares/error.middleware";
+import { apiLimiter } from "./middlewares/rateLimit.middleware";
 import logger from "./config/logger";
 import prisma from "./config/prisma";
 import env from "./config/env";
@@ -12,6 +14,8 @@ import { serveOpenApi } from "./openapi/serve";
 const app: Application = express();
 
 // ── Middlewares ──────────────────────────────────────
+// Security headers first so every response (including errors) carries them.
+app.use(helmet());
 // CORS with credentials so browsers send/receive the httpOnly auth cookies.
 // `CORS_ORIGIN` (comma-separated) restricts origins in production; when unset
 // we reflect the request origin (dev convenience).
@@ -37,7 +41,8 @@ app.use((req: Request, res: Response, next: NextFunction): void => {
 serveOpenApi(app);
 
 // ── Routes ───────────────────────────────────────────
-app.use("/api/v1", router);
+// General-purpose rate limit as a safety net across the whole API.
+app.use("/api/v1", apiLimiter, router);
 
 // ── Health Check ─────────────────────────────────────
 app.get("/health", async (req: Request, res: Response): Promise<void> => {

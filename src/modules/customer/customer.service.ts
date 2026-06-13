@@ -1,4 +1,5 @@
-import { AppError } from "../../middlewares/error.middleware";
+import { appError } from "../../middlewares/error.middleware";
+import { isUniqueViolation } from "../../shared/exceptions/prisma.errors";
 import { customerErrors } from "../../shared/exceptions/customer.errors";
 import { customerRepository } from "./customer.repository";
 import type { CustomerResponse, UpdateCustomerInput } from "./customer.validation";
@@ -6,12 +7,6 @@ import type { CustomerResponse, UpdateCustomerInput } from "./customer.validatio
 type CustomerDetails = NonNullable<
   Awaited<ReturnType<typeof customerRepository.findByUserIdWithDetails>>
 >;
-
-const isUniqueViolation = (e: unknown): boolean =>
-  typeof e === "object" && e !== null && (e as { code?: unknown }).code === "P2002";
-
-const appError = (def: { message: string; statusCode: number }): AppError =>
-  new AppError(def.message, def.statusCode);
 
 class CustomerService {
   async findById(id: string) {

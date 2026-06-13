@@ -1,19 +1,14 @@
-import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client";
 import { Pool } from "pg";
+import env from "./env";
 import logger from "./logger";
 
-const databaseUrl = process.env.DATABASE_URL;
-const nodeEnv = process.env.NODE_ENV || "development";
-
-if (!databaseUrl) {
-  throw new Error("DATABASE_URL is required");
-}
-
 // ─── Connection Pool ─────────────────────────────────
+// `env` is the single, validated source of configuration — DATABASE_URL is
+// already guaranteed present/non-empty there, so no re-check is needed.
 const pool = new Pool({
-  connectionString: databaseUrl,
+  connectionString: env.DATABASE_URL,
   max: 10,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
@@ -26,7 +21,7 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({
   adapter,
   log:
-    nodeEnv === "development"
+    env.NODE_ENV === "development"
       ? ["query", "info", "warn", "error"]
       : ["error"],
 });

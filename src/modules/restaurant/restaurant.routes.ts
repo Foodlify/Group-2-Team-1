@@ -1,158 +1,97 @@
-import { Router } from "express";
-import { validate } from "../../middlewares/validate.middleware";
-import { authenticate, authorize } from "../../middlewares/auth.middleware";
-import { routeRegistry } from "../../openapi/registry";
+import type { Router } from "express";
+import { defineRoutes } from "../../openapi/route-builder";
+import {
+  ErrorResponseSchema,
+  ValidationErrorResponseSchema,
+} from "../../shared/schemas/error.schema";
+import { MenuListSuccessResponseSchema } from "../menu/menu.validation";
 import * as controller from "./restaurant.controller";
 import {
   CreateRestaurantRequestSchema,
   RestaurantIdParamsSchema,
+  RestaurantListSuccessResponseSchema,
   RestaurantQuerySchema,
+  RestaurantSuccessResponseSchema,
   UpdateRestaurantRequestSchema,
 } from "./restaurant.validation";
 
-const router: Router = Router();
-
-// ─── Public catalog reads ────────────────────────────────
-router.get("/", validate({ query: RestaurantQuerySchema }), controller.listRestaurants);
-router.get(
-  "/:restaurantId",
-  validate({ params: RestaurantIdParamsSchema }),
-  controller.getRestaurant,
-);
-router.get(
-  "/:restaurantId/menus",
-  validate({ params: RestaurantIdParamsSchema }),
-  controller.getRestaurantMenus,
-);
-
-// ─── Admin management (ADMIN only) ───────────────────────
-router.post(
-  "/",
-  authenticate,
-  authorize("ADMIN"),
-  validate({ body: CreateRestaurantRequestSchema }),
-  controller.createRestaurant,
-);
-router.patch(
-  "/:restaurantId",
-  authenticate,
-  authorize("ADMIN"),
-  validate({ params: RestaurantIdParamsSchema, body: UpdateRestaurantRequestSchema }),
-  controller.updateRestaurant,
-);
-router.delete(
-  "/:restaurantId",
-  authenticate,
-  authorize("ADMIN"),
-  validate({ params: RestaurantIdParamsSchema }),
-  controller.deleteRestaurant,
-);
-
-// ─── OpenAPI ─────────────────────────────────────────────
-const tag = "Catalog";
-const errorRef = { $ref: "#/components/schemas/ErrorResponse" };
-const validationErrorRef = { $ref: "#/components/schemas/ValidationErrorResponse" };
-const restaurantIdParam = { name: "restaurantId", in: "path", required: true, schema: { type: "string" as const } } as const;
-const security: Record<string, string[]>[] = [{ cookieAuth: [] }, { BearerAuth: [] }];
-const jsonBody = (ref: string) => ({
-  required: true,
-  content: { "application/json": { schema: { $ref: `#/components/schemas/${ref}` } } },
-});
-
-routeRegistry.push({
-  path: "/api/v1/restaurants",
-  pathItem: {
-    get: {
-      tags: [tag],
+const router: Router = defineRoutes({
+  basePath: "/api/v1/restaurants",
+  tag: "Catalog",
+  routes: [
+    {
+      method: "get",
+      path: "/",
       summary: "List restaurants (paginated, optional name search)",
-      parameters: [
-        { name: "page", in: "query", schema: { type: "integer", default: 1 } },
-        { name: "limit", in: "query", schema: { type: "integer", default: 20 } },
-        { name: "search", in: "query", schema: { type: "string" }, description: "Case-insensitive name search" },
-      ],
+      request: { query: RestaurantQuerySchema },
       responses: {
-        "200": { description: "Restaurants", content: { "application/json": { schema: { $ref: "#/components/schemas/RestaurantListSuccessResponse" } } } },
+        200: { description: "Restaurants", schema: RestaurantListSuccessResponseSchema },
       },
+      handler: controller.listRestaurants,
     },
-  },
-});
-
-routeRegistry.push({
-  path: "/api/v1/restaurants/{restaurantId}",
-  pathItem: {
-    get: {
-      tags: [tag],
+    {
+      method: "get",
+      path: "/:restaurantId",
       summary: "Get a restaurant by ID",
-      parameters: [restaurantIdParam],
+      request: { params: RestaurantIdParamsSchema },
       responses: {
-        "200": { description: "Restaurant", content: { "application/json": { schema: { $ref: "#/components/schemas/RestaurantSuccessResponse" } } } },
-        "404": { description: "Restaurant not found", content: { "application/json": { schema: errorRef } } },
+        200: { description: "Restaurant", schema: RestaurantSuccessResponseSchema },
+        404: { description: "Restaurant not found", schema: ErrorResponseSchema },
       },
+      handler: controller.getRestaurant,
     },
-  },
-});
-
-routeRegistry.push({
-  path: "/api/v1/restaurants/{restaurantId}/menus",
-  pathItem: {
-    get: {
-      tags: [tag],
+    {
+      method: "get",
+      path: "/:restaurantId/menus",
       summary: "List a restaurant's menus",
-      parameters: [restaurantIdParam],
+      request: { params: RestaurantIdParamsSchema },
       responses: {
-        "200": { description: "Menus", content: { "application/json": { schema: { $ref: "#/components/schemas/MenuListSuccessResponse" } } } },
-        "404": { description: "Restaurant not found", content: { "application/json": { schema: errorRef } } },
+        200: { description: "Menus", schema: MenuListSuccessResponseSchema },
+        404: { description: "Restaurant not found", schema: ErrorResponseSchema },
       },
+      handler: controller.getRestaurantMenus,
     },
-  },
-});
-
-// ─── Admin management docs ───────────────────────────────
-routeRegistry.push({
-  path: "/api/v1/restaurants",
-  pathItem: {
-    post: {
-      tags: [tag],
+    {
+      method: "post",
+      path: "/",
+      auth: ["ADMIN"],
       summary: "Create a restaurant (ADMIN)",
-      security,
-      requestBody: jsonBody("CreateRestaurantRequest"),
+      request: { body: CreateRestaurantRequestSchema },
       responses: {
-        "201": { description: "Created", content: { "application/json": { schema: { $ref: "#/components/schemas/RestaurantSuccessResponse" } } } },
-        "400": { description: "Validation failed", content: { "application/json": { schema: validationErrorRef } } },
-        "403": { description: "Forbidden", content: { "application/json": { schema: errorRef } } },
+        201: { description: "Created", schema: RestaurantSuccessResponseSchema },
+        400: { description: "Validation failed", schema: ValidationErrorResponseSchema },
+        403: { description: "Forbidden", schema: ErrorResponseSchema },
       },
+      handler: controller.createRestaurant,
     },
-  },
-});
-
-routeRegistry.push({
-  path: "/api/v1/restaurants/{restaurantId}",
-  pathItem: {
-    patch: {
-      tags: [tag],
+    {
+      method: "patch",
+      path: "/:restaurantId",
+      auth: ["ADMIN"],
       summary: "Update a restaurant (ADMIN)",
-      security,
-      parameters: [restaurantIdParam],
-      requestBody: jsonBody("UpdateRestaurantRequest"),
+      request: { params: RestaurantIdParamsSchema, body: UpdateRestaurantRequestSchema },
       responses: {
-        "200": { description: "Updated", content: { "application/json": { schema: { $ref: "#/components/schemas/RestaurantSuccessResponse" } } } },
-        "403": { description: "Forbidden", content: { "application/json": { schema: errorRef } } },
-        "404": { description: "Restaurant not found", content: { "application/json": { schema: errorRef } } },
+        200: { description: "Updated", schema: RestaurantSuccessResponseSchema },
+        403: { description: "Forbidden", schema: ErrorResponseSchema },
+        404: { description: "Restaurant not found", schema: ErrorResponseSchema },
       },
+      handler: controller.updateRestaurant,
     },
-    delete: {
-      tags: [tag],
+    {
+      method: "delete",
+      path: "/:restaurantId",
+      auth: ["ADMIN"],
       summary: "Delete a restaurant (ADMIN)",
-      security,
-      parameters: [restaurantIdParam],
+      request: { params: RestaurantIdParamsSchema },
       responses: {
-        "200": { description: "Deleted" },
-        "403": { description: "Forbidden", content: { "application/json": { schema: errorRef } } },
-        "404": { description: "Restaurant not found", content: { "application/json": { schema: errorRef } } },
-        "409": { description: "Restaurant referenced by existing orders", content: { "application/json": { schema: errorRef } } },
+        200: { description: "Deleted" },
+        403: { description: "Forbidden", schema: ErrorResponseSchema },
+        404: { description: "Restaurant not found", schema: ErrorResponseSchema },
+        409: { description: "Restaurant referenced by existing orders", schema: ErrorResponseSchema },
       },
+      handler: controller.deleteRestaurant,
     },
-  },
+  ],
 });
 
 export default router;

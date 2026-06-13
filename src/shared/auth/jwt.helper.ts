@@ -38,8 +38,8 @@ export const parseDurationMs = (value: string): number => {
     throw new Error(`Invalid JWT duration: "${value}"`);
   }
   const amount = Number(match[1]);
-  const unit = match[2] ?? "s";
-  const factor: Record<string, number> = {
+  const unit = (match[2] ?? "s") as "ms" | "s" | "m" | "h" | "d";
+  const factor: Record<"ms" | "s" | "m" | "h" | "d", number> = {
     ms: 1,
     s: 1000,
     m: 60_000,

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { authLimiter } from "../middlewares/rateLimit.middleware";
 import cartRouter from "../modules/cart/cart.routes";
 import orderRouter from "../modules/order/order.routes";
 import { authRouter, usersRouter } from "../modules/user/user.routes";
@@ -9,7 +10,9 @@ import menuItemRouter from "../modules/menuItem/menuItem.routes";
 
 const router: Router = Router();
 
-router.use("/auth", authRouter);
+// Strict limiter in front of auth endpoints to blunt brute-force / credential
+// stuffing (login, register, refresh, admin login).
+router.use("/auth", authLimiter, authRouter);
 router.use("/users", usersRouter);
 router.use("/customers", customerRouter);
 router.use("/restaurants", restaurantRouter);

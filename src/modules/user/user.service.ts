@@ -1,4 +1,8 @@
-import { AppError } from "../../middlewares/error.middleware";
+import { appError } from "../../middlewares/error.middleware";
+import {
+  isUniqueViolation,
+  uniqueViolationIncludes,
+} from "../../shared/exceptions/prisma.errors";
 import { userErrors } from "../../shared/exceptions/user.errors";
 import {
   comparePassword,
@@ -33,31 +37,6 @@ interface AuthResult {
   tokens: AuthTokens;
 }
 
-// ─── Prisma unique-violation helpers (P2002) ─────────────
-const isUniqueViolation = (e: unknown): e is { meta?: unknown } =>
-  typeof e === "object" && e !== null && (e as { code?: unknown }).code === "P2002";
-
-/**
- * Detects whether a P2002 unique violation involves the given field. Handles
- * Prisma 7's driver-adapter shape (`meta.driverAdapterError.cause.constraint.fields`)
- * and the classic `meta.target` (array or string).
- */
-const violationIncludes = (e: { meta?: unknown }, field: string): boolean => {
-  const meta = (e.meta ?? {}) as {
-    target?: unknown;
-    driverAdapterError?: { cause?: { constraint?: { fields?: unknown } } };
-  };
-  const fields = meta.driverAdapterError?.cause?.constraint?.fields;
-  if (Array.isArray(fields)) return fields.some((f) => String(f).includes(field));
-  if (Array.isArray(meta.target)) {
-    return meta.target.some((t) => String(t).includes(field));
-  }
-  return typeof meta.target === "string" && meta.target.includes(field);
-};
-
-const appError = (def: { message: string; statusCode: number }): AppError =>
-  new AppError(def.message, def.statusCode);
-
 class UserService {
   // ─── Customer auth ────────────────────────────────────
   async register(input: RegisterInput): Promise<AuthResult> {
@@ -81,7 +60,7 @@ class UserService {
     } catch (e) {
       // Fallback for a concurrent insert racing the pre-checks above.
       if (isUniqueViolation(e)) {
-        throw violationIncludes(e, "phone")
+        throw uniqueViolationIncludes(e, "phone")
           ? appError(userErrors.PHONE_ALREADY_EXISTS)
           : appError(userErrors.EMAIL_ALREADY_EXISTS);
       }
@@ -178,7 +157,7 @@ class UserService {
         return this.toUserResponse(user);
       } catch (e) {
         if (isUniqueViolation(e)) {
-          throw violationIncludes(e, "phone")
+          throw uniqueViolationIncludes(e, "phone")
             ? appError(userErrors.PHONE_ALREADY_EXISTS)
             : appError(userErrors.EMAIL_ALREADY_EXISTS);
         }

@@ -1,9 +1,10 @@
 import winston from "winston";
 import DailyRotateFile from "winston-daily-rotate-file";
+import env from "./env";
 
 const { combine, timestamp, json, colorize, simple } = winston.format;
 
-const isDev = process.env.NODE_ENV === "development";
+const isDev = env.NODE_ENV === "development";
 
 const winstonLogger = winston.createLogger({
   level: isDev ? "debug" : "info",
