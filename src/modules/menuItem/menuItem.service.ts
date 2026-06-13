@@ -2,8 +2,14 @@ import type { Prisma } from "../../generated/prisma/client";
 import type { MenuItemModel } from "../../generated/prisma/models";
 import { AppError } from "../../middlewares/error.middleware";
 import { catalogErrors } from "../../shared/exceptions/catalog.errors";
+import { isForeignKeyViolation } from "../../shared/exceptions/prisma.errors";
+import { menuRepository } from "../menu/menu.repository";
 import { menuItemRepository } from "./menuItem.repository";
-import type { MenuItemResponse } from "./menuItem.validation";
+import type {
+  CreateMenuItemInput,
+  MenuItemResponse,
+  UpdateMenuItemInput,
+} from "./menuItem.validation";
 
 class MenuItemService {
   // ─── Used internally by cart/order — keep signatures stable ──
@@ -34,6 +40,56 @@ class MenuItemService {
   async listByMenu(menuId: string): Promise<MenuItemResponse[]> {
     const items = await menuItemRepository.findByMenuId(menuId);
     return items.map((i) => this.toMenuItemResponse(i));
+  }
+
+  // ─── Admin management (CRUD) ──────────────────────────
+  async create(input: CreateMenuItemInput): Promise<MenuItemResponse> {
+    if (!(await menuRepository.findById(input.menuId))) {
+      throw new AppError(
+        catalogErrors.MENU_NOT_FOUND.message,
+        catalogErrors.MENU_NOT_FOUND.statusCode,
+      );
+    }
+    const item = await menuItemRepository.create({
+      data: { menuId: input.menuId, name: input.name, price: input.price },
+    });
+    return this.toMenuItemResponse(item);
+  }
+
+  async update(
+    id: string,
+    input: UpdateMenuItemInput,
+  ): Promise<MenuItemResponse> {
+    await this.assertExists(id);
+    const item = await menuItemRepository.update({ where: { id }, data: input });
+    return this.toMenuItemResponse(item);
+  }
+
+  async remove(id: string): Promise<void> {
+    await this.assertExists(id);
+    try {
+      await menuItemRepository.delete({ where: { id } });
+    } catch (e) {
+      // Referenced by cart items / order items via `onDelete: Restrict`.
+      if (isForeignKeyViolation(e)) {
+        throw new AppError(
+          catalogErrors.RESOURCE_IN_USE.message,
+          catalogErrors.RESOURCE_IN_USE.statusCode,
+        );
+      }
+      throw e;
+    }
+  }
+
+  private async assertExists(id: string): Promise<MenuItemModel> {
+    const item = await menuItemRepository.findById(id);
+    if (!item) {
+      throw new AppError(
+        catalogErrors.MENU_ITEM_NOT_FOUND.message,
+        catalogErrors.MENU_ITEM_NOT_FOUND.statusCode,
+      );
+    }
+    return item;
   }
 
   toMenuItemResponse(item: MenuItemModel): MenuItemResponse {

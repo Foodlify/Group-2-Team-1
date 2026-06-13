@@ -1,11 +1,17 @@
 import type { MenuModel } from "../../generated/prisma/models";
 import { AppError } from "../../middlewares/error.middleware";
 import { catalogErrors } from "../../shared/exceptions/catalog.errors";
+import { isForeignKeyViolation } from "../../shared/exceptions/prisma.errors";
 import { menuItemService } from "../menuItem/menuItem.service";
+// Imported as a repository (not the service) to avoid a circular dependency:
+// restaurant.service already imports menuService.
+import { restaurantRepository } from "../restaurant/restaurant.repository";
 import { menuRepository } from "./menu.repository";
 import type {
+  CreateMenuInput,
   MenuResponse,
   MenuWithItemsResponse,
+  UpdateMenuInput,
 } from "./menu.validation";
 import type { MenuItemResponse } from "../menuItem/menuItem.validation";
 
@@ -13,6 +19,12 @@ const menuNotFound = (): AppError =>
   new AppError(
     catalogErrors.MENU_NOT_FOUND.message,
     catalogErrors.MENU_NOT_FOUND.statusCode,
+  );
+
+const restaurantNotFound = (): AppError =>
+  new AppError(
+    catalogErrors.RESTAURANT_NOT_FOUND.message,
+    catalogErrors.RESTAURANT_NOT_FOUND.statusCode,
   );
 
 class MenuService {
@@ -34,6 +46,47 @@ class MenuService {
     const menu = await menuRepository.findById(menuId);
     if (!menu) throw menuNotFound();
     return menuItemService.listByMenu(menuId);
+  }
+
+  // ─── Admin management (CRUD) ──────────────────────────
+  async create(input: CreateMenuInput): Promise<MenuWithItemsResponse> {
+    if (!(await restaurantRepository.findById(input.restaurantId))) {
+      throw restaurantNotFound();
+    }
+    const menu = await menuRepository.create({
+      data: { name: input.name, restaurantId: input.restaurantId },
+    });
+    // A freshly created menu has no items yet.
+    return { ...this.toMenuResponse(menu), items: [] };
+  }
+
+  async update(id: string, input: UpdateMenuInput): Promise<MenuWithItemsResponse> {
+    await this.assertExists(id);
+    await menuRepository.update({ where: { id }, data: input });
+    return this.getByIdWithItems(id);
+  }
+
+  async remove(id: string): Promise<void> {
+    await this.assertExists(id);
+    try {
+      await menuRepository.delete({ where: { id } });
+    } catch (e) {
+      // Cascades to menu items, which may be referenced by carts/orders
+      // (`onDelete: Restrict`).
+      if (isForeignKeyViolation(e)) {
+        throw new AppError(
+          catalogErrors.RESOURCE_IN_USE.message,
+          catalogErrors.RESOURCE_IN_USE.statusCode,
+        );
+      }
+      throw e;
+    }
+  }
+
+  private async assertExists(id: string): Promise<MenuModel> {
+    const menu = await menuRepository.findById(id);
+    if (!menu) throw menuNotFound();
+    return menu;
   }
 
   private toMenuResponse(menu: MenuModel): MenuResponse {
