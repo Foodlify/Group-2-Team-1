@@ -7,6 +7,21 @@ export const MenuItemIdParamsSchema = z
   })
   .meta({ id: "MenuItemIdParams" });
 
+export const CreateMenuItemRequestSchema = z
+  .object({
+    menuId: z.cuid2().meta({ description: "Owning menu ID", example: "clxyz..." }),
+    name: z.string().min(2).meta({ description: "Item name", example: "Margherita Pizza" }),
+    price: z.number().positive().meta({ description: "Unit price", example: 12.99 }),
+  })
+  .meta({ id: "CreateMenuItemRequest", description: "Admin-created menu item payload" });
+
+export const UpdateMenuItemRequestSchema = z
+  .object({
+    name: z.string().min(2).optional().meta({ description: "Item name", example: "Margherita Pizza" }),
+    price: z.number().positive().optional().meta({ description: "Unit price", example: 12.99 }),
+  })
+  .meta({ id: "UpdateMenuItemRequest", description: "Fields to update on a menu item" });
+
 export const MenuItemResponseSchema = z
   .object({
     id: z.cuid2(),
@@ -27,9 +42,13 @@ export const MenuItemListSuccessResponseSchema = z
   .meta({ id: "MenuItemListSuccessResponse" });
 
 schemaRegistry.register("MenuItemIdParams", MenuItemIdParamsSchema);
+schemaRegistry.register("CreateMenuItemRequest", CreateMenuItemRequestSchema);
+schemaRegistry.register("UpdateMenuItemRequest", UpdateMenuItemRequestSchema);
 schemaRegistry.register("MenuItemResponse", MenuItemResponseSchema);
 schemaRegistry.register("MenuItemSuccessResponse", MenuItemSuccessResponseSchema);
 schemaRegistry.register("MenuItemListSuccessResponse", MenuItemListSuccessResponseSchema);
 
 export type MenuItemIdParams = z.infer<typeof MenuItemIdParamsSchema>;
+export type CreateMenuItemInput = z.infer<typeof CreateMenuItemRequestSchema>;
+export type UpdateMenuItemInput = z.infer<typeof UpdateMenuItemRequestSchema>;
 export type MenuItemResponse = z.infer<typeof MenuItemResponseSchema>;
