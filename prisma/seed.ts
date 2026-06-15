@@ -29,6 +29,7 @@ const seed = async (): Promise<void> => {
     create: {
       email: "test@example.com",
       name: "Test User",
+      password: "hashed_placeholder",
       typeId: customerType.id,
     },
   });
@@ -49,6 +50,7 @@ const seed = async (): Promise<void> => {
     restaurant = await prisma.restaurant.create({
       data: {
         name: "Pizza Place",
+        ownerId: testUser.id,
         details: {
           create: { description: "Best pizza in town" },
         },

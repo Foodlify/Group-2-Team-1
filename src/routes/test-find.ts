@@ -15,9 +15,6 @@ async function test() {
   });
 
   const orders = await prisma.order.findMany({ take: 5 });
-  console.log("orders", orders);
-
-  // console.log("all items", allItems);
 }
 
 test().finally(() => prisma.$disconnect());

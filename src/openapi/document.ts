@@ -6,6 +6,7 @@ import env from "../config/env";
 import "../shared/schemas/error.schema";
 import "../shared/schemas/pagination.schema";
 import "../modules/cart/cart.validation";
+import "../modules/auth/auth.validation";
 
 
 /**

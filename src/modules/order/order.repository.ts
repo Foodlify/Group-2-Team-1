@@ -88,6 +88,34 @@ export class OrderRepository extends BaseRepository<PrismaClient["order"]> {
       where: { id },
     });
   }
+
+  async findManyByRestaurantId(restaurantId: string): Promise<OrderWithFullDetails[]> {
+    return this.delegate.findMany({
+      where: {
+        items: {
+          some: {
+            menuItem: {
+              menu: {
+                restaurantId,
+              },
+            },
+          },
+        },
+      },
+      include: {
+        items: {
+          include: {
+            menuItem: {
+              include: { menu: true },
+            },
+          },
+        },
+        address: true,
+        status: true,
+      },
+      orderBy: { orderDate: "desc" },
+    }) as Promise<OrderWithFullDetails[]>;
+  }
 }
 
 export const orderRepository = new OrderRepository();

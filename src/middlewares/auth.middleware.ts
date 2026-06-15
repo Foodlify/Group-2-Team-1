@@ -1,45 +1,23 @@
-import { Request, Response, NextFunction } from "express";
+import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import env from "../config/env";
-import { AppError } from "./error.middleware";
-import { asyncHandler } from "../utils/asyncHandler";
+import type { JwtPayload } from "../modules/auth/auth.model";
 
-export interface JwtPayload {
-  id: string;
-  email: string;
-  role: string;
-}
+export const authenticate = (req: Request, _res: Response, next: NextFunction): void => {
+  const header = req.headers.authorization;
 
-declare global {
-  namespace Express {
-    interface Request {
-      user?: JwtPayload;
-    }
+  if (!header || !header.startsWith("Bearer ")) {
+    _res.status(401).json({ success: false, message: "Missing or invalid authorization header" });
+    return;
   }
-}
 
-export const authenticate = asyncHandler(
-  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const authHeader = req.headers.authorization;
+  const token = header.split(" ")[1];
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      throw new AppError("No token provided", 401);
-    }
-
-    const token = authHeader.split(" ")[1];
-
+  try {
     const decoded = jwt.verify(token, env.JWT_SECRET) as JwtPayload;
-    req.user = decoded;
-
+    req.user = { id: decoded.id, email: decoded.email, role: decoded.role };
     next();
-  },
-);
-
-export const authorize = (...roles: string[]) => {
-  return (req: Request, res: Response, next: NextFunction): void => {
-    if (!req.user || !roles.includes(req.user.role)) {
-      throw new AppError("Not authorized", 403);
-    }
-    next();
-  };
+  } catch {
+    _res.status(401).json({ success: false, message: "Invalid or expired token" });
+  }
 };

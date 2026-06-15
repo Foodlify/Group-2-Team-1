@@ -22,17 +22,21 @@ model UserType {
 }
 
 model User {
-  id     String @id @default(cuid())
-  typeId String
-  name   String
-  email  String @unique
+  id        String @id @default(cuid())
+  typeId    String
+  name      String
+  email     String @unique
+  password  String
 
   userType          UserType                  @relation(fields: [typeId], references: [id], onDelete: Restrict)
+
   roles             UserRole[]
   customer          Customer?
   addresses         Address[]
   cart              Cart?
   preferredPayments PreferredPaymentSetting[]
+  ownedRestaurants  Restaurant[]
+  refreshTokens     RefreshToken[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -98,11 +102,16 @@ model Address {
 model Restaurant {
   id      String             @id @default(cuid())
   name    String
+  ownerId String
   details RestaurantDetails?
   menus   Menu[]
 
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
 }
 
 model RestaurantDetails {
@@ -338,4 +347,22 @@ model AuditingEvent {
 
   @@index([typeId])
   @@index([auditDate])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Auth
+// ═══════════════════════════════════════════════════════════════
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
