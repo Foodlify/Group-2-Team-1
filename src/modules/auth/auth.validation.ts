@@ -47,10 +47,11 @@ export const AuthResponseSchema = z
 export const RefreshResponseSchema = z
   .object({
     accessToken: z.string(),
+    refreshToken: z.string(),
   })
   .meta({
     id: "RefreshResponse",
-    description: "New access token after refresh",
+    description: "New access token and rotated refresh token",
   });
 
 schemaRegistry.register("LoginRequest", LoginRequestSchema);
