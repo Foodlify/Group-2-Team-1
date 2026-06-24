@@ -366,3 +366,16 @@ model RefreshToken {
 
   @@index([userId])
 }
+
+model Otp {
+  id        String   @id @default(cuid())
+  email     String
+  code      String
+  purpose   String
+  used      Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email, purpose])
+}
+

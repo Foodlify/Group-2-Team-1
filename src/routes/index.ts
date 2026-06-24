@@ -4,6 +4,7 @@ import customerRouter from "../modules/customer/customer.routes";
 import orderRouter from "../modules/order/order.route";
 import restaurantRouter from "../modules/restaurant/restaurant.routes";
 import authRouter from "../modules/auth/auth.routes";
+import otpRouter from "../modules/otp/otp.routes";
 const router: Router = Router();
 
 router.use("/carts", cartRouter);
@@ -11,5 +12,6 @@ router.use("/orders", orderRouter);
 router.use("/customers", customerRouter);
 router.use("/restaurants", restaurantRouter);
 router.use("/auth", authRouter);
+router.use("/otp", otpRouter);
 
 export default router;
