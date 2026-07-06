@@ -520,33 +520,40 @@ stable and lets features merge independently.
      validate({ body: AddToCartRequestSchema }),
      controller.addItem,
    );
-
-   // Document the route for OpenAPI
-   routeRegistry.push({
-     path: "/api/v1/carts/items",
-     pathItem: {
-       post: {
-         tags: ["Cart"],
-         security: [{ BearerAuth: [] }],
-         requestBody: {
-           content: { "application/json": { schema: AddToCartRequestSchema } },
-         },
-         responses: {
-           /* ... */
-         },
-       },
-     },
-   });
-
-   export default router;
    ```
+
+<!--
+role: user,
+user type : customer,owner , admin
+ -->
+
+// Document the route for OpenAPI
+routeRegistry.push({
+path: "/api/v1/carts/items",
+pathItem: {
+post: {
+tags: ["Cart"],
+security: [{ BearerAuth: [] }],
+requestBody: {
+content: { "application/json": { schema: AddToCartRequestSchema } },
+},
+responses: {
+/_ ... _/
+},
+},
+},
+});
+
+export default router;
+
+````
 
 6. **Wire up in the main router** (`src/routes/index.ts`):
 
-   ```typescript
-   import cartRouter from "../modules/cart/cart.routes";
-   router.use("/carts", cartRouter);
-   ```
+```typescript
+import cartRouter from "../modules/cart/cart.routes";
+router.use("/carts", cartRouter);
+````
 
 7. **Test, commit, push, PR → main.**
 
