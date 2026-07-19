@@ -1,0 +1,23 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "naraya": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "NaraRouter",
+      "options": {
+        "baseURL": "https://router.bynara.id/v1",
+        "apiKey": "sk-nry-gpqMFCk4btUnh5cTRlYRnCnl_OJTh61YFaU6JuN3XXs"
+      },
+      "models": {
+        "provider/model-id": {
+          "name": "mimo-v2.5-free",
+          "modalities": {
+            "input": ["text", "image"],
+            "output": ["text"]
+          }
+        }
+      }
+    }
+  },
+  "model": "naraya/provider/model-id"
+}

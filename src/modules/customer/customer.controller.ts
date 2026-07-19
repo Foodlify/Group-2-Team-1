@@ -43,17 +43,15 @@ export const updateMyProfile = asyncHandler(
   },
 );
 
-export const updateCustomerAddress = asyncHandler(
-  async (req: Request, res) => {
-    const { customerId, addressId } = req.params as {
-      customerId: string;
-      addressId: string;
-    };
-    const data = await customerService.updateCustomerAddressService(
-      customerId,
-      addressId,
-      req.body,
-    );
-    res.status(200).json({ success: true, data });
-  },
-);
+export const updateCustomerAddress = asyncHandler(async (req: Request, res) => {
+  const { customerId, addressId } = req.params as {
+    customerId: string;
+    addressId: string;
+  };
+  const data = await customerService.updateCustomerAddressService(
+    customerId,
+    addressId,
+    req.body,
+  );
+  res.status(200).json({ success: true, data });
+});

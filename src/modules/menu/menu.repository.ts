@@ -14,6 +14,12 @@ export class MenuRepository extends BaseRepository<PrismaClient["menu"]> {
   async findById(id: string) {
     return this.findUnique({ where: { id } });
   }
+
+  async createMenu(data: any) {
+    return this.create({
+      data,
+    });
+  }
 }
 
 export const menuRepository = new MenuRepository();
