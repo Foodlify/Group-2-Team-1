@@ -154,7 +154,8 @@ model Menu {
   name         String
   restaurantId String
 
-  menuItems MenuItem[]
+  menuItems  MenuItem[]
+  changeLogs MenuChangeLog[]
 
   restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 
@@ -162,6 +163,35 @@ model Menu {
   updatedAt DateTime @updatedAt
 
   @@index([restaurantId])
+}
+
+enum MenuChangeEntity {
+  MENU
+  MENU_ITEM
+}
+
+enum MenuChangeAction {
+  CREATED
+  UPDATED
+  DELETED
+}
+
+/// Append-only audit of catalog changes per menu — powers the official
+/// "View History List of Menu" endpoint. The snapshot carries the row state
+/// after the change (for deletes: the last state before removal).
+model MenuChangeLog {
+  id       String           @id @default(cuid())
+  menuId   String
+  entity   MenuChangeEntity
+  entityId String
+  action   MenuChangeAction
+  snapshot Json
+
+  menu Menu @relation(fields: [menuId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([menuId, createdAt(sort: Desc)])
 }
 
 model MenuItem {

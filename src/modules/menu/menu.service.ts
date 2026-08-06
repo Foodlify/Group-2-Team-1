@@ -7,8 +7,12 @@ import { menuItemService } from "../menuItem/menuItem.service";
 // restaurant.service already imports menuService.
 import { restaurantRepository } from "../restaurant/restaurant.repository";
 import { menuRepository } from "./menu.repository";
+import { menuHistoryRepository } from "./menuHistory.repository";
+import type { PaginationMeta } from "../../shared/schemas/pagination.schema";
 import type {
   CreateMenuInput,
+  MenuChangeLogResponse,
+  MenuHistoryQuery,
   MenuResponse,
   MenuWithItemsResponse,
   UpdateMenuInput,
@@ -56,14 +60,55 @@ class MenuService {
     const menu = await menuRepository.create({
       data: { name: input.name, restaurantId: input.restaurantId },
     });
+    await menuHistoryRepository.log({
+      menuId: menu.id,
+      entity: "MENU",
+      entityId: menu.id,
+      action: "CREATED",
+      snapshot: { name: menu.name },
+    });
     // A freshly created menu has no items yet.
     return { ...this.toMenuResponse(menu), items: [] };
   }
 
-  async update(id: string, input: UpdateMenuInput): Promise<MenuWithItemsResponse> {
+  async update(
+    id: string,
+    input: UpdateMenuInput,
+  ): Promise<MenuWithItemsResponse> {
     await this.assertExists(id);
-    await menuRepository.update({ where: { id }, data: input });
+    const updated = await menuRepository.update({ where: { id }, data: input });
+    await menuHistoryRepository.log({
+      menuId: id,
+      entity: "MENU",
+      entityId: id,
+      action: "UPDATED",
+      snapshot: { name: updated.name },
+    });
     return this.getByIdWithItems(id);
+  }
+
+  /** Official "View History List of Menu" — newest first (ADMIN). */
+  async history(
+    menuId: string,
+    query: MenuHistoryQuery,
+  ): Promise<{ data: MenuChangeLogResponse[]; meta: PaginationMeta }> {
+    await this.assertExists(menuId);
+    const page = await menuHistoryRepository.findPaginatedByMenu(
+      menuId,
+      query.page,
+      query.limit,
+    );
+    return {
+      data: page.data.map((e) => ({
+        id: e.id,
+        entity: e.entity,
+        entityId: e.entityId,
+        action: e.action,
+        snapshot: (e.snapshot ?? {}) as Record<string, unknown>,
+        createdAt: e.createdAt.toISOString(),
+      })),
+      meta: page.meta,
+    };
   }
 
   async remove(id: string): Promise<void> {

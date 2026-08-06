@@ -4,6 +4,7 @@ import { AppError } from "../../middlewares/error.middleware";
 import { catalogErrors } from "../../shared/exceptions/catalog.errors";
 import { isForeignKeyViolation } from "../../shared/exceptions/prisma.errors";
 import { menuRepository } from "../menu/menu.repository";
+import { menuHistoryRepository } from "../menu/menuHistory.repository";
 import { menuItemRepository } from "./menuItem.repository";
 import type {
   CreateMenuItemInput,
@@ -77,6 +78,13 @@ class MenuItemService {
     const item = await menuItemRepository.create({
       data: { menuId: input.menuId, name: input.name, price: input.price },
     });
+    await menuHistoryRepository.log({
+      menuId: item.menuId,
+      entity: "MENU_ITEM",
+      entityId: item.id,
+      action: "CREATED",
+      snapshot: { name: item.name, price: Number(item.price) },
+    });
     return this.toMenuItemResponse(item);
   }
 
@@ -89,11 +97,18 @@ class MenuItemService {
       where: { id },
       data: input,
     });
+    await menuHistoryRepository.log({
+      menuId: item.menuId,
+      entity: "MENU_ITEM",
+      entityId: item.id,
+      action: "UPDATED",
+      snapshot: { name: item.name, price: Number(item.price) },
+    });
     return this.toMenuItemResponse(item);
   }
 
   async remove(id: string): Promise<void> {
-    await this.assertExists(id);
+    const item = await this.assertExists(id);
     try {
       await menuItemRepository.delete({ where: { id } });
     } catch (e) {
@@ -106,6 +121,14 @@ class MenuItemService {
       }
       throw e;
     }
+    // Audit the removal with the last state the item had before deletion.
+    await menuHistoryRepository.log({
+      menuId: item.menuId,
+      entity: "MENU_ITEM",
+      entityId: item.id,
+      action: "DELETED",
+      snapshot: { name: item.name, price: Number(item.price) },
+    });
   }
 
   private async assertExists(id: string): Promise<MenuItemModel> {
