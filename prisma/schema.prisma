@@ -247,6 +247,8 @@ model Cart {
   updatedAt DateTime @updatedAt
 
   @@index([restaurantId])
+  // Supports the abandoned-cart sweep, which scans by last activity.
+  @@index([updatedAt])
 }
 
 model CartItem {
