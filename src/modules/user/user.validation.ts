@@ -90,6 +90,14 @@ export const UserResponseSchema = z
     name: z.string(),
     email: z.email(),
     role: z.enum(ROLES),
+    isActive: z.boolean().meta({
+      description:
+        "False when the account is disabled (admin) or deactivated (self)",
+    }),
+    emailVerified: z.boolean().meta({
+      description:
+        "True once the registration code proved ownership of the email",
+    }),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
   })
@@ -120,6 +128,33 @@ export const UserListSuccessResponseSchema = z
     meta: PaginationMetaSchema,
   })
   .meta({ id: "UserListSuccessResponse" });
+
+// ─── Email verification + account status ─────────────────
+
+export const VerifyEmailRequestSchema = z
+  .object({
+    email: z.email().meta({ example: "jane@example.com" }),
+    code: z
+      .string()
+      .regex(/^\d{6}$/)
+      .meta({
+        description: "The 6-digit code from the email",
+        example: "123456",
+      }),
+  })
+  .meta({
+    id: "VerifyEmailRequest",
+    description: "Complete registration with the emailed code",
+  });
+
+export const UpdateUserStatusRequestSchema = z
+  .object({
+    isActive: z.boolean().meta({
+      description: "false disables the account and revokes all its sessions",
+      example: false,
+    }),
+  })
+  .meta({ id: "UpdateUserStatusRequest" });
 
 // ─── Password reset (forgot password) ────────────────────
 
@@ -159,6 +194,11 @@ export const ResetPasswordRequestSchema = z
 
 schemaRegistry.register("ForgotPasswordRequest", ForgotPasswordRequestSchema);
 schemaRegistry.register("ResetPasswordRequest", ResetPasswordRequestSchema);
+schemaRegistry.register("VerifyEmailRequest", VerifyEmailRequestSchema);
+schemaRegistry.register(
+  "UpdateUserStatusRequest",
+  UpdateUserStatusRequestSchema,
+);
 schemaRegistry.register("RegisterRequest", RegisterRequestSchema);
 schemaRegistry.register("LoginRequest", LoginRequestSchema);
 schemaRegistry.register("AdminLoginRequest", AdminLoginRequestSchema);
@@ -180,6 +220,10 @@ schemaRegistry.register(
 export type RegisterInput = z.infer<typeof RegisterRequestSchema>;
 export type ForgotPasswordInput = z.infer<typeof ForgotPasswordRequestSchema>;
 export type ResetPasswordInput = z.infer<typeof ResetPasswordRequestSchema>;
+export type VerifyEmailInput = z.infer<typeof VerifyEmailRequestSchema>;
+export type UpdateUserStatusInput = z.infer<
+  typeof UpdateUserStatusRequestSchema
+>;
 export type LoginInput = z.infer<typeof LoginRequestSchema>;
 export type AdminLoginInput = z.infer<typeof AdminLoginRequestSchema>;
 export type CreateUserInput = z.infer<typeof CreateUserRequestSchema>;

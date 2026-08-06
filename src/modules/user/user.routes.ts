@@ -12,7 +12,9 @@ import {
   RegisterRequestSchema,
   ResetPasswordRequestSchema,
   UpdateUserRequestSchema,
+  UpdateUserStatusRequestSchema,
   UserIdParamsSchema,
+  VerifyEmailRequestSchema,
 } from "./user.validation";
 
 // ─── Auth router (mounted at /api/v1/auth) ───────────────
@@ -28,9 +30,17 @@ authRouter.post(
   validate({ body: LoginRequestSchema }),
   controller.login,
 );
+// Completes registration and logs the account in.
+authRouter.post(
+  "/verify-email",
+  validate({ body: VerifyEmailRequestSchema }),
+  controller.verifyEmail,
+);
 authRouter.post("/refresh-token", controller.refresh);
 // Logout revokes via the refresh cookie — no valid access token required.
 authRouter.post("/logout", controller.logout);
+// Self-service "Account Deactivate".
+authRouter.post("/deactivate", authenticate, controller.deactivateMyAccount);
 // Forgot-password flow — both behind the same strict auth limiter.
 authRouter.post(
   "/forgot-password",
@@ -81,6 +91,11 @@ usersRouter.delete(
   validate({ params: UserIdParamsSchema }),
   controller.deleteUser,
 );
+usersRouter.patch(
+  "/:id/status",
+  validate({ params: UserIdParamsSchema, body: UpdateUserStatusRequestSchema }),
+  controller.setUserStatus,
+);
 
 // ─── OpenAPI Documentation ───────────────────────────────
 const authTag = "Auth";
@@ -110,10 +125,15 @@ routeRegistry.push({
   pathItem: {
     post: {
       tags: [authTag],
-      summary: "Register a new customer (sets auth cookies)",
+      summary: "Register a new customer (emails a verification code)",
+      description:
+        "Creates the account and emails a 6-digit code. No cookies are set — the account is unusable until POST /api/v1/auth/verify-email succeeds.",
       requestBody: jsonBody("RegisterRequest"),
       responses: {
-        "201": { description: "Registered", content: jsonAuth },
+        "201": {
+          description: "Registered — verification code sent",
+          content: jsonAuth,
+        },
         "400": {
           description: "Validation failed",
           content: { "application/json": { schema: validationErrorRef } },
@@ -138,6 +158,10 @@ routeRegistry.push({
         "200": { description: "Logged in", content: jsonAuth },
         "401": {
           description: "Invalid credentials",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "403": {
+          description: "Email not verified / account disabled",
           content: { "application/json": { schema: errorRef } },
         },
       },
@@ -171,6 +195,83 @@ routeRegistry.push({
         "Logout (clears cookies, revokes refresh token via refresh cookie)",
       security: [{ cookieAuth: [] }],
       responses: { "200": { description: "Logged out" } },
+    },
+  },
+});
+
+routeRegistry.push({
+  path: "/api/v1/auth/verify-email",
+  pathItem: {
+    post: {
+      tags: [authTag],
+      summary: "Verify the registration code (sets auth cookies)",
+      description:
+        'Completes registration: proves ownership of the email with the 6-digit code and logs the account in. Resend via POST /api/v1/otp/send with purpose "registration".',
+      requestBody: jsonBody("VerifyEmailRequest"),
+      responses: {
+        "200": { description: "Verified and logged in", content: jsonAuth },
+        "400": {
+          description: "Invalid or expired code",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "409": {
+          description: "Email already verified",
+          content: { "application/json": { schema: errorRef } },
+        },
+      },
+    },
+  },
+});
+
+routeRegistry.push({
+  path: "/api/v1/auth/deactivate",
+  pathItem: {
+    post: {
+      tags: [authTag],
+      summary: "Deactivate my own account",
+      description:
+        "Self-service Account Deactivate: disables the account, revokes every refresh session, and clears the auth cookies. An admin can re-enable it.",
+      security: [{ cookieAuth: [] }, { BearerAuth: [] }],
+      responses: {
+        "200": { description: "Deactivated" },
+        "401": {
+          description: "Not authenticated",
+          content: { "application/json": { schema: errorRef } },
+        },
+      },
+    },
+  },
+});
+
+routeRegistry.push({
+  path: "/api/v1/users/{id}/status",
+  pathItem: {
+    patch: {
+      tags: [usersTag],
+      summary: "Enable or disable an account (ADMIN)",
+      description:
+        "Disabling revokes every refresh session, so the account is locked out as soon as its access token expires.",
+      security: [{ cookieAuth: [] }, { BearerAuth: [] }],
+      parameters: [idParam],
+      requestBody: jsonBody("UpdateUserStatusRequest"),
+      responses: {
+        "200": {
+          description: "Status updated",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/UserSuccessResponse" },
+            },
+          },
+        },
+        "403": {
+          description: "Forbidden",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "404": {
+          description: "Not found",
+          content: { "application/json": { schema: errorRef } },
+        },
+      },
     },
   },
 });

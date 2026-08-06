@@ -14,9 +14,23 @@ import type { UserIdParams, UserQuery } from "./user.validation";
 
 export const register = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
-    const { user, tokens } = await userService.register(req.body);
+    // No cookies here on purpose — the account is unusable until the emailed
+    // code is verified, which is what logs the customer in.
+    const { user } = await userService.register(req.body);
+    sendSuccess(
+      res,
+      { user },
+      "Registered — check your email for the verification code",
+      StatusCodes.CREATED,
+    );
+  },
+);
+
+export const verifyEmail = asyncHandler(
+  async (req: Request, res: Response): Promise<void> => {
+    const { user, tokens } = await userService.verifyEmail(req.body);
     setAuthCookies(res, tokens);
-    sendSuccess(res, { user }, "Registered successfully", StatusCodes.CREATED);
+    sendSuccess(res, { user }, "Email verified — you are now logged in");
   },
 );
 
@@ -72,6 +86,27 @@ export const resetPassword = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     await userService.resetPassword(req.body);
     sendSuccess(res, null, "Password reset successfully — please log in again");
+  },
+);
+
+// ─── Account status ───────────────────────────────────────
+
+export const setUserStatus = asyncHandler(
+  async (req: Request<UserIdParams>, res: Response): Promise<void> => {
+    const user = await userService.setActive(req.params.id, req.body.isActive);
+    sendSuccess(
+      res,
+      user,
+      user.isActive ? "Account enabled" : "Account disabled",
+    );
+  },
+);
+
+export const deactivateMyAccount = asyncHandler(
+  async (req: Request, res: Response): Promise<void> => {
+    await userService.deactivateSelf(req.user!.id);
+    clearAuthCookies(res);
+    sendSuccess(res, null, "Account deactivated");
   },
 );
 
