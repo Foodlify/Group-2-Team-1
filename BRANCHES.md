@@ -39,6 +39,7 @@
 | `feat/menu-history` | 2026-08-06 | View History List of Menu (بند رسمي) — جدول MenuChangeLog بيتكتب تلقائياً من عمليات الأدمن على المنيو وأصنافه (create/update/delete + snapshot) وendpoint أدمن لعرضه | ✅ مدموج في develop |
 | `feat/auth-password-reset` | 2026-08-06 | Forgot / Reset Password فوق الـ OTP الجاهز — رد موحّد يمنع user enumeration، والريسِت بيلغي كل الـ refresh sessions | ✅ مدموج في develop |
 | `feat/auth-account-status` | 2026-08-06 | ربط الـ OTP بالتسجيل (تفعيل الإيميل إجباري قبل استخدام الحساب) + Enable/Disable Account للأدمن + Account Deactivate للعميل نفسه | ✅ مدموج في develop |
+| `feat/guest-cart` | 2026-08-06 | Guest Cart + الدمج بعد الـ Login — الكارت بقى ملك عميل **أو** زائر (guestToken بهيدر X-Cart-Token) بـ CHECK constraint على مستوى الداتابيز، والدمج بيجمع الكميات أو بيسلّم الكارت كما هو | ✅ مدموج في develop |
 
 > **مين متغطي بمين؟** الفروع 2→6 كلها محتواها موجود جوا `feat/admin-crud` (رقم 8) — بتفضل على GitHub كسجل للـ workflow، إنما الشغل الجديد كله فوق الأساس. الاستثناءان: الكوميتات الثلاثة بتوع الـ route-builder على رقم 6 (مستبعدين بقرار)، وشغل كمال (رقم 7).
 
