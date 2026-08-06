@@ -6,6 +6,7 @@ import env from "../config/env";
 import "../shared/schemas/error.schema";
 import "../shared/schemas/pagination.schema";
 import "../modules/user/user.validation";
+import "../modules/otp/otp.validation";
 import "../modules/customer/customer.validation";
 import "../modules/menuItem/menuItem.validation";
 import "../modules/menu/menu.validation";
@@ -19,13 +20,13 @@ import "../modules/order/order.validation";
 // called outside the Express app (e.g. a spec-generation script). ES modules
 // are singletons, so these imports never double-register.
 import "../modules/user/user.routes";
+import "../modules/otp/otp.routes";
 import "../modules/customer/customer.routes";
 import "../modules/restaurant/restaurant.routes";
 import "../modules/menu/menu.routes";
 import "../modules/menuItem/menuItem.routes";
 import "../modules/cart/cart.routes";
 import "../modules/order/order.routes";
-
 
 /**
  * Build the OpenAPI 3.1 document by combining:
