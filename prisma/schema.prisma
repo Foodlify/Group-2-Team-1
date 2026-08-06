@@ -25,6 +25,13 @@ model User {
   password String
   /// Account role — CUSTOMER for storefront users, ADMIN for dashboard.
   role     Role   @default(CUSTOMER)
+  /// When email ownership was proven via the registration OTP. Null until
+  /// verified — login stays blocked while it is null.
+  emailVerifiedAt DateTime?
+  /// Enable/Disable account: admins flip it for any account, customers can
+  /// deactivate their own. A disabled account can't log in and its existing
+  /// sessions are revoked.
+  isActive        Boolean   @default(true)
 
   customer      Customer?
   refreshTokens RefreshToken[]
