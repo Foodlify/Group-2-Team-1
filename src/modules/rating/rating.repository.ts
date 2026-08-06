@@ -48,6 +48,45 @@ export class RatingRepository extends BaseRepository<
     });
     return { averageRating: stats._avg.rating, ratingsCount: stats._count };
   }
+
+  /**
+   * Top restaurants by average rating (SQL groupBy — ties broken by ratings
+   * count). Restaurants with zero ratings never appear; `excludeRestaurantIds`
+   * powers personalised recommendations ("places you haven't tried yet").
+   */
+  async topRatedRestaurants(
+    limit: number,
+    excludeRestaurantIds: string[] = [],
+  ) {
+    const grouped = await prisma.restaurantRate.groupBy({
+      by: ["restaurantId"],
+      where:
+        excludeRestaurantIds.length > 0
+          ? { restaurantId: { notIn: excludeRestaurantIds } }
+          : {},
+      _avg: { rating: true },
+      _count: { restaurantId: true },
+      orderBy: [
+        { _avg: { rating: "desc" } },
+        { _count: { restaurantId: "desc" } },
+      ],
+      take: limit,
+    });
+    if (grouped.length === 0) return [];
+
+    const restaurants = await prisma.restaurant.findMany({
+      where: { id: { in: grouped.map((g) => g.restaurantId) } },
+      select: { id: true, name: true },
+    });
+    const names = new Map(restaurants.map((r) => [r.id, r.name]));
+
+    return grouped.map((g) => ({
+      restaurantId: g.restaurantId,
+      name: names.get(g.restaurantId) ?? "",
+      averageRating: g._avg.rating,
+      ratingsCount: g._count.restaurantId,
+    }));
+  }
 }
 
 export const ratingRepository = new RatingRepository();

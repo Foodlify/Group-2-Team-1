@@ -13,8 +13,10 @@ import { ratingRepository } from "./rating.repository";
 import type { RestaurantRateWithCustomer } from "./rating.model";
 import type {
   CreateRatingInput,
+  DiscoveryQuery,
   RatingResponse,
   RestaurantRatingsSummary,
+  TopRatedRestaurant,
 } from "./rating.validation";
 
 class RatingService {
@@ -95,7 +97,45 @@ class RatingService {
     };
   }
 
+  // ─── Discovery ────────────────────────────────────────
+  /** Official "Top Rating Restaurants" — public. */
+  async topRated(query: DiscoveryQuery): Promise<TopRatedRestaurant[]> {
+    const rows = await ratingRepository.topRatedRestaurants(query.limit);
+    return rows.map((r) => this.toTopRated(r));
+  }
+
+  /**
+   * Official "Restaurants Recommendations" — the top-rated restaurants the
+   * customer hasn't ordered from yet. A customer with no order history just
+   * gets the plain top-rated list.
+   */
+  async recommendationsFor(
+    customerId: string,
+    query: DiscoveryQuery,
+  ): Promise<TopRatedRestaurant[]> {
+    const visited =
+      await orderRepository.distinctRestaurantIdsForCustomer(customerId);
+    const rows = await ratingRepository.topRatedRestaurants(
+      query.limit,
+      visited,
+    );
+    return rows.map((r) => this.toTopRated(r));
+  }
+
   // ─── Private helpers ──────────────────────────────────
+  private toTopRated(r: {
+    restaurantId: string;
+    name: string;
+    averageRating: number | null;
+    ratingsCount: number;
+  }): TopRatedRestaurant {
+    return {
+      ...r,
+      averageRating:
+        r.averageRating === null ? null : Math.round(r.averageRating * 10) / 10,
+    };
+  }
+
   private toRatingResponse(r: RestaurantRateWithCustomer): RatingResponse {
     return {
       id: r.id,

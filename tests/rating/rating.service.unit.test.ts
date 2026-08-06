@@ -12,12 +12,14 @@ vi.mock("../../src/modules/rating/rating.repository", () => ({
     findByCustomerId: vi.fn(),
     findPaginatedByRestaurant: vi.fn(),
     getRestaurantStats: vi.fn(),
+    topRatedRestaurants: vi.fn(),
   },
 }));
 
 vi.mock("../../src/modules/order/order.repository", () => ({
   orderRepository: {
     findById: vi.fn(),
+    distinctRestaurantIdsForCustomer: vi.fn(),
   },
 }));
 
@@ -228,5 +230,42 @@ describe("listForRestaurant", () => {
 
     expect(result.summary).toEqual({ averageRating: null, ratingsCount: 0 });
     expect(result.ratings).toEqual([]);
+  });
+});
+
+describe("discovery", () => {
+  it("rounds averages in the top-rated list", async () => {
+    mockedRates.topRatedRestaurants.mockResolvedValue([
+      {
+        restaurantId: "rest_1",
+        name: "Koshary El Tahrir",
+        averageRating: 4.6667,
+        ratingsCount: 3,
+      },
+    ]);
+
+    const result = await ratingService.topRated({ limit: 10 });
+
+    expect(mockedRates.topRatedRestaurants).toHaveBeenCalledWith(10);
+    expect(result).toEqual([
+      {
+        restaurantId: "rest_1",
+        name: "Koshary El Tahrir",
+        averageRating: 4.7,
+        ratingsCount: 3,
+      },
+    ]);
+  });
+
+  it("excludes already-visited restaurants from recommendations", async () => {
+    mockedOrders.distinctRestaurantIdsForCustomer.mockResolvedValue(["rest_9"]);
+    mockedRates.topRatedRestaurants.mockResolvedValue([]);
+
+    await ratingService.recommendationsFor("cust_1", { limit: 5 });
+
+    expect(mockedOrders.distinctRestaurantIdsForCustomer).toHaveBeenCalledWith(
+      "cust_1",
+    );
+    expect(mockedRates.topRatedRestaurants).toHaveBeenCalledWith(5, ["rest_9"]);
   });
 });

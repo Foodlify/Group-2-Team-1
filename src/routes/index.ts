@@ -7,6 +7,7 @@ import otpRouter from "../modules/otp/otp.routes";
 import customerRouter from "../modules/customer/customer.routes";
 import {
   myRatingsRouter,
+  restaurantDiscoveryRouter,
   restaurantRatingsRouter,
 } from "../modules/rating/rating.routes";
 import {
@@ -31,6 +32,7 @@ router.use("/customers/me/ratings", myRatingsRouter);
 router.use("/customers/me/support-tickets", mySupportRouter);
 router.use("/customers", customerRouter);
 router.use("/support-tickets", adminSupportRouter);
+router.use("/restaurants", restaurantDiscoveryRouter);
 router.use("/restaurants/:restaurantId/ratings", restaurantRatingsRouter);
 router.use("/restaurants", restaurantRouter);
 router.use("/menus", menuRouter);

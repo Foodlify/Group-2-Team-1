@@ -106,6 +106,47 @@ schemaRegistry.register(
 );
 
 // ═══════════════════════════════════════════════════════════════
+// Discovery (official "Top Rating Restaurants" + "Restaurants
+// Recommendations")
+// ═══════════════════════════════════════════════════════════════
+
+export const DiscoveryQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(50).default(10).meta({
+      description: "Number of restaurants to return (max 50)",
+      example: 10,
+    }),
+  })
+  .meta({ id: "DiscoveryQuery" });
+
+export const TopRatedRestaurantSchema = z
+  .object({
+    restaurantId: z.cuid2(),
+    name: z.string(),
+    averageRating: z.number().nullable().meta({
+      description: "Average stars rounded to 1 decimal",
+      example: 4.7,
+    }),
+    ratingsCount: z.number().int().nonnegative(),
+  })
+  .meta({ id: "TopRatedRestaurant" });
+
+export const TopRatedListSuccessResponseSchema = z
+  .object({
+    success: z.literal(true),
+    message: z.string(),
+    data: z.array(TopRatedRestaurantSchema),
+  })
+  .meta({ id: "TopRatedListSuccessResponse" });
+
+schemaRegistry.register("DiscoveryQuery", DiscoveryQuerySchema);
+schemaRegistry.register("TopRatedRestaurant", TopRatedRestaurantSchema);
+schemaRegistry.register(
+  "TopRatedListSuccessResponse",
+  TopRatedListSuccessResponseSchema,
+);
+
+// ═══════════════════════════════════════════════════════════════
 // TypeScript Types
 // ═══════════════════════════════════════════════════════════════
 
@@ -114,3 +155,5 @@ export type RatingResponse = z.infer<typeof RatingResponseSchema>;
 export type RestaurantRatingsSummary = z.infer<
   typeof RestaurantRatingsSummarySchema
 >;
+export type DiscoveryQuery = z.infer<typeof DiscoveryQuerySchema>;
+export type TopRatedRestaurant = z.infer<typeof TopRatedRestaurantSchema>;
