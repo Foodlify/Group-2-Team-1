@@ -74,10 +74,11 @@ model Customer {
   /// Contact phone — required and unique per customer.
   phone  String @unique
 
-  cart      Cart?
-  addresses Address[]
-  orders    Order[]
-  rates     RestaurantRate[]
+  cart              Cart?
+  addresses         Address[]
+  orders            Order[]
+  rates             RestaurantRate[]
+  preferredPayments PreferredPaymentSetting[]
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -107,6 +108,26 @@ model Address {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([customerId])
+}
+
+/// Customer's saved payment preference — the official "Preferred Payment
+/// Setting" table of Customer Management. Stores only the METHOD: card and
+/// wallet details live with the payment gateway, never in our DB. Mirrors
+/// the default-address semantics (first saved method auto-defaults, at most
+/// one default per customer, kept consistent inside a transaction).
+model PreferredPaymentSetting {
+  id         String        @id @default(cuid())
+  customerId String
+  method     PaymentMethod
+  isDefault  Boolean       @default(false)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([customerId, method])
   @@index([customerId])
 }
 
