@@ -56,12 +56,37 @@ export const logout = asyncHandler(
   },
 );
 
+export const forgotPassword = asyncHandler(
+  async (req: Request, res: Response): Promise<void> => {
+    await userService.forgotPassword(req.body.email);
+    // Identical response whether or not the account exists.
+    sendSuccess(
+      res,
+      null,
+      "If that email is registered, a reset code has been sent",
+    );
+  },
+);
+
+export const resetPassword = asyncHandler(
+  async (req: Request, res: Response): Promise<void> => {
+    await userService.resetPassword(req.body);
+    sendSuccess(res, null, "Password reset successfully — please log in again");
+  },
+);
+
 // ─── Admin user management (CRUD) ─────────────────────────
 
 export const listUsers = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const result = await userService.list(req.query as unknown as UserQuery);
-    sendSuccess(res, result.data, "Users retrieved", StatusCodes.OK, result.meta);
+    sendSuccess(
+      res,
+      result.data,
+      "Users retrieved",
+      StatusCodes.OK,
+      result.meta,
+    );
   },
 );
 
