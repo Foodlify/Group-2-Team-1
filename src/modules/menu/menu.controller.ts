@@ -4,6 +4,7 @@ import { sendSuccess } from "../../utils/response";
 import { menuService } from "./menu.service";
 import type {
   CreateMenuInput,
+  MenuHistoryQuery,
   MenuIdParams,
   UpdateMenuInput,
 } from "./menu.validation";
@@ -44,5 +45,15 @@ export const deleteMenu = asyncHandler(
   async (req: Request<MenuIdParams>, res: Response): Promise<void> => {
     await menuService.remove(req.params.menuId);
     sendSuccess(res, null, "Menu deleted");
+  },
+);
+
+export const getMenuHistory = asyncHandler(
+  async (req: Request<MenuIdParams>, res: Response): Promise<void> => {
+    const { data, meta } = await menuService.history(
+      req.params.menuId,
+      req.query as unknown as MenuHistoryQuery,
+    );
+    sendSuccess(res, data, "Menu history retrieved", 200, meta);
   },
 );
