@@ -7,10 +7,21 @@ import { schemaRegistry } from "../../openapi/registry";
 
 export const UpdateCustomerRequestSchema = z
   .object({
-    name: z.string().min(2).optional().meta({ description: "Display name", example: "Jane Doe" }),
-    phone: z.string().min(6).optional().meta({ description: "Unique phone", example: "+201000000000" }),
+    name: z
+      .string()
+      .min(2)
+      .optional()
+      .meta({ description: "Display name", example: "Jane Doe" }),
+    phone: z
+      .string()
+      .min(6)
+      .optional()
+      .meta({ description: "Unique phone", example: "+201000000000" }),
   })
-  .meta({ id: "UpdateCustomerRequest", description: "Update the current customer's profile" });
+  .meta({
+    id: "UpdateCustomerRequest",
+    description: "Update the current customer's profile",
+  });
 
 export const CreateAddressRequestSchema = z
   .object({
@@ -30,10 +41,17 @@ export const UpdateAddressRequestSchema = z
     postalCode: z.string().min(1).optional(),
     country: z.string().min(1).optional(),
   })
-  .meta({ id: "UpdateAddressRequest", description: "Update an address (partial)" });
+  .meta({
+    id: "UpdateAddressRequest",
+    description: "Update an address (partial)",
+  });
 
 export const AddressIdParamsSchema = z
-  .object({ addressId: z.cuid2().meta({ description: "Address ID", example: "clxyz..." }) })
+  .object({
+    addressId: z
+      .cuid2()
+      .meta({ description: "Address ID", example: "clxyz..." }),
+  })
   .meta({ id: "AddressIdParams" });
 
 // ═══════════════════════════════════════════════════════════════
@@ -63,21 +81,37 @@ export const AddressResponseSchema = z
     city: z.string(),
     postalCode: z.string(),
     country: z.string(),
+    isDefault: z.boolean().meta({
+      description:
+        "Pre-selected address at checkout — set via PATCH /me/addresses/{addressId}/default",
+    }),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
   })
   .meta({ id: "AddressResponse" });
 
 export const CustomerSuccessResponseSchema = z
-  .object({ success: z.literal(true), message: z.string(), data: CustomerResponseSchema })
+  .object({
+    success: z.literal(true),
+    message: z.string(),
+    data: CustomerResponseSchema,
+  })
   .meta({ id: "CustomerSuccessResponse" });
 
 export const AddressSuccessResponseSchema = z
-  .object({ success: z.literal(true), message: z.string(), data: AddressResponseSchema })
+  .object({
+    success: z.literal(true),
+    message: z.string(),
+    data: AddressResponseSchema,
+  })
   .meta({ id: "AddressSuccessResponse" });
 
 export const AddressListSuccessResponseSchema = z
-  .object({ success: z.literal(true), message: z.string(), data: z.array(AddressResponseSchema) })
+  .object({
+    success: z.literal(true),
+    message: z.string(),
+    data: z.array(AddressResponseSchema),
+  })
   .meta({ id: "AddressListSuccessResponse" });
 
 // ═══════════════════════════════════════════════════════════════
@@ -90,9 +124,15 @@ schemaRegistry.register("UpdateAddressRequest", UpdateAddressRequestSchema);
 schemaRegistry.register("AddressIdParams", AddressIdParamsSchema);
 schemaRegistry.register("CustomerResponse", CustomerResponseSchema);
 schemaRegistry.register("AddressResponse", AddressResponseSchema);
-schemaRegistry.register("CustomerSuccessResponse", CustomerSuccessResponseSchema);
+schemaRegistry.register(
+  "CustomerSuccessResponse",
+  CustomerSuccessResponseSchema,
+);
 schemaRegistry.register("AddressSuccessResponse", AddressSuccessResponseSchema);
-schemaRegistry.register("AddressListSuccessResponse", AddressListSuccessResponseSchema);
+schemaRegistry.register(
+  "AddressListSuccessResponse",
+  AddressListSuccessResponseSchema,
+);
 
 // ═══════════════════════════════════════════════════════════════
 // TypeScript Types

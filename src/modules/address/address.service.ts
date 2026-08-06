@@ -25,9 +25,20 @@ class AddressService {
     customerId: string,
     input: CreateAddressInput,
   ): Promise<AddressResponse> {
+    // The customer's first address becomes the default automatically.
+    const existing = await addressRepository.countByCustomerId(customerId);
     const address = await addressRepository.create({
-      data: { ...input, customerId },
+      data: { ...input, customerId, isDefault: existing === 0 },
     });
+    return this.toAddressResponse(address);
+  }
+
+  async setDefault(
+    customerId: string,
+    addressId: string,
+  ): Promise<AddressResponse> {
+    await this.assertOwned(addressId, customerId);
+    const address = await addressRepository.setDefault(customerId, addressId);
     return this.toAddressResponse(address);
   }
 
@@ -45,8 +56,12 @@ class AddressService {
   }
 
   async remove(customerId: string, addressId: string): Promise<void> {
-    await this.assertOwned(addressId, customerId);
-    await addressRepository.delete({ where: { id: addressId } });
+    const address = await this.assertOwned(addressId, customerId);
+    await addressRepository.deleteAndReassignDefault(
+      customerId,
+      addressId,
+      address.isDefault,
+    );
   }
 
   // ─── Private helpers ──────────────────────────────────
@@ -71,6 +86,7 @@ class AddressService {
       city: a.city,
       postalCode: a.postalCode,
       country: a.country,
+      isDefault: a.isDefault,
       createdAt: a.createdAt.toISOString(),
       updatedAt: a.updatedAt.toISOString(),
     };

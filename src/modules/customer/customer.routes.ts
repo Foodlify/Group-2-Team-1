@@ -17,7 +17,11 @@ router.use(authenticate);
 
 // ─── Profile ─────────────────────────────────────────────
 router.get("/me", controller.getMe);
-router.patch("/me", validate({ body: UpdateCustomerRequestSchema }), controller.updateMe);
+router.patch(
+  "/me",
+  validate({ body: UpdateCustomerRequestSchema }),
+  controller.updateMe,
+);
 
 // ─── Addresses ───────────────────────────────────────────
 router.get("/me/addresses", controller.listAddresses);
@@ -36,13 +40,23 @@ router.delete(
   validate({ params: AddressIdParamsSchema }),
   controller.deleteAddress,
 );
+router.patch(
+  "/me/addresses/:addressId/default",
+  validate({ params: AddressIdParamsSchema }),
+  controller.setDefaultAddress,
+);
 
 // ─── OpenAPI Documentation ───────────────────────────────
 const tag = "Customer";
 const errorRef = { $ref: "#/components/schemas/ErrorResponse" };
-const validationErrorRef = { $ref: "#/components/schemas/ValidationErrorResponse" };
+const validationErrorRef = {
+  $ref: "#/components/schemas/ValidationErrorResponse",
+};
 // Cookie is the primary transport; Bearer header is the documented fallback.
-const security: Record<string, string[]>[] = [{ cookieAuth: [] }, { BearerAuth: [] }];
+const security: Record<string, string[]>[] = [
+  { cookieAuth: [] },
+  { BearerAuth: [] },
+];
 const addressIdParam = {
   name: "addressId",
   in: "path",
@@ -61,19 +75,37 @@ routeRegistry.push({
       summary: "Get my customer profile",
       security,
       responses: {
-        "200": { description: "Profile", content: jsonRef("CustomerSuccessResponse") },
-        "403": { description: "Not a customer account", content: jsonRef("ErrorResponse") },
+        "200": {
+          description: "Profile",
+          content: jsonRef("CustomerSuccessResponse"),
+        },
+        "403": {
+          description: "Not a customer account",
+          content: jsonRef("ErrorResponse"),
+        },
       },
     },
     patch: {
       tags: [tag],
       summary: "Update my profile (name / phone)",
       security,
-      requestBody: { required: true, content: jsonRef("UpdateCustomerRequest") },
+      requestBody: {
+        required: true,
+        content: jsonRef("UpdateCustomerRequest"),
+      },
       responses: {
-        "200": { description: "Updated", content: jsonRef("CustomerSuccessResponse") },
-        "400": { description: "Validation failed", content: { "application/json": { schema: validationErrorRef } } },
-        "409": { description: "Phone already registered", content: { "application/json": { schema: errorRef } } },
+        "200": {
+          description: "Updated",
+          content: jsonRef("CustomerSuccessResponse"),
+        },
+        "400": {
+          description: "Validation failed",
+          content: { "application/json": { schema: validationErrorRef } },
+        },
+        "409": {
+          description: "Phone already registered",
+          content: { "application/json": { schema: errorRef } },
+        },
       },
     },
   },
@@ -87,7 +119,10 @@ routeRegistry.push({
       summary: "List my addresses",
       security,
       responses: {
-        "200": { description: "Addresses", content: jsonRef("AddressListSuccessResponse") },
+        "200": {
+          description: "Addresses",
+          content: jsonRef("AddressListSuccessResponse"),
+        },
       },
     },
     post: {
@@ -96,8 +131,14 @@ routeRegistry.push({
       security,
       requestBody: { required: true, content: jsonRef("CreateAddressRequest") },
       responses: {
-        "201": { description: "Created", content: jsonRef("AddressSuccessResponse") },
-        "400": { description: "Validation failed", content: { "application/json": { schema: validationErrorRef } } },
+        "201": {
+          description: "Created",
+          content: jsonRef("AddressSuccessResponse"),
+        },
+        "400": {
+          description: "Validation failed",
+          content: { "application/json": { schema: validationErrorRef } },
+        },
       },
     },
   },
@@ -113,9 +154,18 @@ routeRegistry.push({
       parameters: [addressIdParam],
       requestBody: { required: true, content: jsonRef("UpdateAddressRequest") },
       responses: {
-        "200": { description: "Updated", content: jsonRef("AddressSuccessResponse") },
-        "403": { description: "Address not yours", content: { "application/json": { schema: errorRef } } },
-        "404": { description: "Address not found", content: { "application/json": { schema: errorRef } } },
+        "200": {
+          description: "Updated",
+          content: jsonRef("AddressSuccessResponse"),
+        },
+        "403": {
+          description: "Address not yours",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "404": {
+          description: "Address not found",
+          content: { "application/json": { schema: errorRef } },
+        },
       },
     },
     delete: {
@@ -124,9 +174,46 @@ routeRegistry.push({
       security,
       parameters: [addressIdParam],
       responses: {
-        "200": { description: "Deleted" },
-        "403": { description: "Address not yours", content: { "application/json": { schema: errorRef } } },
-        "404": { description: "Address not found", content: { "application/json": { schema: errorRef } } },
+        "200": {
+          description:
+            "Deleted (deleting the default promotes the newest remaining address)",
+        },
+        "403": {
+          description: "Address not yours",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "404": {
+          description: "Address not found",
+          content: { "application/json": { schema: errorRef } },
+        },
+      },
+    },
+  },
+});
+
+routeRegistry.push({
+  path: "/api/v1/customers/me/addresses/{addressId}/default",
+  pathItem: {
+    patch: {
+      tags: [tag],
+      summary: "Set one of my addresses as the default",
+      description:
+        "The default is only the pre-selected choice at checkout — every order still records its own addressId, so a different address can be picked per order.",
+      security,
+      parameters: [addressIdParam],
+      responses: {
+        "200": {
+          description: "Default set",
+          content: jsonRef("AddressSuccessResponse"),
+        },
+        "403": {
+          description: "Address not yours",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "404": {
+          description: "Address not found",
+          content: { "application/json": { schema: errorRef } },
+        },
       },
     },
   },
