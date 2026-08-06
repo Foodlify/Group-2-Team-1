@@ -26,6 +26,11 @@ export const CreateMenuItemRequestSchema = z
       .number()
       .positive()
       .meta({ description: "Unit price", example: 12.99 }),
+    stock: z.number().int().nonnegative().nullable().optional().meta({
+      description:
+        "Units available. Omit or send null to leave the item untracked (always orderable).",
+      example: 50,
+    }),
   })
   .meta({
     id: "CreateMenuItemRequest",
@@ -44,6 +49,10 @@ export const UpdateMenuItemRequestSchema = z
       .positive()
       .optional()
       .meta({ description: "Unit price", example: 12.99 }),
+    stock: z.number().int().nonnegative().nullable().optional().meta({
+      description: "Units available — null switches the item back to untracked",
+      example: 50,
+    }),
   })
   .meta({
     id: "UpdateMenuItemRequest",
@@ -56,6 +65,10 @@ export const MenuItemResponseSchema = z
     menuId: z.cuid2(),
     name: z.string(),
     price: z.number().meta({ description: "Unit price", example: 12.99 }),
+    stock: z.number().int().nullable().meta({
+      description: "Units available — null when the item isn't stock-tracked",
+      example: 50,
+    }),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
   })
@@ -94,6 +107,9 @@ export const MenuItemSearchResultSchema = z
     id: z.cuid2(),
     name: z.string(),
     price: z.number().meta({ description: "Unit price", example: 12.99 }),
+    stock: z.number().int().nullable().meta({
+      description: "Units available — null when the item isn't stock-tracked",
+    }),
     menu: z.object({ id: z.cuid2(), name: z.string() }),
     restaurant: z.object({ id: z.cuid2(), name: z.string() }),
   })

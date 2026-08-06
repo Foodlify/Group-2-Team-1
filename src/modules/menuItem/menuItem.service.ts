@@ -28,6 +28,24 @@ class MenuItemService {
     return menuItemRepository.findManyByIds(ids);
   }
 
+  /** Atomic reservation used by checkout — see the repository for the guarantee. */
+  async reserveStock(
+    menuItemId: string,
+    quantity: number,
+    tx: Prisma.TransactionClient,
+  ): Promise<boolean> {
+    return menuItemRepository.reserveStock(menuItemId, quantity, tx);
+  }
+
+  /** Returns reserved units after a cancellation. */
+  async releaseStock(
+    menuItemId: string,
+    quantity: number,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    return menuItemRepository.releaseStock(menuItemId, quantity, tx);
+  }
+
   // ─── Public catalog reads ─────────────────────────────
   async getByIdOrThrow(id: string): Promise<MenuItemResponse> {
     const item = await menuItemRepository.findById(id);
@@ -60,6 +78,7 @@ class MenuItemService {
         id: i.id,
         name: i.name,
         price: Number(i.price),
+        stock: i.stock,
         menu: { id: i.menu.id, name: i.menu.name },
         restaurant: { id: i.menu.restaurant.id, name: i.menu.restaurant.name },
       })),
@@ -76,14 +95,23 @@ class MenuItemService {
       );
     }
     const item = await menuItemRepository.create({
-      data: { menuId: input.menuId, name: input.name, price: input.price },
+      data: {
+        menuId: input.menuId,
+        name: input.name,
+        price: input.price,
+        stock: input.stock ?? null,
+      },
     });
     await menuHistoryRepository.log({
       menuId: item.menuId,
       entity: "MENU_ITEM",
       entityId: item.id,
       action: "CREATED",
-      snapshot: { name: item.name, price: Number(item.price) },
+      snapshot: {
+        name: item.name,
+        price: Number(item.price),
+        stock: item.stock,
+      },
     });
     return this.toMenuItemResponse(item);
   }
@@ -102,7 +130,11 @@ class MenuItemService {
       entity: "MENU_ITEM",
       entityId: item.id,
       action: "UPDATED",
-      snapshot: { name: item.name, price: Number(item.price) },
+      snapshot: {
+        name: item.name,
+        price: Number(item.price),
+        stock: item.stock,
+      },
     });
     return this.toMenuItemResponse(item);
   }
@@ -127,7 +159,11 @@ class MenuItemService {
       entity: "MENU_ITEM",
       entityId: item.id,
       action: "DELETED",
-      snapshot: { name: item.name, price: Number(item.price) },
+      snapshot: {
+        name: item.name,
+        price: Number(item.price),
+        stock: item.stock,
+      },
     });
   }
 
@@ -148,6 +184,7 @@ class MenuItemService {
       menuId: item.menuId,
       name: item.name,
       price: Number(item.price),
+      stock: item.stock,
       createdAt: item.createdAt.toISOString(),
       updatedAt: item.updatedAt.toISOString(),
     };

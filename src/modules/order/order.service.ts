@@ -75,6 +75,22 @@ class OrderService {
             orderErrors.PRICE_CHANGED.statusCode,
           );
         }
+        // Reserve stock inside the checkout transaction with a conditional
+        // UPDATE, so two concurrent checkouts for the last unit can't both
+        // succeed. `stock === null` means the item isn't stock-tracked.
+        if (current.stock !== null) {
+          const reserved = await menuItemService.reserveStock(
+            cartItem.menuItemId,
+            cartItem.quantity,
+            tx,
+          );
+          if (!reserved) {
+            throw new AppError(
+              orderErrors.OUT_OF_STOCK.message,
+              orderErrors.OUT_OF_STOCK.statusCode,
+            );
+          }
+        }
       }
 
       // Accumulate the order total in Decimal for exact money arithmetic.
@@ -336,6 +352,14 @@ class OrderService {
   ): Promise<void> {
     if (status === "CANCELLED") {
       await transactionService.refundOrderTransactions(orderId, tx);
+      // Units reserved at checkout go back on the shelf.
+      const items = await orderItemRepository.findManyByOrderIdWithTx(
+        orderId,
+        tx,
+      );
+      for (const item of items) {
+        await menuItemService.releaseStock(item.menuItemId, item.quantity, tx);
+      }
     } else if (status === "DELIVERED") {
       await transactionService.settleOrderTransactions(orderId, tx);
     }
