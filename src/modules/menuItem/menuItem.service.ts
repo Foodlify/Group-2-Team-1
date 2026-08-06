@@ -8,6 +8,8 @@ import { menuItemRepository } from "./menuItem.repository";
 import type {
   CreateMenuItemInput,
   MenuItemResponse,
+  MenuItemSearchQuery,
+  MenuItemSearchResult,
   UpdateMenuItemInput,
 } from "./menuItem.validation";
 
@@ -42,6 +44,28 @@ class MenuItemService {
     return items.map((i) => this.toMenuItemResponse(i));
   }
 
+  /** Official "Search Menu Items" — catalog-wide, with menu + restaurant context. */
+  async search(query: MenuItemSearchQuery): Promise<{
+    data: MenuItemSearchResult[];
+    meta: { page: number; limit: number; total: number; totalPages: number };
+  }> {
+    const page = await menuItemRepository.searchPaginated(
+      query.page,
+      query.limit,
+      query.search,
+    );
+    return {
+      data: page.data.map((i) => ({
+        id: i.id,
+        name: i.name,
+        price: Number(i.price),
+        menu: { id: i.menu.id, name: i.menu.name },
+        restaurant: { id: i.menu.restaurant.id, name: i.menu.restaurant.name },
+      })),
+      meta: page.meta,
+    };
+  }
+
   // ─── Admin management (CRUD) ──────────────────────────
   async create(input: CreateMenuItemInput): Promise<MenuItemResponse> {
     if (!(await menuRepository.findById(input.menuId))) {
@@ -61,7 +85,10 @@ class MenuItemService {
     input: UpdateMenuItemInput,
   ): Promise<MenuItemResponse> {
     await this.assertExists(id);
-    const item = await menuItemRepository.update({ where: { id }, data: input });
+    const item = await menuItemRepository.update({
+      where: { id },
+      data: input,
+    });
     return this.toMenuItemResponse(item);
   }
 
