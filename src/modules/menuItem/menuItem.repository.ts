@@ -3,7 +3,9 @@ import type { Prisma } from "../../generated/prisma/client";
 import { BaseRepository } from "../../shared/repositories/base.repository";
 import prisma from "../../config/prisma";
 
-export class MenuItemRepository extends BaseRepository<PrismaClient["menuItem"]> {
+export class MenuItemRepository extends BaseRepository<
+  PrismaClient["menuItem"]
+> {
   constructor() {
     super(prisma.menuItem);
   }
@@ -35,6 +37,39 @@ export class MenuItemRepository extends BaseRepository<PrismaClient["menuItem"]>
       where: { menuId },
       orderBy: { createdAt: "asc" },
     });
+  }
+
+  /**
+   * Paginated case-insensitive name search across the whole catalog, with the
+   * owning menu + restaurant joined in so each hit is actionable on its own.
+   */
+  async searchPaginated(page: number, limit: number, search?: string) {
+    const where: Prisma.MenuItemWhereInput = search
+      ? { name: { contains: search, mode: "insensitive" } }
+      : {};
+    const skip = (page - 1) * limit;
+    const [data, total] = await Promise.all([
+      prisma.menuItem.findMany({
+        where,
+        include: {
+          menu: {
+            select: {
+              id: true,
+              name: true,
+              restaurant: { select: { id: true, name: true } },
+            },
+          },
+        },
+        orderBy: { name: "asc" },
+        skip,
+        take: limit,
+      }),
+      prisma.menuItem.count({ where }),
+    ]);
+    return {
+      data,
+      meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    };
   }
 }
 

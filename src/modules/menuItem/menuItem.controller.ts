@@ -5,8 +5,18 @@ import { menuItemService } from "./menuItem.service";
 import type {
   CreateMenuItemInput,
   MenuItemIdParams,
+  MenuItemSearchQuery,
   UpdateMenuItemInput,
 } from "./menuItem.validation";
+
+export const searchMenuItems = asyncHandler(
+  async (req: Request, res: Response): Promise<void> => {
+    const result = await menuItemService.search(
+      req.query as unknown as MenuItemSearchQuery,
+    );
+    sendSuccess(res, result.data, "Menu items retrieved", 200, result.meta);
+  },
+);
 
 export const getMenuItem = asyncHandler(
   async (req: Request<MenuItemIdParams>, res: Response): Promise<void> => {
