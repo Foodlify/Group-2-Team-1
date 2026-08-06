@@ -2,6 +2,7 @@ import app from "./app";
 import env from "./config/env";
 import logger from "./config/logger";
 import { connectPrisma, disconnectPrisma } from "./config/prisma";
+import { connectRedis, disconnectRedis } from "./config/redis";
 import { startCartSweeper } from "./jobs/cartSweeper";
 
 const startServer = async (): Promise<void> => {
@@ -9,6 +10,9 @@ const startServer = async (): Promise<void> => {
 
   // ── Connect to DB First ─────────────────────────────
   await connectPrisma();
+
+  // ── Cache (optional — never fatal) ──────────────────
+  await connectRedis();
 
   // ── Background Jobs ─────────────────────────────────
   const stopCartSweeper = startCartSweeper();
@@ -39,8 +43,9 @@ const startServer = async (): Promise<void> => {
     server.close(async () => {
       logger.info("HTTP server closed.");
 
-      // Close DB connections
+      // Close DB + cache connections
       await disconnectPrisma();
+      await disconnectRedis();
 
       process.exit(0);
     });

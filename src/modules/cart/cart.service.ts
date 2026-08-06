@@ -3,6 +3,7 @@ import { StatusCodes } from "http-status-codes";
 import env from "../../config/env";
 import logger from "../../config/logger";
 import { AppError } from "../../middlewares/error.middleware";
+import { cache, cacheKeys } from "../../shared/cache/cache";
 import { cartErrors } from "../../shared/exceptions/cart.errors";
 import { cartItemRepository } from "../cartItem/cartItem.repository";
 import { menuItemService } from "../menuItem/menuItem.service";
@@ -18,12 +19,23 @@ import { Prisma } from "../../generated/prisma/client";
 
 class CartService {
   // ─── Read ─────────────────────────────────────────────
+  /**
+   * Cache-aside: the cart is the hottest read in the app and changes only
+   * through this service, so every mutation below drops the key and this
+   * read refills it. A cache outage just means every call hits PostgreSQL.
+   */
   async getMyCart(owner: CartOwner): Promise<CartResponse | null> {
+    const key = this.cacheKey(owner);
+    const cached = await cache.get<CartResponse>(key);
+    if (cached) return cached;
+
     const cart = await cartRepository.findByOwnerWithItems(owner);
     if (!cart) {
       return null;
     }
-    return this.toCartResponse(cart);
+    const response = this.toCartResponse(cart);
+    await cache.set(key, response);
+    return response;
   }
 
   /** Opaque, unguessable identifier for an anonymous visitor's cart. */
@@ -45,6 +57,7 @@ class CartService {
       );
       await this.upsertCartItem(cart.id, input, menuItem, tx);
     });
+    await this.invalidate(owner);
     const cart = await this.getMyCart(owner);
     if (!cart)
       throw new AppError(
@@ -67,6 +80,7 @@ class CartService {
       data: { quantity: input.quantity },
     });
 
+    await this.invalidate(owner);
     const cart = await this.getMyCart(owner);
     if (!cart)
       throw new AppError(
@@ -82,6 +96,7 @@ class CartService {
 
     await cartItemRepository.delete({ where: { id: itemId } });
 
+    await this.invalidate(owner);
     const cart = await this.getMyCart(owner);
     if (!cart)
       throw new AppError(
@@ -97,6 +112,7 @@ class CartService {
     tx?: Prisma.TransactionClient,
   ): Promise<void> {
     await cartRepository.deleteByOwner(owner, tx);
+    await this.invalidate(owner);
   }
 
   // ─── Merge a guest cart into the customer's cart ──────
@@ -153,6 +169,9 @@ class CartService {
       await cartRepository.deleteByOwner({ guestToken }, tx);
     });
 
+    // Both identities changed: the guest cart is gone, the customer's grew.
+    await this.invalidate({ guestToken });
+    await this.invalidate({ customerId });
     return this.getMyCart({ customerId });
   }
 
@@ -194,6 +213,21 @@ class CartService {
   }
 
   // ─── Private Helpers ──────────────────────────────────
+
+  private cacheKey(owner: CartOwner): string {
+    return isGuestOwner(owner)
+      ? cacheKeys.cartOfGuest(owner.guestToken)
+      : cacheKeys.cartOfCustomer(owner.customerId);
+  }
+
+  /**
+   * Drops the cached cart. Called before the post-mutation re-read, which
+   * repopulates it — invalidate-then-refill rather than patching the cached
+   * value, so the cache can never drift from the database.
+   */
+  private async invalidate(owner: CartOwner): Promise<void> {
+    await cache.del(this.cacheKey(owner));
+  }
 
   private async fetchMenuItem(
     menuItemId: string,
