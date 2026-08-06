@@ -2,7 +2,6 @@ import { StatusCodes } from "http-status-codes";
 import { AppError } from "../../middlewares/error.middleware";
 import { cartErrors } from "../../shared/exceptions/cart.errors";
 import { cartItemRepository } from "../cartItem/cartItem.repository";
-import { customerService } from "../customer/customer.service";
 import { menuItemService } from "../menuItem/menuItem.service";
 import { cartRepository } from "./cart.repository";
 import type { CartWithItems } from "./cart.model";
@@ -16,8 +15,6 @@ import { Prisma } from "../../generated/prisma/client";
 class CartService {
   // ─── Read ─────────────────────────────────────────────
   async getMyCart(customerId: string): Promise<CartResponse | null> {
-    await this.assertCustomerExists(customerId);
-
     const cart = await cartRepository.findByCustomerIdWithItems(customerId);
     if (!cart) {
       return null;
@@ -30,8 +27,6 @@ class CartService {
     customerId: string,
     input: AddCartItemInput,
   ): Promise<CartResponse> {
-    await this.assertCustomerExists(customerId);
-
     await cartRepository.transaction(async (tx) => {
       const menuItem = await this.fetchMenuItem(input.menuItemId, tx);
       const cart = await this.resolveCart(customerId, menuItem.menu.restaurantId, tx);
@@ -48,7 +43,6 @@ class CartService {
     itemId: string,
     input: UpdateCartItemInput,
   ): Promise<CartResponse> {
-    await this.assertCustomerExists(customerId);
     await this.assertItemBelongsToUser(customerId, itemId);
 
     await cartItemRepository.update({
@@ -63,7 +57,6 @@ class CartService {
 
   // ─── Remove Item ──────────────────────────────────────
   async removeItem(customerId: string, itemId: string): Promise<CartResponse> {
-    await this.assertCustomerExists(customerId);
     await this.assertItemBelongsToUser(customerId, itemId);
 
     await cartItemRepository.delete({ where: { id: itemId } });
@@ -78,7 +71,6 @@ class CartService {
     customerId: string,
     tx?: Prisma.TransactionClient,
   ): Promise<void> {
-    await this.assertCustomerExists(customerId);
     await cartRepository.deleteByCustomerId(customerId, tx);
   }
 
@@ -96,16 +88,6 @@ class CartService {
   }
 
   // ─── Private Helpers ──────────────────────────────────
-
-  private async assertCustomerExists(customerId: string): Promise<void> {
-    const customer = await customerService.findById(customerId);
-    if (!customer) {
-      throw new AppError(
-        cartErrors.CUSTOMER_NOT_FOUND.message,
-        cartErrors.CUSTOMER_NOT_FOUND.statusCode,
-      );
-    }
-  }
 
   private async fetchMenuItem(menuItemId: string, tx?: Prisma.TransactionClient) {
     const menuItem = await menuItemService.findByIdWithMenu(menuItemId, tx);

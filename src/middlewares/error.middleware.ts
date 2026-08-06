@@ -15,11 +15,19 @@ export class AppError extends Error {
   }
 }
 
+/** Builds an `AppError` from a `{ message, statusCode }` error definition. */
+export const appError = (def: {
+  message: string;
+  statusCode: number;
+}): AppError => new AppError(def.message, def.statusCode);
+
 export const errorMiddleware = (
   err: Error | AppError,
   req: Request,
   res: Response,
-  next: NextFunction,
+  // Required for Express to recognise this as an error handler (4-arg arity),
+  // even though it is unused.
+  _next: NextFunction,
 ): void => {
   if (err instanceof AppError) {
     logger.warn("Operational error", {

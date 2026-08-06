@@ -101,6 +101,7 @@ export const CartResponseSchema = z
 export const CartSuccessResponseSchema = z
   .object({
     success: z.literal(true),
+    message: z.string(),
     data: CartResponseSchema.nullable(),
   })
   .meta({ id: "CartSuccessResponse" });
@@ -112,6 +113,7 @@ export const EmptySuccessResponseSchema = z
   .object({
     success: z.literal(true),
     message: z.string(),
+    data: z.null(),
   })
   .meta({ id: "EmptySuccessResponse" });
 

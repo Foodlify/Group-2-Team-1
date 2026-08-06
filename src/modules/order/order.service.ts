@@ -1,6 +1,5 @@
 import { AppError } from "../../middlewares/error.middleware";
 import { orderErrors } from "../../shared/exceptions/order.errors";
-import { customerService } from "../customer/customer.service";
 import { addressService } from "../address/address.service";
 import { menuItemService } from "../menuItem/menuItem.service";
 import { cartService } from "../cart/cart.service";
@@ -32,7 +31,9 @@ class OrderService {
     customerId: string,
     input: PlaceOrderInput,
   ): Promise<OrderResponse> {
-    await this.assertCustomerExists(customerId);
+    // `customerId` is resolved by the controller via
+    // `requireCustomerIdByUserId`, so the customer is already known to exist —
+    // no redundant existence re-check here.
     await this.assertAddressBelongsToCustomer(customerId, input.addressId);
 
     const result = await orderRepository.transaction(async (tx) => {
@@ -124,8 +125,6 @@ class OrderService {
     data: OrderListItemResponse[];
     meta: { page: number; limit: number; total: number; totalPages: number };
   }> {
-    await this.assertCustomerExists(customerId);
-
     const result = await orderRepository.findPaginatedByCustomer(customerId, {
       page: query.page,
       limit: query.limit,
@@ -367,15 +366,6 @@ class OrderService {
     }
 
     return this.composeOrderResponse(order, updated, orderItems);
-  }
-
-  private async assertCustomerExists(customerId: string): Promise<void> {
-    const customer = await customerService.findById(customerId);
-    if (!customer)
-      throw new AppError(
-        orderErrors.CUSTOMER_NOT_FOUND.message,
-        orderErrors.CUSTOMER_NOT_FOUND.statusCode,
-      );
   }
 
   private async assertAddressBelongsToCustomer(
