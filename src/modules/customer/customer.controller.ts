@@ -26,7 +26,9 @@ export const updateMe = asyncHandler(
 
 export const listAddresses = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
-    const customerId = await customerService.requireCustomerIdByUserId(req.user!.id);
+    const customerId = await customerService.requireCustomerIdByUserId(
+      req.user!.id,
+    );
     const addresses = await addressService.listByCustomer(customerId);
     sendSuccess(res, addresses, "Addresses retrieved");
   },
@@ -34,7 +36,9 @@ export const listAddresses = asyncHandler(
 
 export const addAddress = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
-    const customerId = await customerService.requireCustomerIdByUserId(req.user!.id);
+    const customerId = await customerService.requireCustomerIdByUserId(
+      req.user!.id,
+    );
     const address = await addressService.create(customerId, req.body);
     sendSuccess(res, address, "Address added", StatusCodes.CREATED);
   },
@@ -42,7 +46,9 @@ export const addAddress = asyncHandler(
 
 export const updateAddress = asyncHandler(
   async (req: Request<AddressIdParams>, res: Response): Promise<void> => {
-    const customerId = await customerService.requireCustomerIdByUserId(req.user!.id);
+    const customerId = await customerService.requireCustomerIdByUserId(
+      req.user!.id,
+    );
     const address = await addressService.update(
       customerId,
       req.params.addressId,
@@ -54,8 +60,23 @@ export const updateAddress = asyncHandler(
 
 export const deleteAddress = asyncHandler(
   async (req: Request<AddressIdParams>, res: Response): Promise<void> => {
-    const customerId = await customerService.requireCustomerIdByUserId(req.user!.id);
+    const customerId = await customerService.requireCustomerIdByUserId(
+      req.user!.id,
+    );
     await addressService.remove(customerId, req.params.addressId);
     sendSuccess(res, null, "Address deleted");
+  },
+);
+
+export const setDefaultAddress = asyncHandler(
+  async (req: Request<AddressIdParams>, res: Response): Promise<void> => {
+    const customerId = await customerService.requireCustomerIdByUserId(
+      req.user!.id,
+    );
+    const address = await addressService.setDefault(
+      customerId,
+      req.params.addressId,
+    );
+    sendSuccess(res, address, "Default address set");
   },
 );
