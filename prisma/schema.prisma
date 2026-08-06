@@ -79,6 +79,7 @@ model Customer {
   orders            Order[]
   rates             RestaurantRate[]
   preferredPayments PreferredPaymentSetting[]
+  supportTickets    SupportTicket[]
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -248,9 +249,10 @@ model Order {
   /// { status, changedAt, changedBy?, location?, estimatedDeliveryTime? }
   timeline     Json        @default("[]")
 
-  orderItems   OrderItems[]
-  transactions Transaction[]
-  rate         RestaurantRate?
+  orderItems     OrderItems[]
+  transactions   Transaction[]
+  rate           RestaurantRate?
+  supportTickets SupportTicket[]
 
   customer   Customer    @relation(fields: [customerId], references: [id], onDelete: Restrict)
   address    Address     @relation(fields: [addressId], references: [id], onDelete: Restrict)
@@ -312,6 +314,79 @@ model RestaurantRate {
 
   @@index([restaurantId])
   @@index([customerId])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Customer Support
+// ═══════════════════════════════════════════════════════════════
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_CUSTOMER
+  RESOLVED
+  CLOSED
+  ESCALATED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketCategory {
+  ORDER_ISSUE
+  PAYMENT
+  DELIVERY_DELAY
+  REFUND
+  ACCOUNT
+  OTHERS
+}
+
+/// Customer-service agent. `assignedTickets` counts currently-assigned open
+/// tickets and is kept accurate inside the same transaction that assigns or
+/// resolves a ticket — new tickets go to the least-loaded agent of the
+/// matching section.
+model CustomerServiceEmployee {
+  id              String         @id @default(cuid())
+  name            String
+  section         TicketCategory
+  assignedTickets Int            @default(0)
+
+  supportTickets SupportTicket[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// One-shot support ticket ("Raise a Complain" / "Need Help"). `requestId`
+/// is the opaque public reference quoted by support — separate from the PK
+/// so ticket ids can't be enumerated. Reads are always ownership-scoped.
+model SupportTicket {
+  id              String         @id @default(cuid())
+  requestId       String         @unique
+  customerId      String
+  orderId         String?
+  category        TicketCategory
+  priority        TicketPriority @default(MEDIUM)
+  status          TicketStatus   @default(OPEN)
+  subject         String
+  description     String
+  assignedAgentId String?
+  resolution      String?
+  resolvedAt      DateTime?
+
+  customer      Customer                 @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  assignedAgent CustomerServiceEmployee? @relation(fields: [assignedAgentId], references: [id], onDelete: SetNull)
+  order         Order?                   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([status])
 }
 
 // ═══════════════════════════════════════════════════════════════
