@@ -93,6 +93,12 @@ model Address {
   city         String
   postalCode   String
   country      String
+  /// Pre-selected address at checkout — the order still records its own
+  /// addressId, so the customer can always pick a different address per
+  /// order (S12 rule). At most one default per customer, kept consistent
+  /// inside a transaction (first address auto-defaults; deleting the
+  /// default promotes the newest remaining address).
+  isDefault    Boolean @default(false)
 
   orders Order[]
 
