@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { schemaRegistry } from "../../openapi/registry";
+import { PAYMENT_METHODS } from "../transaction/transaction.model";
 
 // ═══════════════════════════════════════════════════════════════
 // Request Schemas (inputs)
@@ -144,3 +145,83 @@ export type UpdateAddressInput = z.infer<typeof UpdateAddressRequestSchema>;
 export type AddressIdParams = z.infer<typeof AddressIdParamsSchema>;
 export type CustomerResponse = z.infer<typeof CustomerResponseSchema>;
 export type AddressResponse = z.infer<typeof AddressResponseSchema>;
+
+// ═══════════════════════════════════════════════════════════════
+// Preferred Payment Settings
+// ═══════════════════════════════════════════════════════════════
+
+export const CreatePaymentSettingRequestSchema = z
+  .object({
+    method: z.enum(PAYMENT_METHODS).meta({
+      description:
+        "Payment method to save as a preference. Only the method is stored — card/wallet details live with the payment gateway. Checkout currently charges CASH only.",
+      example: "CASH",
+    }),
+  })
+  .meta({
+    id: "CreatePaymentSettingRequest",
+    description: "Save a payment method preference",
+  });
+
+export const PaymentSettingIdParamsSchema = z
+  .object({
+    settingId: z
+      .cuid2()
+      .meta({ description: "Payment setting ID", example: "clxyz..." }),
+  })
+  .meta({ id: "PaymentSettingIdParams" });
+
+export const PaymentSettingResponseSchema = z
+  .object({
+    id: z.cuid2(),
+    customerId: z.cuid2(),
+    method: z.enum(PAYMENT_METHODS),
+    isDefault: z.boolean().meta({
+      description:
+        "Pre-selected method at checkout — set via PATCH /me/payment-settings/{settingId}/default",
+    }),
+    createdAt: z.iso.datetime(),
+    updatedAt: z.iso.datetime(),
+  })
+  .meta({ id: "PaymentSettingResponse" });
+
+export const PaymentSettingSuccessResponseSchema = z
+  .object({
+    success: z.literal(true),
+    message: z.string(),
+    data: PaymentSettingResponseSchema,
+  })
+  .meta({ id: "PaymentSettingSuccessResponse" });
+
+export const PaymentSettingListSuccessResponseSchema = z
+  .object({
+    success: z.literal(true),
+    message: z.string(),
+    data: z.array(PaymentSettingResponseSchema),
+  })
+  .meta({ id: "PaymentSettingListSuccessResponse" });
+
+schemaRegistry.register(
+  "CreatePaymentSettingRequest",
+  CreatePaymentSettingRequestSchema,
+);
+schemaRegistry.register("PaymentSettingIdParams", PaymentSettingIdParamsSchema);
+schemaRegistry.register("PaymentSettingResponse", PaymentSettingResponseSchema);
+schemaRegistry.register(
+  "PaymentSettingSuccessResponse",
+  PaymentSettingSuccessResponseSchema,
+);
+schemaRegistry.register(
+  "PaymentSettingListSuccessResponse",
+  PaymentSettingListSuccessResponseSchema,
+);
+
+export type CreatePaymentSettingInput = z.infer<
+  typeof CreatePaymentSettingRequestSchema
+>;
+export type PaymentSettingIdParams = z.infer<
+  typeof PaymentSettingIdParamsSchema
+>;
+export type PaymentSettingResponse = z.infer<
+  typeof PaymentSettingResponseSchema
+>;

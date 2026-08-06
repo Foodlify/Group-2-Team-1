@@ -6,6 +6,8 @@ import * as controller from "./customer.controller";
 import {
   AddressIdParamsSchema,
   CreateAddressRequestSchema,
+  CreatePaymentSettingRequestSchema,
+  PaymentSettingIdParamsSchema,
   UpdateAddressRequestSchema,
   UpdateCustomerRequestSchema,
 } from "./customer.validation";
@@ -44,6 +46,24 @@ router.patch(
   "/me/addresses/:addressId/default",
   validate({ params: AddressIdParamsSchema }),
   controller.setDefaultAddress,
+);
+
+// ─── Preferred payment settings ──────────────────────────
+router.get("/me/payment-settings", controller.listPaymentSettings);
+router.post(
+  "/me/payment-settings",
+  validate({ body: CreatePaymentSettingRequestSchema }),
+  controller.addPaymentSetting,
+);
+router.patch(
+  "/me/payment-settings/:settingId/default",
+  validate({ params: PaymentSettingIdParamsSchema }),
+  controller.setDefaultPaymentSetting,
+);
+router.delete(
+  "/me/payment-settings/:settingId",
+  validate({ params: PaymentSettingIdParamsSchema }),
+  controller.deletePaymentSetting,
 );
 
 // ─── OpenAPI Documentation ───────────────────────────────
@@ -184,6 +204,109 @@ routeRegistry.push({
         },
         "404": {
           description: "Address not found",
+          content: { "application/json": { schema: errorRef } },
+        },
+      },
+    },
+  },
+});
+
+const settingIdParam = {
+  name: "settingId",
+  in: "path",
+  required: true,
+  schema: { type: "string" as const },
+} as const;
+
+routeRegistry.push({
+  path: "/api/v1/customers/me/payment-settings",
+  pathItem: {
+    get: {
+      tags: [tag],
+      summary: "List my saved payment settings",
+      security,
+      responses: {
+        "200": {
+          description: "Payment settings, oldest first",
+          content: jsonRef("PaymentSettingListSuccessResponse"),
+        },
+      },
+    },
+    post: {
+      tags: [tag],
+      summary: "Save a payment method preference",
+      description:
+        "Stores only the method — card/wallet details live with the payment gateway, never in our DB. The first saved method becomes the default automatically.",
+      security,
+      requestBody: {
+        required: true,
+        content: jsonRef("CreatePaymentSettingRequest"),
+      },
+      responses: {
+        "201": {
+          description: "Saved",
+          content: jsonRef("PaymentSettingSuccessResponse"),
+        },
+        "400": {
+          description: "Validation failed",
+          content: { "application/json": { schema: validationErrorRef } },
+        },
+        "409": {
+          description: "Method already saved",
+          content: { "application/json": { schema: errorRef } },
+        },
+      },
+    },
+  },
+});
+
+routeRegistry.push({
+  path: "/api/v1/customers/me/payment-settings/{settingId}",
+  pathItem: {
+    delete: {
+      tags: [tag],
+      summary: "Delete one of my payment settings",
+      security,
+      parameters: [settingIdParam],
+      responses: {
+        "200": {
+          description:
+            "Deleted (deleting the default promotes the newest remaining setting)",
+        },
+        "403": {
+          description: "Setting not yours",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "404": {
+          description: "Setting not found",
+          content: { "application/json": { schema: errorRef } },
+        },
+      },
+    },
+  },
+});
+
+routeRegistry.push({
+  path: "/api/v1/customers/me/payment-settings/{settingId}/default",
+  pathItem: {
+    patch: {
+      tags: [tag],
+      summary: "Set one of my payment settings as the default",
+      description:
+        "The default is only the pre-selected method at checkout — every transaction still records the method actually used.",
+      security,
+      parameters: [settingIdParam],
+      responses: {
+        "200": {
+          description: "Default set",
+          content: jsonRef("PaymentSettingSuccessResponse"),
+        },
+        "403": {
+          description: "Setting not yours",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "404": {
+          description: "Setting not found",
           content: { "application/json": { schema: errorRef } },
         },
       },

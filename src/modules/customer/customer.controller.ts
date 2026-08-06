@@ -3,8 +3,12 @@ import { StatusCodes } from "http-status-codes";
 import { asyncHandler } from "../../utils/asyncHandler";
 import { sendSuccess } from "../../utils/response";
 import { addressService } from "../address/address.service";
+import { preferredPaymentService } from "../preferredPayment/preferredPayment.service";
 import { customerService } from "./customer.service";
-import type { AddressIdParams } from "./customer.validation";
+import type {
+  AddressIdParams,
+  PaymentSettingIdParams,
+} from "./customer.validation";
 
 // ─── Profile (me) ─────────────────────────────────────────
 
@@ -78,5 +82,56 @@ export const setDefaultAddress = asyncHandler(
       req.params.addressId,
     );
     sendSuccess(res, address, "Default address set");
+  },
+);
+
+// ─── Preferred payment settings ───────────────────────────
+
+export const listPaymentSettings = asyncHandler(
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = await customerService.requireCustomerIdByUserId(
+      req.user!.id,
+    );
+    const settings = await preferredPaymentService.listByCustomer(customerId);
+    sendSuccess(res, settings, "Payment settings retrieved");
+  },
+);
+
+export const addPaymentSetting = asyncHandler(
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = await customerService.requireCustomerIdByUserId(
+      req.user!.id,
+    );
+    const setting = await preferredPaymentService.create(customerId, req.body);
+    sendSuccess(res, setting, "Payment setting added", StatusCodes.CREATED);
+  },
+);
+
+export const setDefaultPaymentSetting = asyncHandler(
+  async (
+    req: Request<PaymentSettingIdParams>,
+    res: Response,
+  ): Promise<void> => {
+    const customerId = await customerService.requireCustomerIdByUserId(
+      req.user!.id,
+    );
+    const setting = await preferredPaymentService.setDefault(
+      customerId,
+      req.params.settingId,
+    );
+    sendSuccess(res, setting, "Default payment setting set");
+  },
+);
+
+export const deletePaymentSetting = asyncHandler(
+  async (
+    req: Request<PaymentSettingIdParams>,
+    res: Response,
+  ): Promise<void> => {
+    const customerId = await customerService.requireCustomerIdByUserId(
+      req.user!.id,
+    );
+    await preferredPaymentService.remove(customerId, req.params.settingId);
+    sendSuccess(res, null, "Payment setting deleted");
   },
 );

@@ -19,4 +19,16 @@ export const customerErrors = {
     message: "This address does not belong to you",
     statusCode: 403,
   },
+  PAYMENT_SETTING_NOT_FOUND: {
+    message: "Payment setting not found",
+    statusCode: 404,
+  },
+  PAYMENT_SETTING_FORBIDDEN: {
+    message: "This payment setting does not belong to you",
+    statusCode: 403,
+  },
+  PAYMENT_METHOD_ALREADY_SAVED: {
+    message: "This payment method is already saved",
+    statusCode: 409,
+  },
 } as const;
