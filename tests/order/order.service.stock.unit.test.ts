@@ -57,6 +57,15 @@ vi.mock("../../src/modules/transaction/transaction.service", () => ({
   },
 }));
 
+// Notifications are fire-and-forget side effects — mocked out so these tests
+// stay about stock, and so no real mailer/DB lookup is attempted.
+vi.mock("../../src/modules/notification/notification.service", () => ({
+  notificationService: {
+    notifyOrderPlaced: vi.fn(),
+    notifyOrderStatusChanged: vi.fn(),
+  },
+}));
+
 import { orderService } from "../../src/modules/order/order.service";
 import { orderRepository } from "../../src/modules/order/order.repository";
 import { orderItemRepository } from "../../src/modules/orderItem/orderItem.repository";

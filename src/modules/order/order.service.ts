@@ -6,6 +6,7 @@ import { cartService } from "../cart/cart.service";
 import { paymentService } from "../payment/payment.service";
 import { orderRepository } from "./order.repository";
 import { orderItemRepository } from "../orderItem/orderItem.repository";
+import { notificationService } from "../notification/notification.service";
 import { transactionService } from "../transaction/transaction.service";
 import { VALID_TRANSITIONS, type OrderStatusValue } from "./order.status";
 import {
@@ -133,7 +134,18 @@ class OrderService {
     });
 
     // Build response directly from in-memory objects — no extra DB roundtrip
-    return this.buildOrderResponse(result.order, result.createdItems);
+    const response = this.buildOrderResponse(result.order, result.createdItems);
+    // After the commit: the customer is only told about state that persisted.
+    await notificationService.notifyOrderPlaced(customerId, {
+      id: response.id,
+      totalPrice: response.totalPrice,
+      items: response.items.map((i) => ({
+        name: i.name,
+        quantity: i.quantity,
+        price: i.price,
+      })),
+    });
+    return response;
   }
 
   // ─── Get My Orders (paginated) ────────────────────────────────
@@ -216,7 +228,7 @@ class OrderService {
     customerId: string,
     orderId: string,
   ): Promise<OrderResponse> {
-    return orderRepository.transaction(async (tx) => {
+    const response = await orderRepository.transaction(async (tx) => {
       const order = await orderRepository.findById(orderId, tx);
       if (!order) {
         throw new AppError(
@@ -257,6 +269,13 @@ class OrderService {
 
       return this.composeOrderResponse(order, updated, items);
     });
+
+    await notificationService.notifyOrderStatusChanged(
+      customerId,
+      orderId,
+      "CANCELLED",
+    );
+    return response;
   }
 
   // ─── Update Order Status (admin) ─────────────────────────────
@@ -264,7 +283,7 @@ class OrderService {
     orderId: string,
     input: UpdateStatusInput,
   ): Promise<OrderResponse> {
-    return orderRepository.transaction(async (tx) => {
+    const response = await orderRepository.transaction(async (tx) => {
       const order = await orderRepository.findById(orderId, tx);
       if (!order) {
         throw new AppError(
@@ -308,6 +327,13 @@ class OrderService {
 
       return this.composeOrderResponse(order, updated, items);
     });
+
+    await notificationService.notifyOrderStatusChanged(
+      response.customerId,
+      orderId,
+      input.status,
+    );
+    return response;
   }
 
   // ─── Add Order Status Tracking ────────────────────────────────
