@@ -32,4 +32,17 @@ export const userErrors = {
     message: "You are not allowed to access this resource",
     statusCode: 403,
   },
+  EMAIL_NOT_VERIFIED: {
+    message:
+      "Email not verified. Verify it with the code sent to your inbox via /api/v1/auth/verify-email",
+    statusCode: 403,
+  },
+  EMAIL_ALREADY_VERIFIED: {
+    message: "Email is already verified",
+    statusCode: 409,
+  },
+  ACCOUNT_DISABLED: {
+    message: "This account is disabled",
+    statusCode: 403,
+  },
 } as const;

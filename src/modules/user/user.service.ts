@@ -30,6 +30,7 @@ import type {
   UpdateUserInput,
   UserQuery,
   UserResponse,
+  VerifyEmailInput,
 } from "./user.validation";
 
 interface AuthTokens {
@@ -44,7 +45,12 @@ interface AuthResult {
 
 class UserService {
   // ─── Customer auth ────────────────────────────────────
-  async register(input: RegisterInput): Promise<AuthResult> {
+  /**
+   * Creates the account and emails a verification code. Deliberately returns
+   * NO tokens — the account only becomes usable once `verifyEmail` proves the
+   * customer owns the address.
+   */
+  async register(input: RegisterInput): Promise<{ user: UserResponse }> {
     if (await userRepository.findByEmail(input.email)) {
       throw appError(userErrors.EMAIL_ALREADY_EXISTS);
     }
@@ -72,6 +78,27 @@ class UserService {
       throw e;
     }
 
+    // No tokens yet: the account is unusable until the emailed code proves
+    // ownership of the address (see `verifyEmail`).
+    await otpService.sendOtp(user.email, "registration");
+    return { user: this.toUserResponse(user) };
+  }
+
+  /**
+   * Completes registration: verifies the emailed single-use code, stamps
+   * `emailVerifiedAt`, and logs the account in — so the customer never has to
+   * type the password again right after registering.
+   */
+  async verifyEmail(input: VerifyEmailInput): Promise<AuthResult> {
+    const existing = await userRepository.findByEmail(input.email);
+    if (!existing) throw appError(otpErrors.INVALID_OTP);
+    if (existing.emailVerifiedAt) {
+      throw appError(userErrors.EMAIL_ALREADY_VERIFIED);
+    }
+
+    await otpService.verifyOtp(input.email, input.code, "registration");
+    const user = await userRepository.markEmailVerified(existing.id);
+
     const tokens = await this.issueTokens(user);
     return { user: this.toUserResponse(user), tokens };
   }
@@ -81,6 +108,9 @@ class UserService {
     if (!user || !(await comparePassword(input.password, user.password))) {
       throw appError(userErrors.INVALID_CREDENTIALS);
     }
+    // Checked only AFTER the password matched, so neither response reveals
+    // whether an unverified/disabled address is registered.
+    this.assertUsable(user);
     const tokens = await this.issueTokens(user);
     return { user: this.toUserResponse(user), tokens };
   }
@@ -95,8 +125,28 @@ class UserService {
     ) {
       throw appError(userErrors.INVALID_CREDENTIALS);
     }
+    this.assertUsable(user);
     const tokens = await this.issueTokens(user);
     return { user: this.toUserResponse(user), tokens };
+  }
+
+  // ─── Account status (enable / disable) ────────────────
+  /**
+   * Admin flips any account's status. Disabling revokes every refresh session
+   * so the account is locked out as soon as its access token expires.
+   */
+  async setActive(id: string, isActive: boolean): Promise<UserResponse> {
+    await this.assertExists(id);
+    const user = await userRepository.setActive(id, isActive);
+    if (!isActive) await refreshTokenRepository.revokeAllForUser(id);
+    return this.toUserResponse(user);
+  }
+
+  /** Self-service "Account Deactivate" — same revocation as an admin disable. */
+  async deactivateSelf(id: string): Promise<void> {
+    await this.assertExists(id);
+    await userRepository.setActive(id, false);
+    await refreshTokenRepository.revokeAllForUser(id);
   }
 
   // ─── Refresh / Logout ─────────────────────────────────
@@ -123,6 +173,8 @@ class UserService {
     if (!user || stored.userId !== user.id) {
       throw appError(userErrors.INVALID_REFRESH_TOKEN);
     }
+    // An account disabled mid-session can't rotate into a fresh token.
+    this.assertUsable(user);
 
     await refreshTokenRepository.revokeByTokenHash(tokenHash);
     const tokens = await this.issueTokens(user);
@@ -265,6 +317,12 @@ class UserService {
     return user;
   }
 
+  /** Gate shared by login, admin login, and refresh. */
+  private assertUsable(user: UserModel): void {
+    if (!user.isActive) throw appError(userErrors.ACCOUNT_DISABLED);
+    if (!user.emailVerifiedAt) throw appError(userErrors.EMAIL_NOT_VERIFIED);
+  }
+
   private async issueTokens(user: UserModel): Promise<AuthTokens> {
     const accessToken = signAccessToken({
       id: user.id,
@@ -290,6 +348,8 @@ class UserService {
       name: user.name,
       email: user.email,
       role: user.role,
+      isActive: user.isActive,
+      emailVerified: user.emailVerifiedAt !== null,
       createdAt: user.createdAt.toISOString(),
       updatedAt: user.updatedAt.toISOString(),
     };

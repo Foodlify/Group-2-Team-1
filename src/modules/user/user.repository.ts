@@ -24,6 +24,19 @@ export class UserRepository extends BaseRepository<PrismaClient["user"]> {
     return found !== null;
   }
 
+  /** Stamps email ownership as proven (idempotent by the caller's check). */
+  async markEmailVerified(id: string) {
+    return this.update({
+      where: { id },
+      data: { emailVerifiedAt: new Date() },
+    });
+  }
+
+  /** Enable / disable an account (admin) or self-deactivate (customer). */
+  async setActive(id: string, isActive: boolean) {
+    return this.update({ where: { id }, data: { isActive } });
+  }
+
   /** Newest-first paginated list with total count. */
   async listPaginated(page: number, limit: number) {
     const skip = (page - 1) * limit;
