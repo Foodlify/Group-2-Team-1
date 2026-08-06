@@ -3,6 +3,7 @@ import type { MenuItemModel } from "../../generated/prisma/models";
 import { AppError } from "../../middlewares/error.middleware";
 import { catalogErrors } from "../../shared/exceptions/catalog.errors";
 import { isForeignKeyViolation } from "../../shared/exceptions/prisma.errors";
+import { cache, cacheKeys } from "../../shared/cache/cache";
 import { menuRepository } from "../menu/menu.repository";
 import { menuHistoryRepository } from "../menu/menuHistory.repository";
 import { menuItemRepository } from "./menuItem.repository";
@@ -102,6 +103,7 @@ class MenuItemService {
         stock: input.stock ?? null,
       },
     });
+    await cache.del(cacheKeys.menu(item.menuId));
     await menuHistoryRepository.log({
       menuId: item.menuId,
       entity: "MENU_ITEM",
@@ -125,6 +127,7 @@ class MenuItemService {
       where: { id },
       data: input,
     });
+    await cache.del(cacheKeys.menu(item.menuId));
     await menuHistoryRepository.log({
       menuId: item.menuId,
       entity: "MENU_ITEM",
@@ -154,6 +157,7 @@ class MenuItemService {
       throw e;
     }
     // Audit the removal with the last state the item had before deletion.
+    await cache.del(cacheKeys.menu(item.menuId));
     await menuHistoryRepository.log({
       menuId: item.menuId,
       entity: "MENU_ITEM",

@@ -6,6 +6,7 @@ import { menuItemService } from "../menuItem/menuItem.service";
 // Imported as a repository (not the service) to avoid a circular dependency:
 // restaurant.service already imports menuService.
 import { restaurantRepository } from "../restaurant/restaurant.repository";
+import { cache, cacheKeys } from "../../shared/cache/cache";
 import { menuRepository } from "./menu.repository";
 import { menuHistoryRepository } from "./menuHistory.repository";
 import type { PaginationMeta } from "../../shared/schemas/pagination.schema";
@@ -37,13 +38,28 @@ class MenuService {
     return menus.map((m) => this.toMenuResponse(m));
   }
 
+  /**
+   * Cache-aside: menus are read constantly and written rarely, the other half
+   * of the official caching requirement alongside the cart. Every admin write
+   * below invalidates the key (see `invalidateMenu`).
+   */
   async getByIdWithItems(id: string): Promise<MenuWithItemsResponse> {
+    const cached = await cache.get<MenuWithItemsResponse>(cacheKeys.menu(id));
+    if (cached) return cached;
+
     const menu = await menuRepository.findByIdWithItems(id);
     if (!menu) throw menuNotFound();
-    return {
+    const response = {
       ...this.toMenuResponse(menu),
       items: menu.menuItems.map((i) => menuItemService.toMenuItemResponse(i)),
     };
+    await cache.set(cacheKeys.menu(id), response);
+    return response;
+  }
+
+  /** Called by this service and by menuItem.service after any catalog write. */
+  async invalidateMenu(menuId: string): Promise<void> {
+    await cache.del(cacheKeys.menu(menuId));
   }
 
   async listItems(menuId: string): Promise<MenuItemResponse[]> {
@@ -84,6 +100,7 @@ class MenuService {
       action: "UPDATED",
       snapshot: { name: updated.name },
     });
+    await this.invalidateMenu(id);
     return this.getByIdWithItems(id);
   }
 
@@ -115,6 +132,7 @@ class MenuService {
     await this.assertExists(id);
     try {
       await menuRepository.delete({ where: { id } });
+      await this.invalidateMenu(id);
     } catch (e) {
       // Cascades to menu items, which may be referenced by carts/orders
       // (`onDelete: Restrict`).

@@ -41,6 +41,13 @@ const EnvSchema = z
     SMTP_PASS: z.string().optional(),
     // Sender address for outgoing mail; falls back to SMTP_USER.
     MAIL_FROM: z.string().trim().optional(),
+    // ── Redis (cache) ── optional: unset means caching is simply disabled,
+    // the app still serves everything from PostgreSQL.
+    REDIS_URL: z.string().trim().optional(),
+    REDIS_CACHE_TTL_SECONDS: z.preprocess(
+      (value) => (value === undefined || value === "" ? 300 : value),
+      z.coerce.number().int().positive(),
+    ),
     // ── Abandoned-cart housekeeping ──
     // A guest cart is disposable; a signed-in customer's cart is saved state,
     // so it gets a much longer grace period.
