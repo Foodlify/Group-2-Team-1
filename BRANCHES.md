@@ -34,6 +34,7 @@
 | `feat/customer-default-address` | 2026-08-06 | العنوان الـ Default — أول عنوان بيبقى default تلقائياً + endpoint لتغييره + ترقية أحدث عنوان لو الـ default اتحذف (قاعدة S12: الأوردر بيفضل يختار عنوانه) | ✅ مدموج في develop |
 | `feat/customer-preferred-payments` | 2026-08-06 | Preferred Payment Settings — الجدول الرسمي التاني في Customer Management: حفظ طريقة الدفع المفضلة (method بس، من غير أي بيانات كروت) بنفس دورة العناوين | ✅ مدموج في develop |
 | `feat/customer-support` | 2026-08-06 | Customer Support — تذاكر دعم بتصنيفات وتوزيع تلقائي على أقل agent مشغول (تصميم G1T1 مع إصلاح ثغراته الثلاثة: ownership على القراءة + أكشنات الـ agent بقت ADMIN + العداد بيتحدث في transaction) | ✅ مدموج في develop |
+| `feat/menu-search` | 2026-08-06 | Search Menu Items (بند رسمي) — بحث عام في الأصناف بالاسم مع سياق المنيو والمطعم في النتيجة. (قرار: Category وIngredients اتشالوا — مش في الـ mindmap الرسمي ومحدش من الفرق نفذهم) | ✅ مدموج في develop |
 
 > **مين متغطي بمين؟** الفروع 2→6 كلها محتواها موجود جوا `feat/admin-crud` (رقم 8) — بتفضل على GitHub كسجل للـ workflow، إنما الشغل الجديد كله فوق الأساس. الاستثناءان: الكوميتات الثلاثة بتوع الـ route-builder على رقم 6 (مستبعدين بقرار)، وشغل كمال (رقم 7).
 
