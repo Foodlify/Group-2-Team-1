@@ -15,7 +15,10 @@ import {
   type TimelineEntry,
 } from "./order.model";
 import { Prisma } from "../../generated/prisma/client";
-import type { OrderModel, OrderItemsModel } from "../../generated/prisma/models";
+import type {
+  OrderModel,
+  OrderItemsModel,
+} from "../../generated/prisma/models";
 import type {
   PlaceOrderInput,
   UpdateStatusInput,
@@ -38,7 +41,7 @@ class OrderService {
 
     const result = await orderRepository.transaction(async (tx) => {
       // Row-level lock on the cart prevents concurrent mutations during checkout
-      const cart = await cartService.lockByCustomerIdWithItems(customerId, tx);
+      const cart = await cartService.lockByOwnerWithItems({ customerId }, tx);
       if (!cart) {
         throw new AppError(
           orderErrors.CART_NOT_FOUND.message,
@@ -108,7 +111,7 @@ class OrderService {
         tx,
       );
 
-      await cartService.clearCart(customerId, tx);
+      await cartService.clearCart({ customerId }, tx);
 
       return { order, createdItems };
     });
@@ -302,7 +305,9 @@ class OrderService {
     return this.applyTimelineChange(order, {
       status: order.status as OrderStatusValue,
       location: input.currentLocation,
-      estimatedDeliveryTime: new Date(input.estimatedDeliveryTime).toISOString(),
+      estimatedDeliveryTime: new Date(
+        input.estimatedDeliveryTime,
+      ).toISOString(),
     });
   }
 

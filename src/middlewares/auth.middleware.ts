@@ -71,6 +71,23 @@ export const authenticate = asyncHandler(
   },
 );
 
+/**
+ * Populates `req.user` when a valid access token is present and simply moves
+ * on when it isn't — for endpoints open to both signed-in customers and
+ * anonymous visitors (the guest cart). A token that IS present but invalid,
+ * or belongs to a disabled account, still fails loudly: silently downgrading
+ * it to "guest" would hide expired sessions from the client.
+ */
+export const optionalAuthenticate = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    if (!extractAccessToken(req)) {
+      next();
+      return;
+    }
+    await authenticate(req, res, next);
+  },
+);
+
 export const authorize = (...roles: string[]) => {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.user || !roles.includes(req.user.role)) {

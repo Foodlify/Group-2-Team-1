@@ -20,4 +20,14 @@ export const cartErrors = {
       "Cart already has items from a different restaurant. Clear your cart first.",
     statusCode: 400,
   },
+  MERGE_DIFFERENT_RESTAURANT: {
+    message:
+      "Your guest cart is from a different restaurant than your account's cart. Clear one of them, then merge again.",
+    statusCode: 400,
+  },
+  GUEST_TOKEN_REQUIRED: {
+    message:
+      "Send the X-Cart-Token header returned when the guest cart was created, or sign in",
+    statusCode: 400,
+  },
 } as const;
