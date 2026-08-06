@@ -25,13 +25,47 @@ model User {
   password String
   /// Account role — CUSTOMER for storefront users, ADMIN for dashboard.
   role     Role   @default(CUSTOMER)
-  /// Current valid refresh token (rotated on refresh, cleared on logout).
-  refreshToken String?
 
-  customer Customer?
+  customer      Customer?
+  refreshTokens RefreshToken[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// One row per issued refresh token (multi-device sessions). Only the SHA-256
+/// hash is stored — a DB leak never exposes usable tokens. Rotation revokes the
+/// presented token and inserts its successor; logout revokes just that session.
+model RefreshToken {
+  id        String   @id @default(cuid())
+  /// SHA-256 hash of the refresh JWT (see jwt.helper `hashToken`).
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// Email verification codes. Only the bcrypt hash of the 6-digit code is
+/// stored; codes expire after a short window and are single-use.
+model Otp {
+  id       String @id @default(cuid())
+  email    String
+  /// bcrypt hash of the 6-digit code — the plaintext is only ever emailed.
+  codeHash String
+  /// What the code proves: "registration" | "password_reset".
+  purpose  String
+  used     Boolean @default(false)
+
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email, purpose])
 }
 
 model Customer {

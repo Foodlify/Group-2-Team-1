@@ -13,9 +13,11 @@ import {
   signRefreshToken,
   verifyRefreshToken,
   hashToken,
+  REFRESH_TOKEN_TTL_MS,
 } from "../../shared/auth/jwt.helper";
 import { customerService } from "../customer/customer.service";
 import { userRepository } from "./user.repository";
+import { refreshTokenRepository } from "./refreshToken.repository";
 import type { UserModel } from "../../generated/prisma/models";
 import type {
   AdminLoginInput,
@@ -105,14 +107,22 @@ class UserService {
       throw appError(userErrors.INVALID_REFRESH_TOKEN);
     }
 
-    const user = await userRepository.findById(payload.id);
-    // Stored value is a SHA-256 hash, so compare against the hash of the
-    // presented token (never the raw token).
-    if (!user || user.refreshToken !== hashToken(refreshToken)) {
+    // Sessions live in the RefreshToken table (one row per device) — look the
+    // presented token up by its SHA-256 hash and validate the row, then rotate:
+    // revoke this row and issue a fresh token as its successor.
+    const tokenHash = hashToken(refreshToken);
+    const stored = await refreshTokenRepository.findByTokenHash(tokenHash);
+    if (!stored || stored.revoked || stored.expiresAt < new Date()) {
       throw appError(userErrors.INVALID_REFRESH_TOKEN);
     }
 
-    const tokens = await this.issueTokens(user); // rotates the refresh token
+    const user = await userRepository.findById(payload.id);
+    if (!user || stored.userId !== user.id) {
+      throw appError(userErrors.INVALID_REFRESH_TOKEN);
+    }
+
+    await refreshTokenRepository.revokeByTokenHash(tokenHash);
+    const tokens = await this.issueTokens(user);
     return { user: this.toUserResponse(user), tokens };
   }
 
@@ -123,13 +133,13 @@ class UserService {
    */
   async logout(refreshToken: string | undefined): Promise<void> {
     if (!refreshToken) return;
-    let payload: { id: string };
     try {
-      payload = verifyRefreshToken(refreshToken);
+      verifyRefreshToken(refreshToken);
     } catch {
       return;
     }
-    await userRepository.updateRefreshToken(payload.id, null);
+    // Revokes ONLY this session's row — other devices stay logged in.
+    await refreshTokenRepository.revokeByTokenHash(hashToken(refreshToken));
   }
 
   // ─── Admin user management (CRUD) ─────────────────────
@@ -228,8 +238,15 @@ class UserService {
       role: user.role,
     });
     const refreshToken = signRefreshToken({ id: user.id });
-    // Persist only a hash so a DB leak can't expose usable refresh tokens.
-    await userRepository.updateRefreshToken(user.id, hashToken(refreshToken));
+    // One RefreshToken row per session (multi-device). Only the hash is
+    // persisted so a DB leak can't expose usable refresh tokens. Expired and
+    // revoked rows are swept here instead of by a scheduled job.
+    await refreshTokenRepository.deleteInactiveForUser(user.id);
+    await refreshTokenRepository.createForUser(
+      user.id,
+      hashToken(refreshToken),
+      new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
+    );
     return { accessToken, refreshToken };
   }
 

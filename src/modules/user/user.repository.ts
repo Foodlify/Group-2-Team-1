@@ -24,15 +24,15 @@ export class UserRepository extends BaseRepository<PrismaClient["user"]> {
     return found !== null;
   }
 
-  async updateRefreshToken(id: string, token: string | null) {
-    return prisma.user.update({ where: { id }, data: { refreshToken: token } });
-  }
-
   /** Newest-first paginated list with total count. */
   async listPaginated(page: number, limit: number) {
     const skip = (page - 1) * limit;
     const [data, total] = await Promise.all([
-      prisma.user.findMany({ skip, take: limit, orderBy: { createdAt: "desc" } }),
+      prisma.user.findMany({
+        skip,
+        take: limit,
+        orderBy: { createdAt: "desc" },
+      }),
       prisma.user.count(),
     ]);
     return {
