@@ -5,6 +5,10 @@ import orderRouter from "../modules/order/order.routes";
 import { authRouter, usersRouter } from "../modules/user/user.routes";
 import otpRouter from "../modules/otp/otp.routes";
 import customerRouter from "../modules/customer/customer.routes";
+import {
+  myRatingsRouter,
+  restaurantRatingsRouter,
+} from "../modules/rating/rating.routes";
 import restaurantRouter from "../modules/restaurant/restaurant.routes";
 import menuRouter from "../modules/menu/menu.routes";
 import menuItemRouter from "../modules/menuItem/menuItem.routes";
@@ -18,7 +22,10 @@ router.use("/auth", authLimiter, authRouter);
 // service's own per-email cap of 3 codes / 10 minutes).
 router.use("/otp", authLimiter, otpRouter);
 router.use("/users", usersRouter);
+// Specific mounts registered BEFORE their parent prefixes so they match first.
+router.use("/customers/me/ratings", myRatingsRouter);
 router.use("/customers", customerRouter);
+router.use("/restaurants/:restaurantId/ratings", restaurantRatingsRouter);
 router.use("/restaurants", restaurantRouter);
 router.use("/menus", menuRouter);
 router.use("/menu-items", menuItemRouter);

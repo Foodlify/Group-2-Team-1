@@ -77,6 +77,7 @@ model Customer {
   cart      Cart?
   addresses Address[]
   orders    Order[]
+  rates     RestaurantRate[]
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -114,6 +115,7 @@ model Restaurant {
   menus  Menu[]
   carts  Cart[]
   orders Order[]
+  rates  RestaurantRate[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -221,6 +223,7 @@ model Order {
 
   orderItems   OrderItems[]
   transactions Transaction[]
+  rate         RestaurantRate?
 
   customer   Customer    @relation(fields: [customerId], references: [id], onDelete: Restrict)
   address    Address     @relation(fields: [addressId], references: [id], onDelete: Restrict)
@@ -254,6 +257,34 @@ model OrderItems {
 
   @@index([orderId])
   @@index([menuItemId])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Ratings
+// ═══════════════════════════════════════════════════════════════
+
+/// Customer rating of a restaurant, tied to one DELIVERED order.
+/// "One rating per order" is enforced by the DB itself (unique orderId) —
+/// no racy pre-check in application code. The restaurantId is derived from
+/// the order at insert time, never accepted from the client.
+model RestaurantRate {
+  id           String  @id @default(cuid())
+  restaurantId String
+  orderId      String  @unique
+  customerId   String
+  /// 1–5 stars. Range enforced in validation; kept Int for SQL aggregates.
+  rating       Int
+  comment      String?
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  order      Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  customer   Customer   @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([restaurantId])
+  @@index([customerId])
 }
 
 // ═══════════════════════════════════════════════════════════════
