@@ -6,6 +6,7 @@ import type { PaginationQuery } from "../../shared/schemas/pagination.schema";
 import type { RestaurantIdParams } from "../restaurant/restaurant.validation";
 import { customerService } from "../customer/customer.service";
 import { ratingService } from "./rating.service";
+import type { DiscoveryQuery } from "./rating.validation";
 
 export const rateOrder = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
@@ -40,5 +41,29 @@ export const listRestaurantRatings = asyncHandler(
       StatusCodes.OK,
       meta,
     );
+  },
+);
+
+// ─── Discovery ────────────────────────────────────────────
+
+export const topRatedRestaurants = asyncHandler(
+  async (req: Request, res: Response): Promise<void> => {
+    const restaurants = await ratingService.topRated(
+      req.query as unknown as DiscoveryQuery,
+    );
+    sendSuccess(res, restaurants, "Top rated restaurants retrieved");
+  },
+);
+
+export const recommendedRestaurants = asyncHandler(
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = await customerService.requireCustomerIdByUserId(
+      req.user!.id,
+    );
+    const restaurants = await ratingService.recommendationsFor(
+      customerId,
+      req.query as unknown as DiscoveryQuery,
+    );
+    sendSuccess(res, restaurants, "Recommended restaurants retrieved");
   },
 );

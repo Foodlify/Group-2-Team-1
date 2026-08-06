@@ -14,7 +14,22 @@ export class OrderRepository extends BaseRepository<PrismaClient["order"]> {
   }
 
   async findByCustomerId(customerId: string, tx?: Prisma.TransactionClient) {
-    return (tx ?? prisma).order.findMany({ where: { customerId }, orderBy: { createdAt: "desc" } });
+    return (tx ?? prisma).order.findMany({
+      where: { customerId },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  /** Distinct restaurants the customer has ever ordered from. */
+  async distinctRestaurantIdsForCustomer(
+    customerId: string,
+  ): Promise<string[]> {
+    const rows = await prisma.order.findMany({
+      where: { customerId },
+      select: { restaurantId: true },
+      distinct: ["restaurantId"],
+    });
+    return rows.map((r) => r.restaurantId);
   }
 
   async createOrder(
@@ -53,7 +68,11 @@ export class OrderRepository extends BaseRepository<PrismaClient["order"]> {
     entry: TimelineEntry,
     expectedStatus?: string,
     tx?: Prisma.TransactionClient,
-  ): Promise<{ status: string; timeline: TimelineEntry[]; updatedAt: Date } | null> {
+  ): Promise<{
+    status: string;
+    timeline: TimelineEntry[];
+    updatedAt: Date;
+  } | null> {
     const client = tx ?? prisma;
     // Tagged-template `$queryRaw` (not the `Unsafe` variant): every interpolated
     // value is a bound parameter, and the optional precondition is composed with

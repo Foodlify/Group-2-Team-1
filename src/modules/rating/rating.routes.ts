@@ -3,7 +3,10 @@ import { validate } from "../../middlewares/validate.middleware";
 import { authenticate } from "../../middlewares/auth.middleware";
 import { routeRegistry } from "../../openapi/registry";
 import * as controller from "./rating.controller";
-import { CreateRatingRequestSchema } from "./rating.validation";
+import {
+  CreateRatingRequestSchema,
+  DiscoveryQuerySchema,
+} from "./rating.validation";
 import { RestaurantIdParamsSchema } from "../restaurant/restaurant.validation";
 import { PaginationQuerySchema } from "../../shared/schemas/pagination.schema";
 
@@ -25,6 +28,21 @@ restaurantRatingsRouter.get(
   "/",
   validate({ params: RestaurantIdParamsSchema, query: PaginationQuerySchema }),
   controller.listRestaurantRatings,
+);
+
+// ─── Restaurant discovery (mounted at /restaurants) ──────
+// Exact paths only — anything else falls through to the main catalog router.
+export const restaurantDiscoveryRouter: Router = Router();
+restaurantDiscoveryRouter.get(
+  "/top-rated",
+  validate({ query: DiscoveryQuerySchema }),
+  controller.topRatedRestaurants,
+);
+restaurantDiscoveryRouter.get(
+  "/recommendations",
+  authenticate,
+  validate({ query: DiscoveryQuerySchema }),
+  controller.recommendedRestaurants,
 );
 
 // ─── OpenAPI Documentation ───────────────────────────────
@@ -115,6 +133,56 @@ routeRegistry.push({
         "404": {
           description: "Restaurant not found",
           content: { "application/json": { schema: errorRef } },
+        },
+      },
+    },
+  },
+});
+
+const limitParam = {
+  name: "limit",
+  in: "query",
+  schema: { type: "integer" as const, default: 10 },
+  description: "Number of restaurants to return (max 50)",
+} as const;
+
+routeRegistry.push({
+  path: "/api/v1/restaurants/top-rated",
+  pathItem: {
+    get: {
+      tags: [tag],
+      summary: "Top rated restaurants (public)",
+      description:
+        "Restaurants ranked by average rating (SQL aggregate), ties broken by ratings count. Restaurants without ratings are excluded.",
+      parameters: [limitParam],
+      responses: {
+        "200": {
+          description: "Top rated restaurants",
+          content: jsonRef("TopRatedListSuccessResponse"),
+        },
+      },
+    },
+  },
+});
+
+routeRegistry.push({
+  path: "/api/v1/restaurants/recommendations",
+  pathItem: {
+    get: {
+      tags: [tag],
+      summary: "Restaurant recommendations for the current customer",
+      description:
+        "The top-rated restaurants the customer hasn't ordered from yet — a customer with no order history gets the plain top-rated list.",
+      security,
+      parameters: [limitParam],
+      responses: {
+        "200": {
+          description: "Recommended restaurants",
+          content: jsonRef("TopRatedListSuccessResponse"),
+        },
+        "403": {
+          description: "Not a customer account",
+          content: jsonRef("ErrorResponse"),
         },
       },
     },
