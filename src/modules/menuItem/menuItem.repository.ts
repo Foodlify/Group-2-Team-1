@@ -31,6 +31,40 @@ export class MenuItemRepository extends BaseRepository<
     });
   }
 
+  /**
+   * Reserves `quantity` units in a single conditional UPDATE:
+   * `WHERE id = ? AND stock >= quantity`. Postgres takes the row lock for the
+   * duration, so two concurrent checkouts can never both pass the check —
+   * the loser matches zero rows and gets `false`. This is what prevents
+   * overselling; a read-then-write check could not.
+   *
+   * Untracked items (stock IS NULL) never match the filter, so callers must
+   * skip them rather than treat `false` as "out of stock".
+   */
+  async reserveStock(
+    menuItemId: string,
+    quantity: number,
+    tx: Prisma.TransactionClient,
+  ): Promise<boolean> {
+    const { count } = await tx.menuItem.updateMany({
+      where: { id: menuItemId, stock: { gte: quantity } },
+      data: { stock: { decrement: quantity } },
+    });
+    return count > 0;
+  }
+
+  /** Puts reserved units back (order cancelled). No-op for untracked items. */
+  async releaseStock(
+    menuItemId: string,
+    quantity: number,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    await tx.menuItem.updateMany({
+      where: { id: menuItemId, stock: { not: null } },
+      data: { stock: { increment: quantity } },
+    });
+  }
+
   /** All items belonging to a menu, oldest first. */
   async findByMenuId(menuId: string) {
     return prisma.menuItem.findMany({

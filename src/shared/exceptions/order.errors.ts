@@ -43,6 +43,10 @@ export const orderErrors = {
     message: "One or more menu items in your cart are no longer available",
     statusCode: 409,
   },
+  OUT_OF_STOCK: {
+    message: "One or more items in your cart are out of stock",
+    statusCode: 409,
+  },
   PRICE_CHANGED: {
     message:
       "Prices of one or more cart items have changed. Please review your cart.",

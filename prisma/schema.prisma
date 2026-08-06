@@ -206,6 +206,10 @@ model MenuItem {
   menuId String
   name   String
   price  Decimal
+  /// Units available. NULL means the restaurant doesn't track stock for this
+  /// item (always orderable). When set, checkout decrements it with a
+  /// conditional UPDATE so concurrent orders can never oversell it.
+  stock  Int?
 
   cartItems  CartItem[]
   orderItems OrderItems[]
