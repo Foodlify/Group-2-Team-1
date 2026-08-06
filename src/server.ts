@@ -2,12 +2,16 @@ import app from "./app";
 import env from "./config/env";
 import logger from "./config/logger";
 import { connectPrisma, disconnectPrisma } from "./config/prisma";
+import { startCartSweeper } from "./jobs/cartSweeper";
 
 const startServer = async (): Promise<void> => {
   let isShuttingDown = false;
 
   // ── Connect to DB First ─────────────────────────────
   await connectPrisma();
+
+  // ── Background Jobs ─────────────────────────────────
+  const stopCartSweeper = startCartSweeper();
 
   // ── Start HTTP Server ───────────────────────────────
   const server = app.listen(env.PORT, () => {
@@ -28,6 +32,8 @@ const startServer = async (): Promise<void> => {
     isShuttingDown = true;
 
     logger.warn(`${signal} received. Shutting down gracefully...`);
+
+    stopCartSweeper();
 
     // Stop accepting new requests
     server.close(async () => {

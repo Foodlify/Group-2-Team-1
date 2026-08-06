@@ -125,6 +125,22 @@ export const CartSuccessResponseSchema = z
   .meta({ id: "CartSuccessResponse" });
 
 /**
+ * Result of an abandoned-cart sweep.
+ */
+export const CartSweepSuccessResponseSchema = z
+  .object({
+    success: z.literal(true),
+    message: z.string(),
+    data: z.object({
+      deleted: z.number().int().nonnegative().meta({
+        description: "How many abandoned carts were removed",
+        example: 12,
+      }),
+    }),
+  })
+  .meta({ id: "CartSweepSuccessResponse" });
+
+/**
  * Empty success response for delete/clear operations.
  */
 export const EmptySuccessResponseSchema = z
@@ -143,6 +159,10 @@ schemaRegistry.register("AddCartItemRequest", AddCartItemRequestSchema);
 schemaRegistry.register("UpdateCartItemRequest", UpdateCartItemRequestSchema);
 schemaRegistry.register("CartItemIdParams", CartItemIdParamsSchema);
 schemaRegistry.register("MergeGuestCartRequest", MergeGuestCartRequestSchema);
+schemaRegistry.register(
+  "CartSweepSuccessResponse",
+  CartSweepSuccessResponseSchema,
+);
 schemaRegistry.register("CartItemResponse", CartItemResponseSchema);
 schemaRegistry.register("CartResponse", CartResponseSchema);
 schemaRegistry.register("CartSuccessResponse", CartSuccessResponseSchema);

@@ -96,6 +96,29 @@ export class CartRepository extends BaseRepository<PrismaClient["cart"]> {
   }
 
   /**
+   * Deletes carts untouched since their cutoff — guest and customer carts get
+   * different grace periods. Items go with them via the cascade. Returns how
+   * many carts were removed.
+   */
+  async deleteAbandoned(cutoffs: {
+    guestBefore: Date;
+    customerBefore: Date;
+  }): Promise<number> {
+    const { count } = await prisma.cart.deleteMany({
+      where: {
+        OR: [
+          { guestToken: { not: null }, updatedAt: { lt: cutoffs.guestBefore } },
+          {
+            customerId: { not: null },
+            updatedAt: { lt: cutoffs.customerBefore },
+          },
+        ],
+      },
+    });
+    return count;
+  }
+
+  /**
    * Hands a guest cart over to a customer: the same row keeps its items and
    * just swaps identity. Used when the customer has no cart of their own.
    */
