@@ -33,6 +33,17 @@ export class RefreshTokenRepository extends BaseRepository<
   }
 
   /**
+   * Revokes EVERY active session for a user — used after a password reset so
+   * a stolen refresh token dies with the old password.
+   */
+  async revokeAllForUser(userId: string): Promise<void> {
+    await prisma.refreshToken.updateMany({
+      where: { userId, revoked: false },
+      data: { revoked: true },
+    });
+  }
+
+  /**
    * Housekeeping: drops rows that can never authenticate again (expired or
    * revoked). Called opportunistically on login so the table doesn't grow
    * unbounded — no cron needed at this scale.

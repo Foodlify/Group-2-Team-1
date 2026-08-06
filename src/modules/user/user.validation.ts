@@ -14,12 +14,26 @@ export const ROLES = ["CUSTOMER", "ADMIN"] as const;
 
 export const RegisterRequestSchema = z
   .object({
-    name: z.string().min(2).meta({ description: "Full name", example: "Jane Doe" }),
-    email: z.email().meta({ description: "Unique email", example: "jane@example.com" }),
-    password: z.string().min(8).meta({ description: "Min 8 characters", example: "Password123!" }),
-    phone: z.string().min(6).meta({ description: "Unique phone", example: "+201000000000" }),
+    name: z
+      .string()
+      .min(2)
+      .meta({ description: "Full name", example: "Jane Doe" }),
+    email: z
+      .email()
+      .meta({ description: "Unique email", example: "jane@example.com" }),
+    password: z
+      .string()
+      .min(8)
+      .meta({ description: "Min 8 characters", example: "Password123!" }),
+    phone: z
+      .string()
+      .min(6)
+      .meta({ description: "Unique phone", example: "+201000000000" }),
   })
-  .meta({ id: "RegisterRequest", description: "Customer registration payload" });
+  .meta({
+    id: "RegisterRequest",
+    description: "Customer registration payload",
+  });
 
 export const LoginRequestSchema = z
   .object({
@@ -33,7 +47,10 @@ export const AdminLoginRequestSchema = z
     email: z.email().meta({ example: "admin@example.com" }),
     password: z.string().min(1).meta({ example: "Admin123!" }),
   })
-  .meta({ id: "AdminLoginRequest", description: "Admin (dashboard) login payload" });
+  .meta({
+    id: "AdminLoginRequest",
+    description: "Admin (dashboard) login payload",
+  });
 
 export const CreateUserRequestSchema = z
   .object({
@@ -41,14 +58,11 @@ export const CreateUserRequestSchema = z
     email: z.email(),
     password: z.string().min(8),
     role: z.enum(ROLES).meta({ description: "Account role", example: "ADMIN" }),
-    phone: z
-      .string()
-      .min(6)
-      .optional()
-      .meta({
-        description: "Required when role is CUSTOMER (a Customer profile is created)",
-        example: "+201000000000",
-      }),
+    phone: z.string().min(6).optional().meta({
+      description:
+        "Required when role is CUSTOMER (a Customer profile is created)",
+      example: "+201000000000",
+    }),
   })
   .meta({ id: "CreateUserRequest", description: "Admin-created user payload" });
 
@@ -61,7 +75,9 @@ export const UpdateUserRequestSchema = z
   .meta({ id: "UpdateUserRequest", description: "Fields to update on a user" });
 
 export const UserIdParamsSchema = z
-  .object({ id: z.cuid2().meta({ description: "User ID", example: "clxyz..." }) })
+  .object({
+    id: z.cuid2().meta({ description: "User ID", example: "clxyz..." }),
+  })
   .meta({ id: "UserIdParams" });
 
 // ═══════════════════════════════════════════════════════════════
@@ -105,10 +121,44 @@ export const UserListSuccessResponseSchema = z
   })
   .meta({ id: "UserListSuccessResponse" });
 
+// ─── Password reset (forgot password) ────────────────────
+
+export const ForgotPasswordRequestSchema = z
+  .object({
+    email: z.email().meta({ example: "jane@example.com" }),
+  })
+  .meta({
+    id: "ForgotPasswordRequest",
+    description:
+      "Start the forgot-password flow — a reset code is emailed when the address has an account",
+  });
+
+export const ResetPasswordRequestSchema = z
+  .object({
+    email: z.email().meta({ example: "jane@example.com" }),
+    code: z
+      .string()
+      .regex(/^\d{6}$/)
+      .meta({
+        description: "The 6-digit code from the email",
+        example: "123456",
+      }),
+    newPassword: z
+      .string()
+      .min(8)
+      .meta({ description: "Min 8 characters", example: "NewPassword123!" }),
+  })
+  .meta({
+    id: "ResetPasswordRequest",
+    description: "Complete the forgot-password flow with the emailed code",
+  });
+
 // ═══════════════════════════════════════════════════════════════
 // Registry
 // ═══════════════════════════════════════════════════════════════
 
+schemaRegistry.register("ForgotPasswordRequest", ForgotPasswordRequestSchema);
+schemaRegistry.register("ResetPasswordRequest", ResetPasswordRequestSchema);
 schemaRegistry.register("RegisterRequest", RegisterRequestSchema);
 schemaRegistry.register("LoginRequest", LoginRequestSchema);
 schemaRegistry.register("AdminLoginRequest", AdminLoginRequestSchema);
@@ -118,13 +168,18 @@ schemaRegistry.register("UserIdParams", UserIdParamsSchema);
 schemaRegistry.register("UserResponse", UserResponseSchema);
 schemaRegistry.register("AuthUserResponse", AuthUserResponseSchema);
 schemaRegistry.register("UserSuccessResponse", UserSuccessResponseSchema);
-schemaRegistry.register("UserListSuccessResponse", UserListSuccessResponseSchema);
+schemaRegistry.register(
+  "UserListSuccessResponse",
+  UserListSuccessResponseSchema,
+);
 
 // ═══════════════════════════════════════════════════════════════
 // TypeScript Types
 // ═══════════════════════════════════════════════════════════════
 
 export type RegisterInput = z.infer<typeof RegisterRequestSchema>;
+export type ForgotPasswordInput = z.infer<typeof ForgotPasswordRequestSchema>;
+export type ResetPasswordInput = z.infer<typeof ResetPasswordRequestSchema>;
 export type LoginInput = z.infer<typeof LoginRequestSchema>;
 export type AdminLoginInput = z.infer<typeof AdminLoginRequestSchema>;
 export type CreateUserInput = z.infer<typeof CreateUserRequestSchema>;

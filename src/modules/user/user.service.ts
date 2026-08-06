@@ -15,7 +15,9 @@ import {
   hashToken,
   REFRESH_TOKEN_TTL_MS,
 } from "../../shared/auth/jwt.helper";
+import { otpErrors } from "../../shared/exceptions/otp.errors";
 import { customerService } from "../customer/customer.service";
+import { otpService } from "../otp/otp.service";
 import { userRepository } from "./user.repository";
 import { refreshTokenRepository } from "./refreshToken.repository";
 import type { UserModel } from "../../generated/prisma/models";
@@ -24,6 +26,7 @@ import type {
   CreateUserInput,
   LoginInput,
   RegisterInput,
+  ResetPasswordInput,
   UpdateUserInput,
   UserQuery,
   UserResponse,
@@ -140,6 +143,37 @@ class UserService {
     }
     // Revokes ONLY this session's row — other devices stay logged in.
     await refreshTokenRepository.revokeByTokenHash(hashToken(refreshToken));
+  }
+
+  // ─── Password reset (forgot password) ─────────────────
+  /**
+   * Starts the forgot-password flow. The response is identical whether or
+   * not the email has an account (no user enumeration) — the OTP is only
+   * actually sent when a user exists.
+   */
+  async forgotPassword(email: string): Promise<void> {
+    const user = await userRepository.findByEmail(email);
+    if (!user) return;
+    await otpService.sendOtp(email, "password_reset");
+  }
+
+  /**
+   * Completes the flow: verifies the emailed single-use code, sets the new
+   * password, and revokes every refresh session — a password reset logs the
+   * account out of all devices.
+   */
+  async resetPassword(input: ResetPasswordInput): Promise<void> {
+    await otpService.verifyOtp(input.email, input.code, "password_reset");
+    const user = await userRepository.findByEmail(input.email);
+    // Unreachable in practice (codes are only sent to existing accounts),
+    // kept so a deleted-account race yields the same generic error.
+    if (!user) throw appError(otpErrors.INVALID_OTP);
+
+    await userRepository.update({
+      where: { id: user.id },
+      data: { password: await hashPassword(input.newPassword) },
+    });
+    await refreshTokenRepository.revokeAllForUser(user.id);
   }
 
   // ─── Admin user management (CRUD) ─────────────────────
