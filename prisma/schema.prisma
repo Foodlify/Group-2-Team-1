@@ -221,14 +221,22 @@ model MenuItem {
 // Cart
 // ═══════════════════════════════════════════════════════════════
 
+/// A cart belongs to EITHER a signed-in customer (`customerId`) or an
+/// anonymous visitor (`guestToken`) — never both, never neither. The
+/// migration adds a CHECK constraint that enforces that at the DB level.
+/// On login the guest cart is merged into the customer's (see cart.service
+/// `mergeGuestCart`).
 model Cart {
-  id           String @id @default(cuid())
-  customerId   String @unique
+  id           String  @id @default(cuid())
+  customerId   String? @unique
+  /// Opaque token handed to an anonymous visitor and sent back as the
+  /// `X-Cart-Token` header. Null once the cart belongs to a customer.
+  guestToken   String? @unique
   restaurantId String
 
   cartItems CartItem[]
 
-  customer   Customer   @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customer   Customer?  @relation(fields: [customerId], references: [id], onDelete: Cascade)
   restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())

@@ -51,6 +51,22 @@ export const CartItemIdParamsSchema = z
   })
   .meta({ id: "CartItemIdParams" });
 
+/**
+ * Body schema for POST /carts/merge — folds a guest cart into the
+ * signed-in customer's cart.
+ */
+export const MergeGuestCartRequestSchema = z
+  .object({
+    guestToken: z.string().min(1).meta({
+      description: "The X-Cart-Token value the guest cart was created with",
+      example: "b0Zt7c1Qk...",
+    }),
+  })
+  .meta({
+    id: "MergeGuestCartRequest",
+    description: "Merge an anonymous cart into my cart after signing in",
+  });
+
 // ═══════════════════════════════════════════════════════════════
 // Response Schemas (outputs)
 // ═══════════════════════════════════════════════════════════════
@@ -79,7 +95,9 @@ export const CartItemResponseSchema = z
 export const CartResponseSchema = z
   .object({
     id: z.cuid2(),
-    customerId: z.cuid2(),
+    customerId: z.cuid2().nullable().meta({
+      description: "Null while the cart belongs to an anonymous visitor",
+    }),
     restaurantId: z.cuid2(),
     items: z.array(CartItemResponseSchema),
     totalPrice: z.number().meta({
@@ -124,6 +142,7 @@ export const EmptySuccessResponseSchema = z
 schemaRegistry.register("AddCartItemRequest", AddCartItemRequestSchema);
 schemaRegistry.register("UpdateCartItemRequest", UpdateCartItemRequestSchema);
 schemaRegistry.register("CartItemIdParams", CartItemIdParamsSchema);
+schemaRegistry.register("MergeGuestCartRequest", MergeGuestCartRequestSchema);
 schemaRegistry.register("CartItemResponse", CartItemResponseSchema);
 schemaRegistry.register("CartResponse", CartResponseSchema);
 schemaRegistry.register("CartSuccessResponse", CartSuccessResponseSchema);
@@ -136,4 +155,5 @@ schemaRegistry.register("EmptySuccessResponse", EmptySuccessResponseSchema);
 export type AddCartItemInput = z.infer<typeof AddCartItemRequestSchema>;
 export type UpdateCartItemInput = z.infer<typeof UpdateCartItemRequestSchema>;
 export type CartItemIdParams = z.infer<typeof CartItemIdParamsSchema>;
+export type MergeGuestCartInput = z.infer<typeof MergeGuestCartRequestSchema>;
 export type CartResponse = z.infer<typeof CartResponseSchema>;
