@@ -2,6 +2,7 @@ import { Router } from "express";
 import { validate } from "../../middlewares/validate.middleware";
 import {
   authenticate,
+  authorize,
   optionalAuthenticate,
 } from "../../middlewares/auth.middleware";
 import { routeRegistry } from "../../openapi/registry";
@@ -36,6 +37,14 @@ router.post(
   authenticate,
   validate({ body: MergeGuestCartRequestSchema }),
   controller.mergeGuestCart,
+);
+
+// On-demand run of the same sweep the background job performs.
+router.post(
+  "/housekeeping",
+  authenticate,
+  authorize("ADMIN"),
+  controller.sweepAbandonedCarts,
 );
 
 router.patch(
@@ -201,6 +210,33 @@ routeRegistry.push({
         },
         "401": {
           description: "Not authenticated",
+          content: { "application/json": { schema: errorRef } },
+        },
+      },
+    },
+  },
+});
+
+routeRegistry.push({
+  path: "/api/v1/carts/housekeeping",
+  pathItem: {
+    post: {
+      tags: [tag],
+      security,
+      summary: "Sweep abandoned carts now (ADMIN)",
+      description:
+        "Runs the same cleanup as the background sweeper: guest carts idle past CART_GUEST_TTL_HOURS and customer carts idle past CART_CUSTOMER_TTL_DAYS are deleted with their items.",
+      responses: {
+        "200": {
+          description: "Sweep result",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/CartSweepSuccessResponse" },
+            },
+          },
+        },
+        "403": {
+          description: "Forbidden",
           content: { "application/json": { schema: errorRef } },
         },
       },

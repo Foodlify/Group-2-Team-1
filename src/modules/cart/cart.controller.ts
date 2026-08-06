@@ -99,6 +99,13 @@ export const clearCart = asyncHandler(
   },
 );
 
+export const sweepAbandonedCarts = asyncHandler(
+  async (_req: Request, res: Response): Promise<void> => {
+    const result = await cartService.sweepAbandoned();
+    sendSuccess(res, result, "Abandoned carts swept");
+  },
+);
+
 export const mergeGuestCart = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const customerId = await customerService.requireCustomerIdByUserId(

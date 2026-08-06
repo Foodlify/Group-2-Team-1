@@ -41,6 +41,22 @@ const EnvSchema = z
     SMTP_PASS: z.string().optional(),
     // Sender address for outgoing mail; falls back to SMTP_USER.
     MAIL_FROM: z.string().trim().optional(),
+    // ── Abandoned-cart housekeeping ──
+    // A guest cart is disposable; a signed-in customer's cart is saved state,
+    // so it gets a much longer grace period.
+    CART_GUEST_TTL_HOURS: z.preprocess(
+      (value) => (value === undefined || value === "" ? 24 : value),
+      z.coerce.number().int().positive(),
+    ),
+    CART_CUSTOMER_TTL_DAYS: z.preprocess(
+      (value) => (value === undefined || value === "" ? 30 : value),
+      z.coerce.number().int().positive(),
+    ),
+    // How often the sweeper runs. 0 disables it (the admin endpoint still works).
+    CART_SWEEP_INTERVAL_MINUTES: z.preprocess(
+      (value) => (value === undefined || value === "" ? 60 : value),
+      z.coerce.number().int().nonnegative(),
+    ),
   })
   .superRefine((data, ctx) => {
     if (data.NODE_ENV !== "production") return;

@@ -1,5 +1,7 @@
 import crypto from "crypto";
 import { StatusCodes } from "http-status-codes";
+import env from "../../config/env";
+import logger from "../../config/logger";
 import { AppError } from "../../middlewares/error.middleware";
 import { cartErrors } from "../../shared/exceptions/cart.errors";
 import { cartItemRepository } from "../cartItem/cartItem.repository";
@@ -152,6 +154,33 @@ class CartService {
     });
 
     return this.getMyCart({ customerId });
+  }
+
+  // ─── Housekeeping ─────────────────────────────────────
+  /**
+   * Deletes carts nobody has touched in a while: guest carts after
+   * `CART_GUEST_TTL_HOURS` (they're disposable — the visitor is gone and the
+   * token with them) and customer carts after `CART_CUSTOMER_TTL_DAYS` (saved
+   * state, so a far longer grace period). Returns how many were removed.
+   *
+   * Run periodically by the sweeper job and on demand by admins.
+   */
+  async sweepAbandoned(): Promise<{ deleted: number }> {
+    const now = Date.now();
+    const deleted = await cartRepository.deleteAbandoned({
+      guestBefore: new Date(now - env.CART_GUEST_TTL_HOURS * 60 * 60 * 1000),
+      customerBefore: new Date(
+        now - env.CART_CUSTOMER_TTL_DAYS * 24 * 60 * 60 * 1000,
+      ),
+    });
+    if (deleted > 0) {
+      logger.info("Abandoned carts swept", {
+        deleted,
+        guestTtlHours: env.CART_GUEST_TTL_HOURS,
+        customerTtlDays: env.CART_CUSTOMER_TTL_DAYS,
+      });
+    }
+    return { deleted };
   }
 
   /**
