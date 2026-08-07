@@ -40,7 +40,7 @@ graph TB
         ErrorMW[["Error Middleware"]]
     end
 
-    subgraph Modules["📦 Business Modules (23 entities)"]
+    subgraph Modules["📦 Business Modules (17 modules)"]
         direction TB
         Ctrl[["Controller"]]
         Svc[["Service<br/>(Business Logic)"]]
@@ -390,17 +390,22 @@ graph TD
 
 ## 9. Database Schema Overview
 
-مخطط العلاقات الكامل متاح في [docs/ERD.svg](ERD.svg). الـ entities الرئيسية (23 موديول) مُصنَّفة كالتالي:
+مخطط العلاقات الكامل + سلوك الحذف (Cascade / Restrict / SetNull) في **[docs/ERD.md](ERD.md)**.
 
-| المجموعة            | الـ Entities                                                                    |
-| ------------------- | ------------------------------------------------------------------------------- |
-| 👤 **Users & Auth** | `user`, `userType`, `userRole`, `role`, `customer`                              |
-| 🛒 **Cart**         | `cart`, `cartItem`                                                              |
-| 🍽️ **Restaurants**  | `restaurant`, `restaurantDetails`, `menu`, `menuItem`                           |
-| 📦 **Orders**       | `order`, `orderItem`, `orderStatus`, `orderTracking`                            |
-| 💳 **Payments**     | `paymentIntegrationType`, `paymentTypeConfiguration`, `preferredPaymentSetting` |
-| 💰 **Transactions** | `transaction`, `transactionDetails`, `transactionStatus`                        |
-| 📍 **Misc**         | `address`, `auditingEvent`                                                      |
+الجدول ده بيقارن **الـ 23 entity في الـ mindmap الرسمي** بالـ **18 جدول اللي إحنا بنيناهم فعلاً** — عشان الفرق يبقى مقصود وموثّق، مش مفاجأة:
+
+| المجموعة            | في الـ mindmap الرسمي                                                           | عندنا                                                                  |
+| ------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| 👤 **Users & Auth** | `user`, `userType`, `userRole`, `role`, `customer`                              | `User` (بعمود `role`), `Customer`, `RefreshToken`, `Otp`               |
+| 🛒 **Cart**         | `cart`, `cartItem`                                                              | `Cart`, `CartItem` ✅                                                  |
+| 🍽️ **Restaurants**  | `restaurant`, `restaurantDetails`, `menu`, `menuItem`                           | `Restaurant`, `Menu`, `MenuItem`, `MenuChangeLog`                      |
+| 📦 **Orders**       | `order`, `orderItem`, `orderStatus`, `orderTracking`                            | `Order` (الحالة enum والتتبّع في `timeline`), `OrderItems`             |
+| 💳 **Payments**     | `paymentIntegrationType`, `paymentTypeConfiguration`, `preferredPaymentSetting` | `PreferredPaymentSetting` (الجدولين التانيين مع بوّابة الدفع المؤجّلة) |
+| 💰 **Transactions** | `transaction`, `transactionDetails`, `transactionStatus`                        | `Transaction` (النوع والحالة enums)                                    |
+| 📍 **Misc**         | `address`, `auditingEvent`                                                      | `Address` — والتدقيق أعمدة `createdBy/updatedBy` + `MenuChangeLog`     |
+| ➕ **زيادة عندنا**  | —                                                                               | `RestaurantRate`, `SupportTicket`, `CustomerServiceEmployee`           |
+
+**الخلاصة:** الجداول اللي "ناقصة" أغلبها lookup tables استبدلناها بـ enums في Postgres (أسرع وأأمن type-safety)، و`orderTracking` بقى `timeline` JSON. الناقص فعلاً: جدولا تهيئة بوّابة الدفع و`auditingEvent` العام.
 
 **Prisma schema:** [prisma/schema.prisma](../prisma/schema.prisma)
 
@@ -494,5 +499,5 @@ graph TB
 
 - **README** الرئيسي: [README.md](../README.md) — setup + run + scripts
 - **Troubleshooting:** [docs/troubleshooting.md](troubleshooting.md)
-- **Database ERD:** [docs/ERD.svg](ERD.svg)
+- **Database ERD:** [docs/ERD.md](ERD.md)
 - **Prisma Schema:** [prisma/schema.prisma](../prisma/schema.prisma)
