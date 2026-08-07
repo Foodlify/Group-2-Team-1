@@ -17,9 +17,21 @@ in code reviews. Items here are **known and deliberately deferred**, not oversig
   and the `placeOrder` transaction / cart row-locking behaviour.
   Writing them found and fixed a real bug — line subtotals were computed with
   float multiplication and served `24.450000000000003` for `8.15 x 3`.
-- **Next:** integration tests for Order & Payment (mentor requirement, S17) —
-  consider Testcontainers for a real PostgreSQL in those. That is also when
-  the CI gains a database service and a migration-drift check.
+
+### Integration tests — 28 tests (2026-08-07)
+
+- **Done:** Order & Payment against a real PostgreSQL (mentor requirement,
+  S17), plus the CI database service and the migration-drift check that
+  belonged with it. `npm run test:integration`, see the README.
+- **Not Testcontainers**, despite the earlier note here: it needs Docker, and
+  the suite has to be runnable on a machine that doesn't have it. A plain
+  `DATABASE_URL_TEST` works with docker-compose, any local PostgreSQL, or a
+  throwaway `initdb` instance — and it is what the CI service container
+  supplies anyway.
+- **Still uncovered:** the HTTP layer. Every one of these calls the service
+  directly, so routing, `validate` middleware, auth and the error middleware
+  are only exercised by hand. Supertest against the Express app would close
+  that, and is the obvious next step for this suite.
 
 **Convention worth keeping:** every new assertion here was checked against a
 deliberately broken copy of the code before being committed. A test that
