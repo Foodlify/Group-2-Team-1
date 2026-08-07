@@ -14,6 +14,13 @@ const EnvSchema = z
       z.enum(["development", "test", "production"]),
     ),
     DATABASE_URL: z.string().trim().min(1, "DATABASE_URL is required"),
+    // Postgres connections held by this instance. Keep `instances x this`
+    // below the server's `max_connections` (100 by default). See the load
+    // testing notes — 10 was the first ceiling the app hit under concurrency.
+    DATABASE_POOL_MAX: z.preprocess(
+      (value) => (value === undefined || value === "" ? 20 : value),
+      z.coerce.number().int().positive(),
+    ),
     JWT_SECRET: z.string().trim().min(1, "JWT_SECRET is required"),
     // Dedicated refresh-token secret. Falls back to JWT_SECRET in dev for
     // convenience, but is REQUIRED in production (enforced in superRefine below).

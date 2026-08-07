@@ -76,10 +76,28 @@ Still open in this area:
   refuses to send in production. Provision real SMTP credentials before launch.
 - Order notifications and OTP both depend on it.
 
-### JMeter load testing (S18 task)
+### ~~JMeter load testing (S18 task)~~ — done (2026-08-07)
 
-- Place order / login / add to cart, 2 plans, 1000 requests, 500 concurrent
-  users. Nothing recorded yet.
+- Two plans, 1000 requests each, 500 concurrent users, on add-to-cart /
+  place-order (+ login measured separately). See
+  [docs/LOAD_TESTING.md](docs/LOAD_TESTING.md) and `perf/`.
+- Order flow: 1000/1000, p95 249 ms, ~102 req/s. Contention: exactly 50 of 500
+  won 50 units, 450 clean 409s, no 5xx, reproduced three times.
+
+**Open items it produced:**
+
+- **Login capacity.** `bcryptjs` is pure JS and blocks the event loop for
+  ~250 ms per cost-12 hash → ~4 logins/s/core. Needs a team decision:
+  scale horizontally (no code change), or move hashing off the loop with the
+  native `bcrypt` binding (hash-compatible, but adds a native build step).
+  **Do not lower the cost factor** without treating it as a security decision.
+- **`DATABASE_POOL_MAX` is untuned.** Default raised 10 → 20 on reasoning, not
+  evidence: bcrypt saturated the process before the pool mattered, so these
+  runs could not isolate its effect. Re-measure once login is off the critical
+  path.
+- **The rate limiter is untested under load.** Runs use `NODE_ENV=test`, which
+  skips it entirely. Its real behaviour — and whether the limits are right for
+  production traffic — has never been exercised.
 
 ### Restaurant-owner perspective (Kamal's branch, part 4)
 
