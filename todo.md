@@ -30,11 +30,22 @@ in code reviews. Items here are **known and deliberately deferred**, not oversig
 
 ### Official rules not yet applied
 
-- **Soft delete** — deletes are still physical (`onDelete: Restrict` protects
-  referenced rows, so nothing is silently lost, but the mentor asked for a
-  flag).
-- **Auditing columns** (`createdBy` / `updatedBy`) — not on any table yet.
-- **CI/CD** — no GitHub Actions workflow (build + lint + test) yet.
+- ~~**Soft delete**~~ — done (2026-08-07). `isDeleted` on `Restaurant` / `Menu` /
+  `MenuItem`, filtered in the repositories, cascading deletes, restore endpoints.
+  See the README section. **Not** applied to `User` (team decision: `isActive`
+  already covers it) or to carts / orders / transactions.
+- ~~**Auditing columns**~~ — done (2026-08-07). `createdBy` / `updatedBy` on the
+  three catalog tables, `changedBy` on `MenuChangeLog`.
+- ~~**CI/CD**~~ — done (2026-08-07). See `.github/workflows/ci.yml`.
+
+Still open in this area:
+
+- **`auditingEvent` entity** — the official ERD has a generic auditing table tied
+  to transactions. No team has built it; the per-table columns cover the mentor's
+  stated requirement, so this is a differentiator rather than a gap.
+- **Partial indexes** for the soft-delete filter (`WHERE "isDeleted" = false`).
+  Prisma can't express them; worth adding by hand to a migration if the catalog
+  ever grows enough for it to matter.
 
 ### Dashboard & Reports module
 

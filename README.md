@@ -26,6 +26,7 @@ featuring OpenAPI 3.1 documentation via Scalar and Swagger UI.
 - [Running the App](#running-the-app)
 - [API Documentation](#api-documentation)
 - [Architecture](#architecture)
+- [Soft Delete & Auditing](#soft-delete--auditing)
 - [Adding a New Feature](#adding-a-new-feature)
 - [Continuous Integration](#continuous-integration)
 - [Available Scripts](#available-scripts)
@@ -441,6 +442,72 @@ generic delegate; these are a deliberate implementation detail and never leak pa
 **Entity-specific queries** (beyond basic CRUD) belong in the individual repository
 classes. For example, `CartRepository.findByUserId(userId)` or more complex joins that
 warrant a dedicated method.
+
+---
+
+## Soft Delete & Auditing
+
+### Why
+
+`Restaurant`, `Menu` and `MenuItem` carry `isDeleted Boolean @default(false)`. Deleting
+one of them flips the flag instead of removing the row.
+
+The problem this solves is concrete: `MenuItem` is referenced by `OrderItems` with
+`onDelete: Restrict`, so **any item that had ever been ordered could not be deleted at
+all** — the request came back 409 and the item stayed on the menu forever. Now it
+disappears from the catalog while the order history keeps resolving.
+
+The three catalog tables are the same ones Group-1-Team-2 flagged, using the same
+column name.
+
+### The rule that keeps it correct
+
+**Every read filters `isDeleted: false` in the repository.** Not in the service, not in
+the controller — one layer, so there is exactly one place to check. `findUnique` cannot
+express the filter (its `where` only takes unique fields), which is why the lookups use
+`findFirst`; dropping back to `findUnique` silently resurrects deleted rows.
+
+Three consequences worth knowing:
+
+| Where                              | What happens                                                                               |
+| ---------------------------------- | ------------------------------------------------------------------------------------------ |
+| `menuItem.repository.reserveStock` | Filters on the flag, so an item pulled from the menu can't be sold out of an existing cart |
+| `menuItem.repository.releaseStock` | Deliberately does **not** filter — cancelling an order returns its units either way        |
+| `rating.repository.topRated…`      | Excludes deleted restaurants **inside** the `groupBy`, not after, or `take` returns short  |
+
+Deleting cascades down (restaurant → menus → items) in a single transaction. Without
+the cascade a deleted restaurant's items would keep surfacing in the catalog-wide
+search, which filters on the item's own flag.
+
+### Restore
+
+| Endpoint                                 | Notes                                        |
+| ---------------------------------------- | -------------------------------------------- |
+| `PATCH /api/v1/restaurants/{id}/restore` | Brings the whole catalog back with it        |
+| `PATCH /api/v1/menus/{id}/restore`       | Fails 409 if the restaurant is still deleted |
+| `PATCH /api/v1/menu-items/{id}/restore`  | Fails 409 if the menu is still deleted       |
+
+To find a deleted id, pass `?includeDeleted=true` to `GET /restaurants`,
+`GET /restaurants/{id}/menus` or `GET /menus/{id}/items`. Those routes use
+`optionalAuthenticate`: they stay public, but the flag is honoured **only** for an ADMIN
+token and silently ignored otherwise.
+
+**One asymmetry to know about:** restore cascades the same way delete does, and the flag
+doesn't record which delete set it. So an item you deleted on its own _before_ deleting
+its restaurant comes back when you restore the restaurant. Delete it again afterwards.
+
+### Auditing columns
+
+The same three tables carry `createdBy` / `updatedBy` (the id of the `User` behind the
+write), and `MenuChangeLog` carries `changedBy`. All nullable — rows that predate
+auditing have no actor, and inventing one would be worse than admitting we don't know.
+A soft delete writes `updatedBy`, so "who deleted this" is answerable without a separate
+`deletedBy` column.
+
+`createdBy` / `updatedBy` are **not** returned by the API: the catalog endpoints are
+public and the columns hold internal admin ids. The audit trail is read through
+`GET /api/v1/menus/{menuId}/history` (ADMIN), which reports `changedBy` per entry and
+covers `CREATED` / `UPDATED` / `DELETED` / `RESTORED`.
 
 ---
 
