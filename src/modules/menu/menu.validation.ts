@@ -39,10 +39,26 @@ export const MenuResponseSchema = z
     id: z.cuid2(),
     name: z.string(),
     restaurantId: z.cuid2(),
+    isDeleted: z.boolean().meta({
+      description:
+        "Soft-delete flag. Always false on public reads — deleted menus are filtered out.",
+      example: false,
+    }),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
   })
   .meta({ id: "MenuResponse" });
+
+/** Shared by the endpoints that let an ADMIN look at soft-deleted rows. */
+export const IncludeDeletedQuerySchema = z
+  .object({
+    includeDeleted: z.stringbool().optional().meta({
+      description:
+        "Include soft-deleted rows. Honoured for ADMIN callers only — ignored for everyone else.",
+      example: "true",
+    }),
+  })
+  .meta({ id: "IncludeDeletedQuery" });
 
 export const MenuWithItemsResponseSchema = MenuResponseSchema.extend({
   items: z.array(MenuItemResponseSchema),
@@ -80,6 +96,10 @@ export const MenuChangeLogResponseSchema = z
       description:
         "Row state after the change (for deletes: the last state before removal)",
     }),
+    changedBy: z.cuid2().nullable().meta({
+      description:
+        "Id of the User who made the change. Null for entries written before auditing existed.",
+    }),
     createdAt: z.iso.datetime(),
   })
   .meta({ id: "MenuChangeLogResponse" });
@@ -103,6 +123,7 @@ schemaRegistry.register(
   "MenuListSuccessResponse",
   MenuListSuccessResponseSchema,
 );
+schemaRegistry.register("IncludeDeletedQuery", IncludeDeletedQuerySchema);
 schemaRegistry.register("MenuHistoryQuery", MenuHistoryQuerySchema);
 schemaRegistry.register("MenuChangeLogResponse", MenuChangeLogResponseSchema);
 schemaRegistry.register(
@@ -111,6 +132,7 @@ schemaRegistry.register(
 );
 
 export type MenuIdParams = z.infer<typeof MenuIdParamsSchema>;
+export type IncludeDeletedQuery = z.infer<typeof IncludeDeletedQuerySchema>;
 export type CreateMenuInput = z.infer<typeof CreateMenuRequestSchema>;
 export type UpdateMenuInput = z.infer<typeof UpdateMenuRequestSchema>;
 export type MenuResponse = z.infer<typeof MenuResponseSchema>;

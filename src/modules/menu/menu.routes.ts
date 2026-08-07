@@ -1,10 +1,15 @@
 import { Router } from "express";
 import { validate } from "../../middlewares/validate.middleware";
-import { authenticate, authorize } from "../../middlewares/auth.middleware";
+import {
+  authenticate,
+  authorize,
+  optionalAuthenticate,
+} from "../../middlewares/auth.middleware";
 import { routeRegistry } from "../../openapi/registry";
 import * as controller from "./menu.controller";
 import {
   CreateMenuRequestSchema,
+  IncludeDeletedQuerySchema,
   MenuHistoryQuerySchema,
   MenuIdParamsSchema,
   UpdateMenuRequestSchema,
@@ -18,9 +23,11 @@ router.get(
   validate({ params: MenuIdParamsSchema }),
   controller.getMenu,
 );
+// Open to everyone; an ADMIN token unlocks `includeDeleted`.
 router.get(
   "/:menuId/items",
-  validate({ params: MenuIdParamsSchema }),
+  optionalAuthenticate,
+  validate({ params: MenuIdParamsSchema, query: IncludeDeletedQuerySchema }),
   controller.getMenuItems,
 );
 
@@ -45,6 +52,13 @@ router.delete(
   authorize("ADMIN"),
   validate({ params: MenuIdParamsSchema }),
   controller.deleteMenu,
+);
+router.patch(
+  "/:menuId/restore",
+  authenticate,
+  authorize("ADMIN"),
+  validate({ params: MenuIdParamsSchema }),
+  controller.restoreMenu,
 );
 router.get(
   "/:menuId/history",
@@ -108,7 +122,16 @@ routeRegistry.push({
     get: {
       tags: [tag],
       summary: "List items of a menu",
-      parameters: [menuIdParam],
+      parameters: [
+        menuIdParam,
+        {
+          name: "includeDeleted",
+          in: "query",
+          schema: { type: "boolean" },
+          description:
+            "Include soft-deleted items. Requires an ADMIN token; ignored otherwise.",
+        },
+      ],
       responses: {
         "200": {
           description: "Items",
@@ -195,6 +218,8 @@ routeRegistry.push({
     delete: {
       tags: [tag],
       summary: "Delete a menu (ADMIN)",
+      description:
+        "Soft delete — the menu and its items disappear from every read but the rows stay, so past orders keep resolving. Reversible via the restore endpoint.",
       security,
       parameters: [menuIdParam],
       responses: {
@@ -207,8 +232,40 @@ routeRegistry.push({
           description: "Menu not found",
           content: { "application/json": { schema: errorRef } },
         },
+      },
+    },
+  },
+});
+
+routeRegistry.push({
+  path: "/api/v1/menus/{menuId}/restore",
+  pathItem: {
+    patch: {
+      tags: [tag],
+      summary: "Restore a soft-deleted menu (ADMIN)",
+      description:
+        "Undoes a delete, bringing the menu's items back with it. Fails if the owning restaurant is itself deleted — restore that first.",
+      security,
+      parameters: [menuIdParam],
+      responses: {
+        "200": {
+          description: "Restored",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/MenuSuccessResponse" },
+            },
+          },
+        },
+        "403": {
+          description: "Forbidden",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "404": {
+          description: "Menu not found",
+          content: { "application/json": { schema: errorRef } },
+        },
         "409": {
-          description: "Menu items referenced by existing carts or orders",
+          description: "Menu is not deleted, or its restaurant still is",
           content: { "application/json": { schema: errorRef } },
         },
       },

@@ -69,6 +69,11 @@ export const MenuItemResponseSchema = z
       description: "Units available — null when the item isn't stock-tracked",
       example: 50,
     }),
+    isDeleted: z.boolean().meta({
+      description:
+        "Soft-delete flag. Always false on public reads — deleted items are filtered out.",
+      example: false,
+    }),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
   })
