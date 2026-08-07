@@ -1,5 +1,8 @@
 import type { Prisma } from "../../generated/prisma/client";
-import { transactionRepository, TransactionRepository } from "./transaction.repository";
+import {
+  transactionRepository,
+  TransactionRepository,
+} from "./transaction.repository";
 import type {
   TransactionType,
   TransactionStatus,

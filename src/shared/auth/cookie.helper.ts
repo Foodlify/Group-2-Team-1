@@ -1,9 +1,6 @@
 import type { CookieOptions, Response } from "express";
 import env from "../../config/env";
-import {
-  ACCESS_TOKEN_TTL_MS,
-  REFRESH_TOKEN_TTL_MS,
-} from "./jwt.helper";
+import { ACCESS_TOKEN_TTL_MS, REFRESH_TOKEN_TTL_MS } from "./jwt.helper";
 
 export const ACCESS_COOKIE = "accessToken";
 export const REFRESH_COOKIE = "refreshToken";

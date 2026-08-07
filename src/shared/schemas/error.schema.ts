@@ -49,8 +49,13 @@ export const ValidationErrorResponseSchema = z
 
 // Register with OpenAPI components
 schemaRegistry.register("ErrorResponse", ErrorResponseSchema);
-schemaRegistry.register("ValidationErrorResponse", ValidationErrorResponseSchema);
+schemaRegistry.register(
+  "ValidationErrorResponse",
+  ValidationErrorResponseSchema,
+);
 
 // TypeScript types inferred from schemas
 export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
-export type ValidationErrorResponse = z.infer<typeof ValidationErrorResponseSchema>;
+export type ValidationErrorResponse = z.infer<
+  typeof ValidationErrorResponseSchema
+>;

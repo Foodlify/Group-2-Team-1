@@ -11,18 +11,18 @@
 
 ## ملخص الوضع الحالي (مأخوذ من الكود فعليًا)
 
-| العنصر | الحالة الحالية في المشروع |
-|---|---|
-| المعمارية | Layered Modular — كل موديول 6 ملفات: `routes / validation / controller / service / repository / model` |
-| الـ Repository | يرث من [`BaseRepository`](../../src/shared/repositories/base.repository.ts) ويُمرّر الـ delegate في الـ constructor — CRUD فقط بلا business logic |
-| الـ Service | كل الـ business logic + الـ authorization، يرمي [`AppError`](../../src/middlewares/error.middleware.ts) للأخطاء المعروفة |
-| الـ Controller | HTTP فقط (`asyncHandler`)، لا يلمس Prisma ولا الـ repository مباشرة |
-| الـ Validation | Zod schemas مع `.meta({ id })` ومُسجَّلة في `schemaRegistry` |
-| الـ Routes | تُسجِّل توثيق OpenAPI عبر `routeRegistry.push(...)` |
-| شكل الـ Response | نجاح: `{ success: true, data }` — خطأ: `{ success: false, message }` |
-| الأخطاء المشتركة | تُجمَّع في [`src/shared/exceptions/`](../../src/shared/exceptions/) (مثل `cart.errors.ts`) |
-| الـ Auth | `auth.middleware.ts` (JWT) **موجود لكن غير مُفعَّل**. الموديولات الحالية (cart/order) تقرأ `customerId` من `process.env.TEST_CUSTOMER_ID` مؤقتًا |
-| الموديولات المُفعَّلة فعليًا في [`routes/index.ts`](../../src/routes/index.ts) | `cart`, `order` فقط |
+| العنصر                                                                         | الحالة الحالية في المشروع                                                                                                                         |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| المعمارية                                                                      | Layered Modular — كل موديول 6 ملفات: `routes / validation / controller / service / repository / model`                                            |
+| الـ Repository                                                                 | يرث من [`BaseRepository`](../../src/shared/repositories/base.repository.ts) ويُمرّر الـ delegate في الـ constructor — CRUD فقط بلا business logic |
+| الـ Service                                                                    | كل الـ business logic + الـ authorization، يرمي [`AppError`](../../src/middlewares/error.middleware.ts) للأخطاء المعروفة                          |
+| الـ Controller                                                                 | HTTP فقط (`asyncHandler`)، لا يلمس Prisma ولا الـ repository مباشرة                                                                               |
+| الـ Validation                                                                 | Zod schemas مع `.meta({ id })` ومُسجَّلة في `schemaRegistry`                                                                                      |
+| الـ Routes                                                                     | تُسجِّل توثيق OpenAPI عبر `routeRegistry.push(...)`                                                                                               |
+| شكل الـ Response                                                               | نجاح: `{ success: true, data }` — خطأ: `{ success: false, message }`                                                                              |
+| الأخطاء المشتركة                                                               | تُجمَّع في [`src/shared/exceptions/`](../../src/shared/exceptions/) (مثل `cart.errors.ts`)                                                        |
+| الـ Auth                                                                       | `auth.middleware.ts` (JWT) **موجود لكن غير مُفعَّل**. الموديولات الحالية (cart/order) تقرأ `customerId` من `process.env.TEST_CUSTOMER_ID` مؤقتًا  |
+| الموديولات المُفعَّلة فعليًا في [`routes/index.ts`](../../src/routes/index.ts) | `cart`, `order` فقط                                                                                                                               |
 
 ### ⚠️ ملاحظة جوهرية على الـ schema الحالي
 
@@ -102,7 +102,7 @@ model User {
 - **الخيار B — كل شيء داخل `user`** تحت مسارات `/api/v1/users/auth/*` أو ما شابه.
 
 > 🟡 **التوصية المبدئية:** الخيار A (موديول auth منفصل) — متوافق مع وصف الـ OpenAPI
-> الحالي الذي يذكر «JWT obtained from /auth/login». *(يُطبَّق فقط لو اخترت Auth في سؤال #1)*
+> الحالي الذي يذكر «JWT obtained from /auth/login». _(يُطبَّق فقط لو اخترت Auth في سؤال #1)_
 >
 > ✅ القرار: A → ⚠️ **عُدِّل لاحقًا** (راجع «🎓 تحديثات المعلم»): لا موديول auth مستقل — **كل الـ auth داخل موديول `user`**.
 
@@ -117,13 +117,14 @@ model User {
 - **الخيار B —** استخدام `req.user.id` من `authenticate` middleware مباشرة (يتطلب اختيار
   Auth في سؤال #1).
 
-> ✅ القرار: B *(عادةً يتبع قرار سؤال #1)*
+> ✅ القرار: B _(عادةً يتبع قرار سؤال #1)_
 
 ---
 
 ## ❓ سؤال مشترك #5 — توحيد شكل الـ Response
 
 يوجد نمطان في المشروع:
+
 1. الـ controllers الحالية تكتب `res.json({ success: true, data })` يدويًا.
 2. يوجد helper غير مُستخدَم [`sendSuccess` / `sendError`](../../src/utils/response.ts).
 
@@ -176,40 +177,44 @@ model User {
 
 **كيف أجاب Group-1 على أسئلتنا المشتركة:**
 
-| سؤالنا | قرارهم الفعلي |
-|---|---|
-| #1 نطاق الـ Auth | Auth **كامل** مع **access + refresh tokens**؛ الـ refresh مخزَّن في `User.refreshToken`، يُدوَّر ويُلغى عند logout/revoke. + forgot/reset/change password عبر إيميل |
-| #3 موديول auth | **فصل حسب الجمهور**: مصادقة العميل (storefront) داخل موديول customer، ومصادقة الموظفين/الإدارة (dashboard) داخل موديول user — **لا موديول `auth` واحد** |
-| #2 الأدوار | **RBAC بجداول**: `UserType` (customer/admin) + `Role` (enum: SUPER_ADMIN, ADMIN, RESTAURANT_OWNER, CUSTOMER_SERVICE) + `UserRole` + middleware `requireRole(...)`. التمييز: **UserType** يفصل العميل عن الموظف، و**Role** للأدوار الإدارية فقط |
-| #4 هوية المستخدم | مصادقة حقيقية (`authValidator` للعميل، `authDashboard` للوحة) — بلا `TEST_CUSTOMER_ID` |
+| سؤالنا           | قرارهم الفعلي                                                                                                                                                                                                                                  |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| #1 نطاق الـ Auth | Auth **كامل** مع **access + refresh tokens**؛ الـ refresh مخزَّن في `User.refreshToken`، يُدوَّر ويُلغى عند logout/revoke. + forgot/reset/change password عبر إيميل                                                                            |
+| #3 موديول auth   | **فصل حسب الجمهور**: مصادقة العميل (storefront) داخل موديول customer، ومصادقة الموظفين/الإدارة (dashboard) داخل موديول user — **لا موديول `auth` واحد**                                                                                        |
+| #2 الأدوار       | **RBAC بجداول**: `UserType` (customer/admin) + `Role` (enum: SUPER_ADMIN, ADMIN, RESTAURANT_OWNER, CUSTOMER_SERVICE) + `UserRole` + middleware `requireRole(...)`. التمييز: **UserType** يفصل العميل عن الموظف، و**Role** للأدوار الإدارية فقط |
+| #4 هوية المستخدم | مصادقة حقيقية (`authValidator` للعميل، `authDashboard` للوحة) — بلا `TEST_CUSTOMER_ID`                                                                                                                                                         |
 
 ### قرارات جديدة ظهرت من مراجعتهم (تحتاج حسمًا):
 
 ❓ **سؤال مشترك #6 — Access token فقط أم Access + Refresh؟**
 Group-1 اعتمد **access قصير + refresh مخزَّن بالـ DB** (logout/revoke حقيقي). خطتنا الحالية
 افترضت JWT واحدًا فقط.
+
 - **الخيار A —** access token واحد فقط (أبسط، بلا حقل refresh، بلا logout حقيقي).
 - **الخيار B —** access + refresh (مثل Group-1): يضيف حقل `refreshToken String?` إلى `User`،
   و endpoints لـ `refresh` و`logout`/`revoke`.
-> 🟡 التوصية: الخيار A لهذه الجولة (أصغر وكافٍ)، والترقية لـ B لاحقًا — إلا إن أردت تكافؤ ميزات Group-1.
-> ✅ القرار: B
+  > 🟡 التوصية: الخيار A لهذه الجولة (أصغر وكافٍ)، والترقية لـ B لاحقًا — إلا إن أردت تكافؤ ميزات Group-1.
+  > ✅ القرار: B
 
 ❓ **سؤال مشترك #7 — فصل مصادقة العميل عن مصادقة الإدارة (نموذج Group-1)؟**
 بدل سؤالنا #3 (موديول auth واحد)، نموذج Group-1 يفصل: customer-auth داخل موديول customer،
 staff/admin-auth داخل موديول user. هذا يلائم وجود لوحتين (storefront مقابل dashboard).
+
 - **الخيار A —** نتبنّى الفصل (customer register/login داخل customer، وuser للإدارة) — يلائم مشروعنا (Customer منفصل عن User).
 - **الخيار B —** موديول `auth` موحّد (سؤال #3 الأصلي).
-> 🟡 التوصية: الخيار A — أنظف ويستفيد من فصل `User`/`Customer` الموجود في schema مشروعنا.
-> ✅ القرار: B → ⚠️ **عُدِّل لاحقًا** (راجع «🎓 تحديثات المعلم»): الـ auth بقسميه (customer + admin) **داخل موديول `user`**، وموديول customer بلا auth.
+  > 🟡 التوصية: الخيار A — أنظف ويستفيد من فصل `User`/`Customer` الموجود في schema مشروعنا.
+  > ✅ القرار: B → ⚠️ **عُدِّل لاحقًا** (راجع «🎓 تحديثات المعلم»): الـ auth بقسميه (customer + admin) **داخل موديول `user`**، وموديول customer بلا auth.
 
 ❓ **سؤال مشترك #8 — هيكل الأدوار: enum على User أم جداول RBAC؟**
 سؤالنا #2 اقترح `enum Role` على `User`. Group-1 فضّل **جداول** (`UserType`/`Role`/`UserRole`).
+
 - **الخيار A —** `enum Role` بسيط على `User` (يكفي لتمييز ADMIN، أقل migrations).
 - **الخيار B —** جداول RBAC كاملة (أقوى وأكثر توسعًا، أثقل).
-> 🟡 التوصية: الخيار A الآن (يكفي حاجتنا: حماية endpoints الإدارة)، والترقية لجداول عند الحاجة لأدوار متعددة.
-> ✅ القرار: A
+  > 🟡 التوصية: الخيار A الآن (يكفي حاجتنا: حماية endpoints الإدارة)، والترقية لجداول عند الحاجة لأدوار متعددة.
+  > ✅ القرار: A
 
 ### ميزات عند Group-1 خارج نطاقنا الحالي (للعلم فقط — قد تكون أعمالًا لاحقة):
+
 refresh tokens، forgot/reset password بالإيميل، مخزون (`MenuItem.stock`)، Redis لكاش
 العربة/المطاعم، loyalty points، support tickets، restaurant rates، Stripe.
 
@@ -220,16 +225,17 @@ refresh tokens، forgot/reset password بالإيميل، مخزون (`MenuItem.
 > هذه هي **مصدر الحقيقة**. تُلغي أي تفسير سابق متضارب في أسطر `> ✅ القرار` الفردية أعلاه.
 > حُسم تعارض ظهر بين «فصل admin-auth» و«بدون أدوار» بإعادة إدخال `enum Role`.
 
-| # | القرار النهائي |
-|---|---|
-| **#1 نطاق Auth** | **Auth كامل** — `password` على `User` (hashed) + register/login + تفعيل `authenticate` على المسارات المحمية |
-| **#2 / #8 الأدوار** | **`enum Role { CUSTOMER, ADMIN }`** على `User` (`@default(CUSTOMER)`) — لا جداول RBAC |
+| #                     | القرار النهائي                                                                                                                                                                                                  |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **#1 نطاق Auth**      | **Auth كامل** — `password` على `User` (hashed) + register/login + تفعيل `authenticate` على المسارات المحمية                                                                                                     |
+| **#2 / #8 الأدوار**   | **`enum Role { CUSTOMER, ADMIN }`** على `User` (`@default(CUSTOMER)`) — لا جداول RBAC                                                                                                                           |
 | **#3 / #7 هيكل auth** | ⚠️ **عُدِّل بإجابة المعلم** ↓ (راجع قسم «🎓 تحديثات بناءً على إجابات المعلم»): **كل الـ auth — customer + admin — داخل موديول `user`** («User Management»). لا موديول `auth` منفصل، وموديول `customer` بلا auth |
-| **#6 Tokens** | **Access + Refresh** — حقل `refreshToken String?` على `User` + endpoints لـ refresh و logout/revoke |
-| **#4 الهوية** | **`req.user.id`** من `authenticate` middleware (لا `TEST_CUSTOMER_ID` في الجديد) |
-| **#5 Response** | **`sendSuccess` / `sendError`** — مع **توسعة الـ helper بباراميتر `meta` اختياري** لدعم القوائم المُرقّمة |
+| **#6 Tokens**         | **Access + Refresh** — حقل `refreshToken String?` على `User` + endpoints لـ refresh و logout/revoke                                                                                                             |
+| **#4 الهوية**         | **`req.user.id`** من `authenticate` middleware (لا `TEST_CUSTOMER_ID` في الجديد)                                                                                                                                |
+| **#5 Response**       | **`sendSuccess` / `sendError`** — مع **توسعة الـ helper بباراميتر `meta` اختياري** لدعم القوائم المُرقّمة                                                                                                       |
 
 ### تعديل لازم على الـ schema (migration واحد يجمعها):
+
 ```prisma
 enum Role { CUSTOMER  ADMIN }
 
@@ -247,6 +253,7 @@ model User {
 ```
 
 ### consequences / متابعات لازمة (نتيجة Auth الكامل + req.user.id):
+
 1. ⚠️ **cart & order يتأثران:** يجب تعديل `getCurrentCustomerId()` في
    [`cart.controller.ts`](../../src/modules/cart/cart.controller.ts) و
    [`order.controller.ts`](../../src/modules/order/order.controller.ts) لقراءة العميل من
@@ -261,6 +268,7 @@ model User {
    الـ `JwtPayload { id, email, role }` الحالي متوافق مع القرار.
 
 ### توزيع المسؤوليات (مُحدَّث بعد إجابات المعلم):
+
 - **موديول `user`** → **كل الـ Auth** (customer-auth: register/login/logout/forgot/reset، و admin-auth: login/refresh/logout)
   **+** إدارة المستخدمين (CRUD محميّ بـ `authorize("ADMIN")`). الـ register يُنشئ `User(role=CUSTOMER)` + `Customer` في transaction.
 - **موديول `customer`** → بيانات العميل فقط: ملفه الشخصي (`me`) + عناوينه + سجل طلباته. **بلا auth**.
@@ -272,15 +280,16 @@ model User {
 
 > هذه الإجابات **تُعدِّل** بعض القرارات أعلاه. الأولوية لها.
 
-| الموضوع | إجابة المعلم | الأثر على التخطيط |
-|---|---|---|
-| **توصيل التوكنات** | **Cookie** (لا `res.json`) | ❌ كان مخططًا في الـ body — يُصحَّح إلى **httpOnly cookies** عبر `res.cookie` لكلا التوكنين (access + refresh) |
-| **مكان الـ Auth** | في **User Management** | ❌ كان customer-auth مخططًا في موديول customer — **يُنقَل كله إلى موديول `user`** |
-| **أقسام الـ Auth** | Customer + Admin | ✅ مطابق (لكن كلاهما الآن داخل موديول user) |
-| **أدوار User** | الأدوار ليست شأن customer | ✅ يبقى `enum Role { CUSTOMER, ADMIN }`، لكن إدارتها في user لا customer |
-| **Order History / Tracking** | المكتملة / حالة الطلب | ✅ في موديول `order` الحالي — لا يمسّ الملفات الثلاثة |
+| الموضوع                      | إجابة المعلم               | الأثر على التخطيط                                                                                              |
+| ---------------------------- | -------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| **توصيل التوكنات**           | **Cookie** (لا `res.json`) | ❌ كان مخططًا في الـ body — يُصحَّح إلى **httpOnly cookies** عبر `res.cookie` لكلا التوكنين (access + refresh) |
+| **مكان الـ Auth**            | في **User Management**     | ❌ كان customer-auth مخططًا في موديول customer — **يُنقَل كله إلى موديول `user`**                              |
+| **أقسام الـ Auth**           | Customer + Admin           | ✅ مطابق (لكن كلاهما الآن داخل موديول user)                                                                    |
+| **أدوار User**               | الأدوار ليست شأن customer  | ✅ يبقى `enum Role { CUSTOMER, ADMIN }`، لكن إدارتها في user لا customer                                       |
+| **Order History / Tracking** | المكتملة / حالة الطلب      | ✅ في موديول `order` الحالي — لا يمسّ الملفات الثلاثة                                                          |
 
 ### consequences إضافية للكوكيز (يجب تنفيذها):
+
 1. **`res.cookie`** لإصدار access + refresh كـ **httpOnly** (و`secure` في production، `sameSite`).
 2. **تعديل `authenticate` middleware** ([`auth.middleware.ts`](../../src/middlewares/auth.middleware.ts)):
    يقرأ الـ access token من **الكوكي** بدل `Authorization: Bearer` (أو يدعم الاثنين).

@@ -2,7 +2,9 @@ import type { PrismaClient, Prisma } from "../../generated/prisma/client";
 import { BaseRepository } from "../../shared/repositories/base.repository";
 import prisma from "../../config/prisma";
 
-export class OrderItemRepository extends BaseRepository<PrismaClient["orderItems"]> {
+export class OrderItemRepository extends BaseRepository<
+  PrismaClient["orderItems"]
+> {
   constructor() {
     super(prisma.orderItems);
   }
@@ -24,10 +26,7 @@ export class OrderItemRepository extends BaseRepository<PrismaClient["orderItems
   ) {
     return tx.orderItems.createManyAndReturn({ data: items });
   }
-  async findManyByOrderIdWithTx(
-    orderId: string,
-    tx: Prisma.TransactionClient,
-  ) {
+  async findManyByOrderIdWithTx(orderId: string, tx: Prisma.TransactionClient) {
     return tx.orderItems.findMany({
       where: { orderId },
       orderBy: { createdAt: "asc" },

@@ -18,7 +18,11 @@ router.use(authenticate);
 
 // ─── Handlers ────────────────────────────────────────────
 
-router.post("/", validate({ body: PlaceOrderRequestSchema }), controller.placeOrder);
+router.post(
+  "/",
+  validate({ body: PlaceOrderRequestSchema }),
+  controller.placeOrder,
+);
 
 router.get("/", validate({ query: OrderQuerySchema }), controller.getMyOrders);
 
@@ -68,9 +72,19 @@ router.post(
 
 const tag = "Orders";
 const errorRef = { $ref: "#/components/schemas/ErrorResponse" };
-const validationErrorRef = { $ref: "#/components/schemas/ValidationErrorResponse" };
-const orderIdParam = { name: "orderId", in: "path", required: true, schema: { type: "string" as const } } as const;
-const security: Record<string, string[]>[] = [{ cookieAuth: [] }, { BearerAuth: [] }];
+const validationErrorRef = {
+  $ref: "#/components/schemas/ValidationErrorResponse",
+};
+const orderIdParam = {
+  name: "orderId",
+  in: "path",
+  required: true,
+  schema: { type: "string" as const },
+} as const;
+const security: Record<string, string[]>[] = [
+  { cookieAuth: [] },
+  { BearerAuth: [] },
+];
 
 routeRegistry.push({
   path: "/api/v1/orders",
@@ -96,9 +110,18 @@ routeRegistry.push({
             },
           },
         },
-        "400": { description: "Validation failed", content: { "application/json": { schema: validationErrorRef } } },
-        "404": { description: "Address or menu item not found", content: { "application/json": { schema: errorRef } } },
-        "403": { description: "Address does not belong to you", content: { "application/json": { schema: errorRef } } },
+        "400": {
+          description: "Validation failed",
+          content: { "application/json": { schema: validationErrorRef } },
+        },
+        "404": {
+          description: "Address or menu item not found",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "403": {
+          description: "Address does not belong to you",
+          content: { "application/json": { schema: errorRef } },
+        },
       },
     },
     get: {
@@ -107,7 +130,11 @@ routeRegistry.push({
       summary: "Get my orders (paginated, with optional date range filter)",
       parameters: [
         { name: "page", in: "query", schema: { type: "integer", default: 1 } },
-        { name: "limit", in: "query", schema: { type: "integer", default: 20 } },
+        {
+          name: "limit",
+          in: "query",
+          schema: { type: "integer", default: 20 },
+        },
         {
           name: "from",
           in: "query",
@@ -118,7 +145,8 @@ routeRegistry.push({
           name: "to",
           in: "query",
           schema: { type: "string", format: "date-time" },
-          description: "Filter orders created on or before this date (ISO 8601)",
+          description:
+            "Filter orders created on or before this date (ISO 8601)",
         },
         {
           name: "status",
@@ -158,8 +186,14 @@ routeRegistry.push({
             },
           },
         },
-        "404": { description: "Order not found", content: { "application/json": { schema: errorRef } } },
-        "403": { description: "Order does not belong to you", content: { "application/json": { schema: errorRef } } },
+        "404": {
+          description: "Order not found",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "403": {
+          description: "Order does not belong to you",
+          content: { "application/json": { schema: errorRef } },
+        },
       },
     },
     delete: {
@@ -176,9 +210,18 @@ routeRegistry.push({
             },
           },
         },
-        "400": { description: "Order is not cancellable", content: { "application/json": { schema: errorRef } } },
-        "404": { description: "Order not found", content: { "application/json": { schema: errorRef } } },
-        "403": { description: "Order does not belong to you", content: { "application/json": { schema: errorRef } } },
+        "400": {
+          description: "Order is not cancellable",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "404": {
+          description: "Order not found",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "403": {
+          description: "Order does not belong to you",
+          content: { "application/json": { schema: errorRef } },
+        },
       },
     },
   },
@@ -209,8 +252,14 @@ routeRegistry.push({
             },
           },
         },
-        "400": { description: "Invalid status transition", content: { "application/json": { schema: errorRef } } },
-        "404": { description: "Order not found", content: { "application/json": { schema: errorRef } } },
+        "400": {
+          description: "Invalid status transition",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "404": {
+          description: "Order not found",
+          content: { "application/json": { schema: errorRef } },
+        },
       },
     },
   },
@@ -241,7 +290,10 @@ routeRegistry.push({
             },
           },
         },
-        "404": { description: "Order not found", content: { "application/json": { schema: errorRef } } },
+        "404": {
+          description: "Order not found",
+          content: { "application/json": { schema: errorRef } },
+        },
       },
     },
   },
@@ -253,18 +305,35 @@ routeRegistry.push({
     get: {
       tags: [tag],
       security,
-      summary: "List all orders across customers (ADMIN, paginated, optional status)",
+      summary:
+        "List all orders across customers (ADMIN, paginated, optional status)",
       parameters: [
         { name: "page", in: "query", schema: { type: "integer", default: 1 } },
-        { name: "limit", in: "query", schema: { type: "integer", default: 20 } },
-        { name: "status", in: "query", schema: { type: "string" }, description: "Filter by order status" },
+        {
+          name: "limit",
+          in: "query",
+          schema: { type: "integer", default: 20 },
+        },
+        {
+          name: "status",
+          in: "query",
+          schema: { type: "string" },
+          description: "Filter by order status",
+        },
       ],
       responses: {
         "200": {
           description: "Orders",
-          content: { "application/json": { schema: { $ref: "#/components/schemas/OrderListSuccessResponse" } } },
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/OrderListSuccessResponse" },
+            },
+          },
         },
-        "403": { description: "Forbidden", content: { "application/json": { schema: errorRef } } },
+        "403": {
+          description: "Forbidden",
+          content: { "application/json": { schema: errorRef } },
+        },
       },
     },
   },
@@ -281,10 +350,20 @@ routeRegistry.push({
       responses: {
         "200": {
           description: "Order",
-          content: { "application/json": { schema: { $ref: "#/components/schemas/OrderSuccessResponse" } } },
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/OrderSuccessResponse" },
+            },
+          },
         },
-        "403": { description: "Forbidden", content: { "application/json": { schema: errorRef } } },
-        "404": { description: "Order not found", content: { "application/json": { schema: errorRef } } },
+        "403": {
+          description: "Forbidden",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "404": {
+          description: "Order not found",
+          content: { "application/json": { schema: errorRef } },
+        },
       },
     },
   },

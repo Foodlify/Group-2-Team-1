@@ -22,6 +22,7 @@ model MenuItem   { id, menuId, name, price Decimal, ... }
 ```
 
 **الوضع الحالي في الكود:**
+
 - [`restaurant.repository.ts`](../../src/modules/restaurant/restaurant.repository.ts) — `findById` فقط.
 - [`menu.repository.ts`](../../src/modules/menu/menu.repository.ts) — `findById` فقط.
 - [`menuItem.repository.ts`](../../src/modules/menuItem/menuItem.repository.ts) + [`menuItem.service.ts`](../../src/modules/menuItem/menuItem.service.ts) — `findById`, `findByIdWithMenu`, `findManyByIds` (يستخدمها cart/order داخليًا).
@@ -42,20 +43,22 @@ model MenuItem   { id, menuId, name, price Decimal, ... }
 
 ❓ **سؤال R-1 — ملكية المطعم (Restaurant ownership):**
 `Restaurant` حاليًا **بلا مالك** (لا `userId`/owner). هذا يعني أن «من يُدير المطعم» غير محدد بالبيانات.
+
 - **الخيار A —** الإدارة كلها لـ ADMIN فقط، بلا مفهوم «مالك مطعم». (أبسط، بلا migration.)
 - **الخيار B —** إضافة `ownerId` (+ علاقة لـ User بدور `RESTAURANT_OWNER`) ليدير كل مالك مطعمه فقط.
   (أقوى، لكن يتطلب migration + دور إضافي في سؤال مشترك #2.)
-> 🟡 التوصية: الخيار A الآن (ADMIN فقط)، وتأجيل ملكية المطاعم لمرحلة لاحقة.
-> ✅ القرار:   A
+  > 🟡 التوصية: الخيار A الآن (ADMIN فقط)، وتأجيل ملكية المطاعم لمرحلة لاحقة.
+  > ✅ القرار: A
 
 ❓ **سؤال R-2 — حقول إضافية للكتالوج:**
 هل نضيف حقولًا واقعية مثل: `Restaurant.description/address/isActive`،
 `MenuItem.description/imageUrl/isAvailable`؟
+
 - **الخيار A —** نكتفي بالحقول الحالية (`name`, `price`) — أبسط، بلا migration.
 - **الخيار B —** نضيف الحد الأدنى المفيد: `MenuItem.isAvailable Boolean @default(true)` (لإخفاء صنف نافد)
   و`Restaurant.isActive Boolean @default(true)`.
-> 🟡 التوصية: الخيار B خفيف ومفيد عمليًا (يمنع الطلب من صنف غير متاح). لكن القرار لك.
-> ✅ القرار: A
+  > 🟡 التوصية: الخيار B خفيف ومفيد عمليًا (يمنع الطلب من صنف غير متاح). لكن القرار لك.
+  > ✅ القرار: A
 
 > 💡 لو اخترت إضافة `isAvailable`: يجب أن يتحقق منه **cart.addItem** و**order.placeOrder**
 > (منع إضافة/طلب صنف غير متاح). هذا يلمس موديولات قائمة — يُراعى في التنفيذ.
@@ -66,49 +69,52 @@ model MenuItem   { id, menuId, name, price Decimal, ... }
 
 ### قراءة (عامة / للعميل — تصفّح الكتالوج)
 
-| Method | Path | الوصف |
-|---|---|---|
-| GET | `/api/v1/restaurants` | قائمة المطاعم (paginated، بحث بالاسم اختياري) |
-| GET | `/api/v1/restaurants/:id` | مطعم واحد |
-| GET | `/api/v1/restaurants/:id/menus` | قوائم مطعم معيّن |
-| GET | `/api/v1/menus/:id` | قائمة واحدة (مع أصنافها) |
-| GET | `/api/v1/menus/:id/items` | أصناف قائمة معيّنة |
-| GET | `/api/v1/menu-items/:id` | صنف واحد |
+| Method | Path                            | الوصف                                         |
+| ------ | ------------------------------- | --------------------------------------------- |
+| GET    | `/api/v1/restaurants`           | قائمة المطاعم (paginated، بحث بالاسم اختياري) |
+| GET    | `/api/v1/restaurants/:id`       | مطعم واحد                                     |
+| GET    | `/api/v1/restaurants/:id/menus` | قوائم مطعم معيّن                              |
+| GET    | `/api/v1/menus/:id`             | قائمة واحدة (مع أصنافها)                      |
+| GET    | `/api/v1/menus/:id/items`       | أصناف قائمة معيّنة                            |
+| GET    | `/api/v1/menu-items/:id`        | صنف واحد                                      |
 
 ### إدارة (ADMIN) — ⏸️ **مؤجَّلة لـ PR لاحق** (R-3=A: هذه الجولة **قراءة فقط**). تقنيًا جاهزة (ADMIN متاح بعد قرار #2) وتُحمى بـ `authenticate` + `authorize("ADMIN")` عند بنائها
 
-| Method | Path | الوصف |
-|---|---|---|
-| POST | `/api/v1/restaurants` | إنشاء مطعم |
-| PATCH | `/api/v1/restaurants/:id` | تعديل مطعم |
-| DELETE | `/api/v1/restaurants/:id` | حذف مطعم (Cascade على menus→menuItems) |
-| POST | `/api/v1/restaurants/:id/menus` | إنشاء قائمة داخل مطعم |
-| PATCH | `/api/v1/menus/:id` | تعديل قائمة |
-| DELETE | `/api/v1/menus/:id` | حذف قائمة |
-| POST | `/api/v1/menus/:id/items` | إضافة صنف لقائمة |
-| PATCH | `/api/v1/menu-items/:id` | تعديل صنف |
-| DELETE | `/api/v1/menu-items/:id` | حذف صنف |
+| Method | Path                            | الوصف                                  |
+| ------ | ------------------------------- | -------------------------------------- |
+| POST   | `/api/v1/restaurants`           | إنشاء مطعم                             |
+| PATCH  | `/api/v1/restaurants/:id`       | تعديل مطعم                             |
+| DELETE | `/api/v1/restaurants/:id`       | حذف مطعم (Cascade على menus→menuItems) |
+| POST   | `/api/v1/restaurants/:id/menus` | إنشاء قائمة داخل مطعم                  |
+| PATCH  | `/api/v1/menus/:id`             | تعديل قائمة                            |
+| DELETE | `/api/v1/menus/:id`             | حذف قائمة                              |
+| POST   | `/api/v1/menus/:id/items`       | إضافة صنف لقائمة                       |
+| PATCH  | `/api/v1/menu-items/:id`        | تعديل صنف                              |
+| DELETE | `/api/v1/menu-items/:id`        | حذف صنف                                |
 
-❓ **سؤال R-3 — نطاق هذه الجولة:** *(لم يعد محجوبًا بالأدوار — `ADMIN` صار متاحًا بعد قرار #2)*
+❓ **سؤال R-3 — نطاق هذه الجولة:** _(لم يعد محجوبًا بالأدوار — `ADMIN` صار متاحًا بعد قرار #2)_
+
 - **الخيار A —** قراءة فقط (تصفّح الكتالوج) — الأسرع.
 - **الخيار B —** قراءة + إدارة كاملة (CRUD) محميّة بـ `authorize("ADMIN")` — صار **ممكنًا الآن** تقنيًا.
-> 🟡 التوصية: الخيار A أولًا (قراءة) في PR، ثم الإدارة في PR تالٍ — أو B مباشرة لو أردت إدخال
-> بيانات الكتالوج عبر الـ API بدل الـ seed (الأدوار جاهزة، فلا مانع تقني).
-> ✅ القرار: A
+  > 🟡 التوصية: الخيار A أولًا (قراءة) في PR، ثم الإدارة في PR تالٍ — أو B مباشرة لو أردت إدخال
+  > بيانات الكتالوج عبر الـ API بدل الـ seed (الأدوار جاهزة، فلا مانع تقني).
+  > ✅ القرار: A
 
 ❓ **سؤال R-4 — تقسيم الـ routes على الموديولات:**
 المسارات متشابكة (`/restaurants/:id/menus`, `/menus/:id/items`). كيف نوزّعها؟
+
 - **الخيار A —** كل موديول يملك ملف routes خاص: `restaurant.routes.ts` يحمل `/restaurants*`
   (بما فيها nested menus)، `menu.routes.ts` يحمل `/menus*`، `menuItem.routes.ts` يحمل `/menu-items*`.
-- **الخيار B —** ملف routes واحد للكتالوج كله. *(يخالف نمط «ملف لكل موديول» — غير مُفضَّل.)*
-> 🟡 التوصية: الخيار A (التزامًا بنمط المشروع).
-> ✅ القرار: A
+- **الخيار B —** ملف routes واحد للكتالوج كله. _(يخالف نمط «ملف لكل موديول» — غير مُفضَّل.)_
+  > 🟡 التوصية: الخيار A (التزامًا بنمط المشروع).
+  > ✅ القرار: A
 
 ---
 
 ## 4. تفصيل الملفات (لكل موديول من الثلاثة، نمط الـ 6 ملفات)
 
 ### Restaurant
+
 - **validation:** `CreateRestaurantRequestSchema` { name }، `UpdateRestaurantRequestSchema`،
   `RestaurantIdParamsSchema`، `RestaurantQuerySchema` (pagination + `search?`)،
   `RestaurantResponseSchema`، `RestaurantListSuccessResponseSchema`.
@@ -118,6 +124,7 @@ model MenuItem   { id, menuId, name, price Decimal, ... }
 - **model:** `RestaurantWithMenus` عند الحاجة.
 
 ### Menu
+
 - **validation:** `CreateMenuRequestSchema` { name, (restaurantId من الـ param) }،
   `UpdateMenuRequestSchema`، `MenuIdParamsSchema`، `MenuResponseSchema` (مع `items?`).
 - **repository:** فوق `findById` → `findByRestaurantId`, `findByIdWithItems`.
@@ -126,6 +133,7 @@ model MenuItem   { id, menuId, name, price Decimal, ... }
 - **controller/routes/model** كالمعتاد.
 
 ### MenuItem
+
 - **validation:** `CreateMenuItemRequestSchema` { name, price (`z.number().positive()`) }،
   `UpdateMenuItemRequestSchema`، `MenuItemIdParamsSchema`، `MenuItemResponseSchema`.
 - **repository:** موجود (`findById/findByIdWithMenu/findManyByIds`) — تُضاف `findByMenuId`، وعمليات الإدارة.
@@ -141,9 +149,12 @@ model MenuItem   { id, menuId, name, price Decimal, ... }
 ```ts
 export const catalogErrors = {
   RESTAURANT_NOT_FOUND: { message: "Restaurant not found", statusCode: 404 },
-  MENU_NOT_FOUND:       { message: "Menu not found", statusCode: 404 },
-  MENU_ITEM_NOT_FOUND:  { message: "Menu item not found", statusCode: 404 },
-  FORBIDDEN:            { message: "You are not allowed to manage the catalog", statusCode: 403 },
+  MENU_NOT_FOUND: { message: "Menu not found", statusCode: 404 },
+  MENU_ITEM_NOT_FOUND: { message: "Menu item not found", statusCode: 404 },
+  FORBIDDEN: {
+    message: "You are not allowed to manage the catalog",
+    statusCode: 403,
+  },
 } as const;
 ```
 
@@ -162,9 +173,9 @@ export const catalogErrors = {
   قد يفشل على مستوى قاعدة البيانات. يجب التقاط ذلك وإرجاع `409 Conflict` برسالة واضحة بدل 500.
   ❓ **سؤال R-5:** سلوك حذف صنف مُستخدَم في طلبات سابقة؟
   - (1) منع الحذف وإرجاع 409. (2) Soft-delete عبر `isAvailable=false` بدل الحذف الفعلي.
-  > ✅ **مُحسوم ضمنًا بإجاباتك:** لا حذف في هذه الجولة (**R-3=A** قراءة فقط)، و**R-2=A** ألغى
-  > `isAvailable` فالـ soft-delete (الخيار 2) غير متاح. لذا عند بناء الحذف لاحقًا → **الخيار (1): منع + `409`**.
-  > (لا حاجة لإجابة الآن.)
+    > ✅ **مُحسوم ضمنًا بإجاباتك:** لا حذف في هذه الجولة (**R-3=A** قراءة فقط)، و**R-2=A** ألغى
+    > `isAvailable` فالـ soft-delete (الخيار 2) غير متاح. لذا عند بناء الحذف لاحقًا → **الخيار (1): منع + `409`**.
+    > (لا حاجة لإجابة الآن.)
 
 ---
 
@@ -205,6 +216,7 @@ export const catalogErrors = {
      يدعم توصيتنا: تأجيل ملكية المطاعم، والإدارة لـ ADMIN فقط مبدئيًا.
 
 ### تحديث توصياتنا:
+
 - **R-3:** قراءة فقط (مؤكَّد). الإدارة في PR لاحق بعد جهوزية الأدوار.
 - **R-2:** `isAvailable Boolean` الآن (أخفّ)، مع وضع `stock` على الرادار كتحسين مستقبلي.
 - **R-4:** راوتر لكل موديول (التزامًا بقواعدنا)، مع السماح بالمسارات المتداخلة داخل راوتر المطعم.

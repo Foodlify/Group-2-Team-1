@@ -3,7 +3,9 @@ import type { Prisma } from "../../generated/prisma/client";
 import { BaseRepository } from "../../shared/repositories/base.repository";
 import prisma from "../../config/prisma";
 
-export class CartItemRepository extends BaseRepository<PrismaClient["cartItem"]> {
+export class CartItemRepository extends BaseRepository<
+  PrismaClient["cartItem"]
+> {
   constructor() {
     super(prisma.cartItem);
   }
@@ -52,7 +54,6 @@ export class CartItemRepository extends BaseRepository<PrismaClient["cartItem"]>
   ) {
     return (tx ?? prisma).cartItem.create(args);
   }
-
 }
 
 export const cartItemRepository = new CartItemRepository();

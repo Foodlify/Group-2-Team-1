@@ -2,7 +2,9 @@ import type { Prisma, PrismaClient } from "../../generated/prisma/client";
 import { BaseRepository } from "../../shared/repositories/base.repository";
 import prisma from "../../config/prisma";
 
-export class RestaurantRepository extends BaseRepository<PrismaClient["restaurant"]> {
+export class RestaurantRepository extends BaseRepository<
+  PrismaClient["restaurant"]
+> {
   constructor() {
     super(prisma.restaurant);
   }
@@ -18,7 +20,12 @@ export class RestaurantRepository extends BaseRepository<PrismaClient["restauran
       : {};
     const skip = (page - 1) * limit;
     const [data, total] = await Promise.all([
-      prisma.restaurant.findMany({ where, skip, take: limit, orderBy: { name: "asc" } }),
+      prisma.restaurant.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { name: "asc" },
+      }),
       prisma.restaurant.count({ where }),
     ]);
     return {
