@@ -60,10 +60,15 @@ export class RatingRepository extends BaseRepository<
   ) {
     const grouped = await prisma.restaurantRate.groupBy({
       by: ["restaurantId"],
-      where:
-        excludeRestaurantIds.length > 0
+      // Soft-deleted restaurants are excluded here rather than after the
+      // grouping: filtering afterwards would eat into `take`, silently
+      // returning fewer than `limit` results.
+      where: {
+        restaurant: { isDeleted: false },
+        ...(excludeRestaurantIds.length > 0
           ? { restaurantId: { notIn: excludeRestaurantIds } }
-          : {},
+          : {}),
+      },
       _avg: { rating: true },
       _count: { restaurantId: true },
       orderBy: [
