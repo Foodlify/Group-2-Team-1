@@ -5,19 +5,26 @@ in code reviews. Items here are **known and deliberately deferred**, not oversig
 
 ## In progress
 
-### Automated tests — 103 unit tests (2026-08-06)
+### Automated tests — 201 unit tests (2026-08-07)
 
 - **Status:** Vitest (`npm test` / `test:watch` / `test:coverage`) covers the
-  services added so far: restaurant, OTP, ratings, addresses, preferred
-  payments, support, menu search, menu history, password reset, account
-  status, guest cart + merge, cart cache, cart housekeeping, order stock, and
-  notifications.
-- **Still missing, in priority order** (the high-risk logic that predates
-  these): money math (`Prisma.Decimal` totals), order status transitions
-  (`VALID_TRANSITIONS`), and the full `placeOrder` transaction / cart
-  row-locking behaviour.
-- **Then:** integration tests for Order & Payment (mentor requirement, S17) —
-  consider Testcontainers for a real PostgreSQL in those.
+  restaurant, OTP, ratings, addresses, preferred payments, support, menu
+  search, menu history, password reset, account status, guest cart + merge,
+  cart cache, cart housekeeping, notification, and soft-delete services —
+  plus the four order suites (stock, money, transitions, checkout).
+- The high-risk logic that predated the suite is now covered: money math
+  (`Prisma.Decimal`), the `VALID_TRANSITIONS` table (all 36 pairs, generated),
+  and the `placeOrder` transaction / cart row-locking behaviour.
+  Writing them found and fixed a real bug — line subtotals were computed with
+  float multiplication and served `24.450000000000003` for `8.15 x 3`.
+- **Next:** integration tests for Order & Payment (mentor requirement, S17) —
+  consider Testcontainers for a real PostgreSQL in those. That is also when
+  the CI gains a database service and a migration-drift check.
+
+**Convention worth keeping:** every new assertion here was checked against a
+deliberately broken copy of the code before being committed. A test that
+passes either way is worse than no test — one of these was vacuous on the
+first attempt and only showed it under that check.
 
 ## Deferred
 

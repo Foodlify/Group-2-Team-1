@@ -498,7 +498,11 @@ class OrderService {
       name: item.name,
       quantity: item.quantity,
       price: Number(item.price),
-      subtotal: Number(item.price) * item.quantity,
+      // Multiply in Decimal, convert once at the boundary — the same rule
+      // `cart.service.toCartResponse` and the order total already follow.
+      // `Number(price) * quantity` returned 24.450000000000003 for 8.15 x 3,
+      // and made the line subtotals disagree with `totalPrice`.
+      subtotal: new Prisma.Decimal(item.price).times(item.quantity).toNumber(),
       createdAt: item.createdAt.toISOString(),
       updatedAt: item.updatedAt.toISOString(),
     };
