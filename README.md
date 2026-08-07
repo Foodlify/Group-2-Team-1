@@ -1,5 +1,7 @@
 # Group-2-Team-1
 
+[![CI](https://github.com/Foodlify/Group-2-Team-1/actions/workflows/ci.yml/badge.svg)](https://github.com/Foodlify/Group-2-Team-1/actions/workflows/ci.yml)
+
 A Node.js + Express 5 + TypeScript backend using Prisma 7 with PostgreSQL,
 featuring OpenAPI 3.1 documentation via Scalar and Swagger UI.
 
@@ -25,6 +27,7 @@ featuring OpenAPI 3.1 documentation via Scalar and Swagger UI.
 - [API Documentation](#api-documentation)
 - [Architecture](#architecture)
 - [Adding a New Feature](#adding-a-new-feature)
+- [Continuous Integration](#continuous-integration)
 - [Available Scripts](#available-scripts)
 - [Project Structure](#project-structure)
 - [Troubleshooting](#troubleshooting)
@@ -562,15 +565,42 @@ stable and lets features merge independently.
 
 ---
 
+## Continuous Integration
+
+Every push and pull request targeting `main` or `develop` runs
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml), which executes exactly
+the same checks as `npm run verify`:
+
+| Step       | Command                  | Catches                                               |
+| ---------- | ------------------------ | ----------------------------------------------------- |
+| Install    | `npm ci`                 | lockfile drift (also generates the Prisma client)     |
+| Formatting | `npm run format:check`   | unformatted code                                      |
+| Lint       | `npm run lint`           | ESLint violations                                     |
+| Typecheck  | `npm run typecheck`      | type errors in `src` **and** `tests`                  |
+| Unit tests | `npm test`               | behaviour regressions                                 |
+| Build      | `npm run build`          | anything that compiles under `--noEmit` but not to JS |
+| OpenAPI    | `npm run verify:openapi` | broken route registration, dangling schema `$ref`s    |
+
+**Run the whole thing locally before pushing:** `npm run verify`.
+
+The workflow needs no secrets — `DATABASE_URL` and the JWT secrets are
+placeholders defined in the workflow itself. Nothing in CI connects to a
+database yet; a PostgreSQL service will be added alongside the integration
+tests, and the migration-drift check belongs with it (it needs a shadow
+database).
+
+---
+
 ## Available Scripts
 
 ### Development
 
-| Script        | Description                         |
-| ------------- | ----------------------------------- |
-| `npm run dev` | Start the server with hot reload    |
-| `npm start`   | Start the server in production mode |
-| `npm test`    | Run tests (not yet configured)      |
+| Script           | Description                                   |
+| ---------------- | --------------------------------------------- |
+| `npm run dev`    | Start the server with hot reload              |
+| `npm start`      | Start the server in production mode           |
+| `npm test`       | Run the unit-test suite (Vitest)              |
+| `npm run verify` | Run every CI check locally, in the same order |
 
 ### Database (Prisma)
 
@@ -671,6 +701,7 @@ npm run db:migrate
 When prompted, enter a short name describing your change (e.g. `add-restaurant-id-to-cart`).
 
 This will:
+
 - Generate a new SQL file under `prisma/migrations/`
 - Apply it to your local database immediately
 
@@ -698,12 +729,12 @@ The server picks up the new Prisma Client on restart.
 
 ### Quick Reference
 
-| What changed | Commands to run |
-|---|---|
+| What changed            | Commands to run                        |
+| ----------------------- | -------------------------------------- |
 | Added / removed a field | `db:migrate` → `db:generate` → restart |
-| Added a new model | `db:migrate` → `db:generate` → restart |
-| Renamed a field | `db:migrate` → `db:generate` → restart |
-| Schema only (no DB yet) | `db:generate` → restart |
+| Added a new model       | `db:migrate` → `db:generate` → restart |
+| Renamed a field         | `db:migrate` → `db:generate` → restart |
+| Schema only (no DB yet) | `db:generate` → restart                |
 
 ---
 
@@ -721,7 +752,10 @@ After running `npx prisma db seed`, you'll see output similar to:
     "userId": "cmokc9lk6000024ap6ogg7t7j",
     "userEmail": "test@example.com",
     "addressId": "cmok...",
-    "customerLogin": { "email": "test@example.com", "password": "Password123!" },
+    "customerLogin": {
+      "email": "test@example.com",
+      "password": "Password123!"
+    },
     "adminLogin": { "email": "admin@example.com", "password": "Admin123!" },
     "menuItemIds": [
       { "id": "cmo8k38mk0006iiapa4wdjh7j", "name": "Margherita Pizza" },
