@@ -18,6 +18,7 @@
 العميل = `User(role=CUSTOMER)` + سجل `Customer`. الأدمن = `User(role=ADMIN)` بلا `Customer` بالضرورة.
 
 **الوضع الحالي في الكود:**
+
 - [`user.model.ts`](../../src/modules/user/user.model.ts) — فارغ (placeholder).
 - [`user.repository.ts`](../../src/modules/user/user.repository.ts) — `findById` فقط، يرث `BaseRepository`.
 - لا يوجد `service / controller / routes / validation` بعد.
@@ -61,32 +62,32 @@ model User {
 
 ### (أ) مصادقة العميل (customer-auth) — مسارات `/api/v1/auth/*`
 
-| Method | Path | الوصف | الحماية |
-|---|---|---|---|
-| POST | `/api/v1/auth/register` | إنشاء `User(role=CUSTOMER)` + `Customer` (transaction) → set cookies | عام |
-| POST | `/api/v1/auth/login` | دخول العميل → set cookies | عام |
-| POST | `/api/v1/auth/refresh-token` | تجديد access من refresh cookie | عام (refresh cookie) |
-| POST | `/api/v1/auth/logout` | مسح الكوكيز + تصفير refreshToken | مُصادَق |
-| ~~POST~~ | ~~`/api/v1/auth/forgot-password`~~ | ⏸️ **مؤجَّل (U-6)** — إرسال رمز إعادة التعيين (صامت لمنع enumeration) | عام |
-| ~~POST~~ | ~~`/api/v1/auth/reset-password`~~ | ⏸️ **مؤجَّل (U-6)** — تعيين كلمة مرور جديدة عبر الرمز | عام (يحمل token) |
+| Method   | Path                               | الوصف                                                                 | الحماية              |
+| -------- | ---------------------------------- | --------------------------------------------------------------------- | -------------------- |
+| POST     | `/api/v1/auth/register`            | إنشاء `User(role=CUSTOMER)` + `Customer` (transaction) → set cookies  | عام                  |
+| POST     | `/api/v1/auth/login`               | دخول العميل → set cookies                                             | عام                  |
+| POST     | `/api/v1/auth/refresh-token`       | تجديد access من refresh cookie                                        | عام (refresh cookie) |
+| POST     | `/api/v1/auth/logout`              | مسح الكوكيز + تصفير refreshToken                                      | مُصادَق              |
+| ~~POST~~ | ~~`/api/v1/auth/forgot-password`~~ | ⏸️ **مؤجَّل (U-6)** — إرسال رمز إعادة التعيين (صامت لمنع enumeration) | عام                  |
+| ~~POST~~ | ~~`/api/v1/auth/reset-password`~~  | ⏸️ **مؤجَّل (U-6)** — تعيين كلمة مرور جديدة عبر الرمز                 | عام (يحمل token)     |
 
 ### (ب) مصادقة الإدارة (admin-auth) — مسارات `/api/v1/auth/admin/*`
 
-| Method | Path | الوصف | الحماية |
-|---|---|---|---|
-| POST | `/api/v1/auth/admin/login` | دخول الإدارة — يتحقق `role === ADMIN` → set cookies | عام |
-| POST | `/api/v1/auth/admin/refresh-token` | تجديد access | عام (refresh cookie) |
-| POST | `/api/v1/auth/admin/logout` | مسح الكوكيز + تصفير refreshToken | مُصادَق (ADMIN) |
+| Method | Path                               | الوصف                                               | الحماية              |
+| ------ | ---------------------------------- | --------------------------------------------------- | -------------------- |
+| POST   | `/api/v1/auth/admin/login`         | دخول الإدارة — يتحقق `role === ADMIN` → set cookies | عام                  |
+| POST   | `/api/v1/auth/admin/refresh-token` | تجديد access                                        | عام (refresh cookie) |
+| POST   | `/api/v1/auth/admin/logout`        | مسح الكوكيز + تصفير refreshToken                    | مُصادَق (ADMIN)      |
 
 ### (ج) إدارة المستخدمين (CRUD) — مسارات `/api/v1/users/*` محميّة بـ `authorize("ADMIN")`
 
-| Method | Path | الوصف | الحماية |
-|---|---|---|---|
-| GET | `/api/v1/users` | قائمة المستخدمين (paginated) | ADMIN |
-| GET | `/api/v1/users/:id` | مستخدم واحد | ADMIN |
-| POST | `/api/v1/users` | إنشاء مستخدم (مع تحديد `role`) | ADMIN |
-| PATCH | `/api/v1/users/:id` | تعديل `name`/`email`/`role` | ADMIN |
-| DELETE | `/api/v1/users/:id` | حذف مستخدم (Cascade على Customer) | ADMIN |
+| Method | Path                | الوصف                             | الحماية |
+| ------ | ------------------- | --------------------------------- | ------- |
+| GET    | `/api/v1/users`     | قائمة المستخدمين (paginated)      | ADMIN   |
+| GET    | `/api/v1/users/:id` | مستخدم واحد                       | ADMIN   |
+| POST   | `/api/v1/users`     | إنشاء مستخدم (مع تحديد `role`)    | ADMIN   |
+| PATCH  | `/api/v1/users/:id` | تعديل `name`/`email`/`role`       | ADMIN   |
+| DELETE | `/api/v1/users/:id` | حذف مستخدم (Cascade على Customer) | ADMIN   |
 
 > ✅ **سؤال U-6 (forgot/reset password): مؤجَّل** — لا يُنفَّذ في هذه الجولة (يحتاج بنية بريد).
 > يُبنى لاحقًا في PR مستقل (ربما عبر Gmail connector). مساراه أدناه **مؤجَّلة**.
@@ -106,6 +107,7 @@ model User {
 > **التوكنات تُكتب كـ httpOnly cookies** — راجع consequences الكوكيز في الملف المشترك.
 
 ### `user.validation.ts`
+
 - **Customer-auth:** `RegisterRequestSchema` { name, email (`z.email()`), password (min 8), **phone (مطلوب — قرار C-1)** }،
   `LoginRequestSchema` { email, password }، `ForgotPasswordSchema` { email }، `ResetPasswordSchema` { token, newPassword }.
   > `phone` يُمرَّر لإنشاء `Customer` (مطلوب + فريد) داخل نفس الـ transaction؛ تكراره → `409`.
@@ -118,10 +120,12 @@ model User {
 - كلها `.meta({ id })` + `schemaRegistry.register(...)`.
 
 ### `user.repository.ts`
+
 - موجود: `findById`. يُضاف: `findByEmail(email)`، `updateRefreshToken(id, token|null)`، `updatePassword(id, hash)`.
 - لا business logic — فقط استعلامات.
 
 ### `user.service.ts`
+
 - **register(input)** → تحقق عدم تكرار الإيميل (`409`) → hash → إنشاء `User(CUSTOMER)` + `Customer` في transaction → توليد access+refresh + تخزين refresh.
 - **login(input)** / **adminLogin(input)** (الأخير يتحقق `role === ADMIN` وإلا `401`) → مقارنة hash → access+refresh.
 - **refresh(token)** → تحقق + مطابقة المخزَّن → access جديد. **logout(userId)** → `updateRefreshToken(null)`.
@@ -130,15 +134,18 @@ model User {
 - > الخدمة تُرجع التوكنات للـ controller الذي يكتبها كـ cookies (الخدمة لا تلمس `res`).
 
 ### `user.controller.ts`
+
 - `register / login / adminLogin / refresh / logout / forgot / reset / getById / list / create / update / remove`.
 - **يكتب التوكنات عبر `res.cookie(..., { httpOnly: true, secure, sameSite })`**، و`logout` عبر `res.clearCookie`.
 - الجسم عبر `sendSuccess/sendError`.
 
 ### `user.routes.ts`
+
 - راوتر `auth` (`/api/v1/auth/*` + `/auth/admin/*`) وراوتر `users` (`/api/v1/users/*`).
 - `validate(...)` + `authenticate` (يقرأ الكوكي) + `authorize("ADMIN")` على الإدارة + `routeRegistry.push(...)`.
 
 ### `user.model.ts`
+
 - `SafeUser` (User بدون password/refreshToken)، و`UserWithCustomer` عند الحاجة.
 
 ---
@@ -147,11 +154,23 @@ model User {
 
 ```ts
 export const userErrors = {
-  EMAIL_ALREADY_EXISTS: { message: "Email already registered", statusCode: 409 },
-  PHONE_ALREADY_EXISTS: { message: "Phone already registered", statusCode: 409 }, // قرار C-1 (phone فريد)
-  INVALID_CREDENTIALS:  { message: "Invalid email or password", statusCode: 401 },
-  USER_NOT_FOUND:       { message: "User not found", statusCode: 404 },
-  FORBIDDEN:            { message: "You are not allowed to access this user", statusCode: 403 },
+  EMAIL_ALREADY_EXISTS: {
+    message: "Email already registered",
+    statusCode: 409,
+  },
+  PHONE_ALREADY_EXISTS: {
+    message: "Phone already registered",
+    statusCode: 409,
+  }, // قرار C-1 (phone فريد)
+  INVALID_CREDENTIALS: {
+    message: "Invalid email or password",
+    statusCode: 401,
+  },
+  USER_NOT_FOUND: { message: "User not found", statusCode: 404 },
+  FORBIDDEN: {
+    message: "You are not allowed to access this user",
+    statusCode: 403,
+  },
 } as const;
 ```
 
@@ -206,6 +225,7 @@ export const userErrors = {
   عندنا نلتزم singletons + `cuid` + Zod `z.enum`.
 
 ### تحديث على توصياتنا بناءً على المراجعة:
+
 1. **سؤال U-2 (الأدوار):** يتقاطع مع سؤال مشترك #8 الجديد (enum على User مقابل جداول RBAC).
    توصيتنا تبقى: enum بسيط الآن.
 2. **مصادقة الموظفين مقابل العميل:** يُحسم عبر سؤال مشترك #7. لو تبنّينا الفصل، فهذا الملف
@@ -216,5 +236,6 @@ export const userErrors = {
 
 ❓ **سؤال U-6:** هل ننفّذ forgot/reset/change password في هذه الجولة (كـ Group-1) أم نؤجّلها؟
 (تتطلب إرسال بريد — لا توجد بنية بريد في مشروعنا حاليًا، وقد نستخدم Gmail connector لاحقًا.)
+
 > 🟡 التوصية: تأجيلها — نبدأ بـ register/login فقط، وreset لاحقًا عند توفّر إرسال البريد.
 > ✅ القرار: تأجيل

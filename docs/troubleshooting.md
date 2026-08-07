@@ -4,6 +4,7 @@ This guide covers common issues you may encounter when setting up or running the
 based on problems actually encountered during development.
 
 > **Tip:** If your issue isn't listed here, check the logs first:
+>
 > - App logs: wherever you ran `npm run dev`
 > - Database logs: `docker compose logs postgres` (Docker) or your system's Postgres logs
 > - Confirm the error message matches what's described before applying a fix.
@@ -39,6 +40,7 @@ based on problems actually encountered during development.
 ### P1000: Authentication failed
 
 **Error:**
+
 ```
 Error: P1000: Authentication failed against database server,
 the provided database credentials for `postgres` are not valid.
@@ -54,6 +56,7 @@ same port, your app may be connecting to the wrong one.
 Check which process is listening on port 5432:
 
 **Windows (PowerShell):**
+
 ```powershell
 Get-NetTCPConnection -LocalPort 5432 -State Listen | ForEach-Object {
     $proc = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue
@@ -66,6 +69,7 @@ Get-NetTCPConnection -LocalPort 5432 -State Listen | ForEach-Object {
 ```
 
 **macOS / Linux:**
+
 ```bash
 sudo lsof -i :5432
 ```
@@ -75,12 +79,14 @@ If you see **both** `postgres` and `com.docker.backend` (or `docker`), you have 
 **Fix — change the Docker port:**
 
 1. Edit `.env`:
+
    ```env
    POSTGRES_PORT=5433
    DATABASE_URL=postgresql://postgres:postgres@localhost:5433/G2T1M
    ```
 
 2. Restart the container:
+
    ```bash
    docker compose down
    docker compose up -d
@@ -98,6 +104,7 @@ in the volume. The `POSTGRES_USER` / `POSTGRES_PASSWORD` env variables only take
 **on first run against an empty volume**.
 
 **Fix (⚠️ deletes all database data):**
+
 ```bash
 docker compose down -v
 docker compose up -d
@@ -109,6 +116,7 @@ npm run db:migrate
 ### P1001: Can't reach database server
 
 **Error:**
+
 ```
 Error: P1001: Can't reach database server at `localhost:5432`
 Please make sure your database server is running at `localhost:5432`.
@@ -119,6 +127,7 @@ Please make sure your database server is running at `localhost:5432`.
 **Checklist:**
 
 1. **Is the database running?**
+
    ```bash
    # Docker
    docker compose ps   # STATUS should say (healthy)
@@ -131,9 +140,11 @@ Please make sure your database server is running at `localhost:5432`.
    ```
 
 2. **Does the port in `.env` match the actual listening port?**
+
    ```bash
    docker compose ps
    ```
+
    Look at the `PORTS` column. It should be `0.0.0.0:<HOST_PORT>->5432/tcp`.
    The `<HOST_PORT>` must match `POSTGRES_PORT` in `.env`.
 
@@ -149,6 +160,7 @@ Please make sure your database server is running at `localhost:5432`.
 ### P3014: Shadow database creation failed
 
 **Error:**
+
 ```
 Error: P3014: Prisma Migrate could not create the shadow database.
 Please make sure the database user has permission to create databases.
@@ -160,6 +172,7 @@ Your database user doesn't have `CREATEDB` permission.
 **Fix:**
 
 Connect as a superuser and grant the permission:
+
 ```bash
 # Docker
 docker exec -it g2t1_postgres psql -U postgres -c "ALTER USER postgres CREATEDB;"
@@ -178,12 +191,14 @@ psql -U postgres -c "ALTER USER postgres CREATEDB;"
 **httpOnly cookies**, so you must log in first and send the cookies back.
 
 **Fix:** seed the database (`npx prisma db seed`), then log in and reuse the cookies:
+
 ```bash
 curl -X POST localhost:4444/api/v1/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"email":"test@example.com","password":"Password123!"}' -c cookies.txt
 curl localhost:4444/api/v1/carts -b cookies.txt
 ```
+
 For admin-only routes (user management, order status) use
 `POST /api/v1/auth/admin/login` with `admin@example.com` / `Admin123!`.
 
@@ -195,6 +210,7 @@ For admin-only routes (user management, order status) use
 ### `npx prisma db seed` fails with "Environment variable not found: DATABASE_URL"
 
 **Error:**
+
 ```
 Environment variable not found: DATABASE_URL
 ```
@@ -211,6 +227,7 @@ the default in Prisma 7's generated config, but could be missing in older setups
 ### Cannot find module '../generated/prisma/client'
 
 **Error (at runtime or TypeScript compilation):**
+
 ```
 Cannot find module '../generated/prisma/client'
 ```
@@ -219,16 +236,19 @@ Cannot find module '../generated/prisma/client'
 Every machine needs to generate its own copy based on the schema.
 
 **Common scenarios where this happens:**
+
 1. After a fresh `git clone` (most common)
 2. After `rm -rf node_modules` without rerunning `npm install`
 3. After `npm run db:migrate` in Prisma 7.7.0 (occasional race condition where generate is skipped)
 
 **Fix:**
+
 ```bash
 npm run db:generate
 ```
 
 Verify the output directory exists:
+
 ```bash
 # Should list several .ts files: client.ts, models.ts, enums.ts, etc.
 ls src/generated/prisma
@@ -239,6 +259,7 @@ specific files like `./generated/prisma/client`, not from the folder.
 
 **Prevention:** The project's `package.json` includes a `postinstall` script that runs
 `prisma generate` automatically after `npm install`. If you're seeing this error, either:
+
 - You cloned the repo and haven't run `npm install` yet → run `npm install`
 - The `postinstall` script failed silently → run `npm run db:generate` manually
 
@@ -247,6 +268,7 @@ specific files like `./generated/prisma/client`, not from the folder.
 ### `url` is no longer supported in schema files
 
 **Error:**
+
 ```
 Error: Prisma schema validation - (validate wasm)
 Error code: P1012
@@ -259,6 +281,7 @@ and into `prisma.config.ts`.
 **Fix:**
 
 1. In `prisma/schema.prisma`, **remove** the `url` line from the `datasource` block:
+
    ```prisma
    // Before
    datasource db {
@@ -273,6 +296,7 @@ and into `prisma.config.ts`.
    ```
 
 2. In `prisma.config.ts`, add the `datasource` property:
+
    ```typescript
    import "dotenv/config";
    import { defineConfig, env } from "prisma/config";
@@ -281,7 +305,7 @@ and into `prisma.config.ts`.
      schema: "prisma/schema.prisma",
      migrations: { path: "prisma/migrations" },
      datasource: {
-       url: env("DATABASE_URL"),   // ✅ now lives here
+       url: env("DATABASE_URL"), // ✅ now lives here
      },
    });
    ```
@@ -291,6 +315,7 @@ and into `prisma.config.ts`.
 ### Argument `references` must refer only to existing fields
 
 **Error:**
+
 ```
 error: Error validating: The argument `references` must refer only to existing
 fields in the related model `Cart`. The following fields do not exist in the
@@ -320,6 +345,7 @@ cart Cart @relation(fields: [cartId], references: [userId])
 ### Windows: Installation failed — ProgramData must be owned by an elevated account
 
 **Error (during Docker Desktop install):**
+
 ```
 For security reasons C:\ProgramData\DockerDesktop must be owned by an elevated account
 ```
@@ -332,6 +358,7 @@ account.
 1. Run PowerShell as Administrator (right-click → Run as administrator).
 
 2. Remove the leftover folders:
+
    ```powershell
    Remove-Item -Recurse -Force "C:\ProgramData\DockerDesktop" -ErrorAction SilentlyContinue
    Remove-Item -Recurse -Force "C:\ProgramData\Docker" -ErrorAction SilentlyContinue
@@ -348,11 +375,13 @@ account.
 ### Ubuntu: `docker compose` command not found
 
 **Error:**
+
 ```
 docker: unknown command: docker compose
 ```
 
 Or with shorthand flags:
+
 ```
 unknown shorthand flag: 'd' in -d
 ```
@@ -361,6 +390,7 @@ unknown shorthand flag: 'd' in -d
 On Ubuntu, they are separate packages.
 
 **Check what's installed:**
+
 ```bash
 docker --version              # Should show Docker version
 docker compose version        # V2 plugin (preferred)
@@ -370,12 +400,14 @@ docker-compose --version      # V1 standalone (legacy)
 **Fix — Option 1: Install via apt (Ubuntu's repository)**
 
 For Ubuntu 24.04+:
+
 ```bash
 sudo apt update
 sudo apt install docker-compose-v2
 ```
 
 If the package isn't found, make sure `universe` repository is enabled:
+
 ```bash
 sudo add-apt-repository universe
 sudo apt update
@@ -404,11 +436,13 @@ sudo apt install docker-compose-plugin
 ```
 
 **Verify:**
+
 ```bash
 docker compose version
 ```
 
 Expected output:
+
 ```
 Docker Compose version v2.x.x
 ```
@@ -418,6 +452,7 @@ Docker Compose version v2.x.x
 ### Ubuntu: Docker commands require sudo
 
 **Symptom:** Every `docker` command fails unless prefixed with `sudo`. For example:
+
 ```
 permission denied while trying to connect to the Docker daemon socket
 ```
@@ -426,6 +461,7 @@ permission denied while trying to connect to the Docker daemon socket
 communicate with the Docker daemon.
 
 **Fix — add your user to the docker group:**
+
 ```bash
 # Add your user to the docker group
 sudo usermod -aG docker $USER
@@ -454,6 +490,7 @@ variable on **both** sides. The container port should **always be `5432`** regar
 the host port, because PostgreSQL inside the container always listens on `5432`.
 
 **Fix — `docker-compose.yml`:**
+
 ```yaml
 # ❌ Wrong — both sides changed
 ports:
@@ -465,6 +502,7 @@ ports:
 ```
 
 After fixing:
+
 ```bash
 docker compose down
 docker compose up -d
@@ -478,6 +516,7 @@ docker compose ps   # Should show <host_port>->5432
 ### Port 5432 already in use
 
 **Error (from `docker compose up`):**
+
 ```
 Error response from daemon: driver failed programming external connectivity...
 bind: address already in use
@@ -486,6 +525,7 @@ bind: address already in use
 **Fix:** Use a different host port.
 
 1. Edit `.env`:
+
    ```env
    POSTGRES_PORT=5433
    DATABASE_URL=postgresql://postgres:postgres@localhost:5433/G2T1M
@@ -502,6 +542,7 @@ bind: address already in use
 ### Port 4444 already in use
 
 **Error:**
+
 ```
 Error: listen EADDRINUSE: address already in use :::4444
 ```
@@ -509,6 +550,7 @@ Error: listen EADDRINUSE: address already in use :::4444
 **Find the process using the port:**
 
 **Windows (PowerShell):**
+
 ```powershell
 Get-NetTCPConnection -LocalPort 4444 -State Listen | ForEach-Object {
     Get-Process -Id $_.OwningProcess
@@ -516,11 +558,13 @@ Get-NetTCPConnection -LocalPort 4444 -State Listen | ForEach-Object {
 ```
 
 **macOS / Linux:**
+
 ```bash
 lsof -i :4444
 ```
 
 **Fix — either:**
+
 - Kill the process using the port, **or**
 - Change `PORT` in `.env` to a different value (e.g., `4445`)
 

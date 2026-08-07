@@ -13,7 +13,11 @@ import {
 const router: Router = Router();
 
 // ─── Public catalog reads ────────────────────────────────
-router.get("/", validate({ query: RestaurantQuerySchema }), controller.listRestaurants);
+router.get(
+  "/",
+  validate({ query: RestaurantQuerySchema }),
+  controller.listRestaurants,
+);
 router.get(
   "/:restaurantId",
   validate({ params: RestaurantIdParamsSchema }),
@@ -37,7 +41,10 @@ router.patch(
   "/:restaurantId",
   authenticate,
   authorize("ADMIN"),
-  validate({ params: RestaurantIdParamsSchema, body: UpdateRestaurantRequestSchema }),
+  validate({
+    params: RestaurantIdParamsSchema,
+    body: UpdateRestaurantRequestSchema,
+  }),
   controller.updateRestaurant,
 );
 router.delete(
@@ -51,12 +58,24 @@ router.delete(
 // ─── OpenAPI ─────────────────────────────────────────────
 const tag = "Catalog";
 const errorRef = { $ref: "#/components/schemas/ErrorResponse" };
-const validationErrorRef = { $ref: "#/components/schemas/ValidationErrorResponse" };
-const restaurantIdParam = { name: "restaurantId", in: "path", required: true, schema: { type: "string" as const } } as const;
-const security: Record<string, string[]>[] = [{ cookieAuth: [] }, { BearerAuth: [] }];
+const validationErrorRef = {
+  $ref: "#/components/schemas/ValidationErrorResponse",
+};
+const restaurantIdParam = {
+  name: "restaurantId",
+  in: "path",
+  required: true,
+  schema: { type: "string" as const },
+} as const;
+const security: Record<string, string[]>[] = [
+  { cookieAuth: [] },
+  { BearerAuth: [] },
+];
 const jsonBody = (ref: string) => ({
   required: true,
-  content: { "application/json": { schema: { $ref: `#/components/schemas/${ref}` } } },
+  content: {
+    "application/json": { schema: { $ref: `#/components/schemas/${ref}` } },
+  },
 });
 
 routeRegistry.push({
@@ -67,11 +86,29 @@ routeRegistry.push({
       summary: "List restaurants (paginated, optional name search)",
       parameters: [
         { name: "page", in: "query", schema: { type: "integer", default: 1 } },
-        { name: "limit", in: "query", schema: { type: "integer", default: 20 } },
-        { name: "search", in: "query", schema: { type: "string" }, description: "Case-insensitive name search" },
+        {
+          name: "limit",
+          in: "query",
+          schema: { type: "integer", default: 20 },
+        },
+        {
+          name: "search",
+          in: "query",
+          schema: { type: "string" },
+          description: "Case-insensitive name search",
+        },
       ],
       responses: {
-        "200": { description: "Restaurants", content: { "application/json": { schema: { $ref: "#/components/schemas/RestaurantListSuccessResponse" } } } },
+        "200": {
+          description: "Restaurants",
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/RestaurantListSuccessResponse",
+              },
+            },
+          },
+        },
       },
     },
   },
@@ -85,8 +122,20 @@ routeRegistry.push({
       summary: "Get a restaurant by ID",
       parameters: [restaurantIdParam],
       responses: {
-        "200": { description: "Restaurant", content: { "application/json": { schema: { $ref: "#/components/schemas/RestaurantSuccessResponse" } } } },
-        "404": { description: "Restaurant not found", content: { "application/json": { schema: errorRef } } },
+        "200": {
+          description: "Restaurant",
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/RestaurantSuccessResponse",
+              },
+            },
+          },
+        },
+        "404": {
+          description: "Restaurant not found",
+          content: { "application/json": { schema: errorRef } },
+        },
       },
     },
   },
@@ -100,8 +149,18 @@ routeRegistry.push({
       summary: "List a restaurant's menus",
       parameters: [restaurantIdParam],
       responses: {
-        "200": { description: "Menus", content: { "application/json": { schema: { $ref: "#/components/schemas/MenuListSuccessResponse" } } } },
-        "404": { description: "Restaurant not found", content: { "application/json": { schema: errorRef } } },
+        "200": {
+          description: "Menus",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/MenuListSuccessResponse" },
+            },
+          },
+        },
+        "404": {
+          description: "Restaurant not found",
+          content: { "application/json": { schema: errorRef } },
+        },
       },
     },
   },
@@ -117,9 +176,24 @@ routeRegistry.push({
       security,
       requestBody: jsonBody("CreateRestaurantRequest"),
       responses: {
-        "201": { description: "Created", content: { "application/json": { schema: { $ref: "#/components/schemas/RestaurantSuccessResponse" } } } },
-        "400": { description: "Validation failed", content: { "application/json": { schema: validationErrorRef } } },
-        "403": { description: "Forbidden", content: { "application/json": { schema: errorRef } } },
+        "201": {
+          description: "Created",
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/RestaurantSuccessResponse",
+              },
+            },
+          },
+        },
+        "400": {
+          description: "Validation failed",
+          content: { "application/json": { schema: validationErrorRef } },
+        },
+        "403": {
+          description: "Forbidden",
+          content: { "application/json": { schema: errorRef } },
+        },
       },
     },
   },
@@ -135,9 +209,24 @@ routeRegistry.push({
       parameters: [restaurantIdParam],
       requestBody: jsonBody("UpdateRestaurantRequest"),
       responses: {
-        "200": { description: "Updated", content: { "application/json": { schema: { $ref: "#/components/schemas/RestaurantSuccessResponse" } } } },
-        "403": { description: "Forbidden", content: { "application/json": { schema: errorRef } } },
-        "404": { description: "Restaurant not found", content: { "application/json": { schema: errorRef } } },
+        "200": {
+          description: "Updated",
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/RestaurantSuccessResponse",
+              },
+            },
+          },
+        },
+        "403": {
+          description: "Forbidden",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "404": {
+          description: "Restaurant not found",
+          content: { "application/json": { schema: errorRef } },
+        },
       },
     },
     delete: {
@@ -147,9 +236,18 @@ routeRegistry.push({
       parameters: [restaurantIdParam],
       responses: {
         "200": { description: "Deleted" },
-        "403": { description: "Forbidden", content: { "application/json": { schema: errorRef } } },
-        "404": { description: "Restaurant not found", content: { "application/json": { schema: errorRef } } },
-        "409": { description: "Restaurant referenced by existing orders", content: { "application/json": { schema: errorRef } } },
+        "403": {
+          description: "Forbidden",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "404": {
+          description: "Restaurant not found",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "409": {
+          description: "Restaurant referenced by existing orders",
+          content: { "application/json": { schema: errorRef } },
+        },
       },
     },
   },

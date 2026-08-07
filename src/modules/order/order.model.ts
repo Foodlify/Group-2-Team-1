@@ -1,4 +1,7 @@
-import type { OrderModel, OrderItemsModel } from "../../generated/prisma/models";
+import type {
+  OrderModel,
+  OrderItemsModel,
+} from "../../generated/prisma/models";
 import type { OrderStatusValue } from "./order.status";
 
 export type TimelineEntry = {

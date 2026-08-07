@@ -80,7 +80,8 @@ export const OrderQuerySchema = PaginationQuerySchema.extend({
   }),
 })
   .refine(
-    (data) => !data.from || !data.to || new Date(data.from) <= new Date(data.to),
+    (data) =>
+      !data.from || !data.to || new Date(data.from) <= new Date(data.to),
     { message: "'from' must be earlier than or equal to 'to'", path: ["from"] },
   )
   .meta({
@@ -173,7 +174,6 @@ export const OrderListSuccessResponseSchema = z
   })
   .meta({ id: "OrderListSuccessResponse" });
 
-
 // ═══════════════════════════════════════════════════════════════
 // Registry
 // ═══════════════════════════════════════════════════════════════
@@ -188,7 +188,10 @@ schemaRegistry.register("TimelineEntry", TimelineEntrySchema);
 schemaRegistry.register("OrderResponse", OrderResponseSchema);
 schemaRegistry.register("OrderListItemResponse", OrderListItemResponseSchema);
 schemaRegistry.register("OrderSuccessResponse", OrderSuccessResponseSchema);
-schemaRegistry.register("OrderListSuccessResponse", OrderListSuccessResponseSchema);
+schemaRegistry.register(
+  "OrderListSuccessResponse",
+  OrderListSuccessResponseSchema,
+);
 
 // ═══════════════════════════════════════════════════════════════
 // TypeScript Types

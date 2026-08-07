@@ -20,7 +20,9 @@ export const listRestaurants = asyncHandler(
 
 export const getRestaurant = asyncHandler(
   async (req: Request<RestaurantIdParams>, res: Response): Promise<void> => {
-    const restaurant = await restaurantService.getByIdOrThrow(req.params.restaurantId);
+    const restaurant = await restaurantService.getByIdOrThrow(
+      req.params.restaurantId,
+    );
     sendSuccess(res, restaurant, "Restaurant retrieved");
   },
 );

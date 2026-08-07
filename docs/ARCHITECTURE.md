@@ -8,16 +8,16 @@
 
 **Food Delivery API** — REST API مبني بـ:
 
-| Layer | Tech |
-|---|---|
-| Runtime | Node.js 25.8.1 |
-| Framework | Express 5 |
-| Language | TypeScript 6 |
-| ORM | Prisma 7 |
-| Database | PostgreSQL 17 |
-| Validation | Zod |
-| API Docs | OpenAPI 3.1 (Scalar + Swagger UI) |
-| Logging | Winston |
+| Layer      | Tech                              |
+| ---------- | --------------------------------- |
+| Runtime    | Node.js 25.8.1                    |
+| Framework  | Express 5                         |
+| Language   | TypeScript 6                      |
+| ORM        | Prisma 7                          |
+| Database   | PostgreSQL 17                     |
+| Validation | Zod                               |
+| API Docs   | OpenAPI 3.1 (Scalar + Swagger UI) |
+| Logging    | Winston                           |
 
 **النمط المعماري:** Layered Modular Architecture — كل موديول (entity) فولدر مستقل يحتوي نفس الـ 6 ملفات (routes, validation, controller, service, repository, model)، وكل طبقة لها مسؤولية واحدة واضحة.
 
@@ -199,6 +199,7 @@ sequenceDiagram
 ```
 
 **النقاط المفتاحية:**
+
 - **`asyncHandler`** — يلتقط أي promise rejection داخل الـ controller ويمررها لـ `next(err)` تلقائيًا. المصدر: [src/utils/asyncHandler.ts](../src/utils/asyncHandler.ts).
 - **`validate` middleware** — يستخدم Zod لفحص `body/params/query`، ويستبدل القيم بالنسخة المُحوَّلة. المصدر: [src/middlewares/validate.middleware.ts](../src/middlewares/validate.middleware.ts).
 
@@ -244,14 +245,14 @@ graph TB
 
 ### جدول المسؤوليات (مع أمثلة فعلية من موديول Cart):
 
-| الطبقة | المسؤولية | مثال |
-|---|---|---|
-| **Routes** | تعريف endpoints + ربط validation + OpenAPI registry | [cart.routes.ts](../src/modules/cart/cart.routes.ts) |
-| **Validation** | Zod schemas للـ request/response | [cart.validation.ts](../src/modules/cart/cart.validation.ts) |
-| **Controller** | HTTP layer: req → service → res | [cart.controller.ts](../src/modules/cart/cart.controller.ts) |
-| **Service** | Business logic + Authorization rules | [cart.service.ts](../src/modules/cart/cart.service.ts) |
-| **Repository** | Data access (بدون business logic) | [cart.repository.ts](../src/modules/cart/cart.repository.ts) |
-| **Model** | TypeScript types المشتقة من Prisma | [cart.model.ts](../src/modules/cart/cart.model.ts) |
+| الطبقة         | المسؤولية                                           | مثال                                                         |
+| -------------- | --------------------------------------------------- | ------------------------------------------------------------ |
+| **Routes**     | تعريف endpoints + ربط validation + OpenAPI registry | [cart.routes.ts](../src/modules/cart/cart.routes.ts)         |
+| **Validation** | Zod schemas للـ request/response                    | [cart.validation.ts](../src/modules/cart/cart.validation.ts) |
+| **Controller** | HTTP layer: req → service → res                     | [cart.controller.ts](../src/modules/cart/cart.controller.ts) |
+| **Service**    | Business logic + Authorization rules                | [cart.service.ts](../src/modules/cart/cart.service.ts)       |
+| **Repository** | Data access (بدون business logic)                   | [cart.repository.ts](../src/modules/cart/cart.repository.ts) |
+| **Model**      | TypeScript types المشتقة من Prisma                  | [cart.model.ts](../src/modules/cart/cart.model.ts)           |
 
 > **قاعدة ذهبية:** `Controller` لا يستدعي `Repository` مباشرةً، ولا يعرف شيئًا عن `Prisma`. كل شيء يمر عبر `Service`.
 
@@ -323,6 +324,7 @@ sequenceDiagram
 ```
 
 **نقاط جديرة بالملاحظة:**
+
 - **Upsert يدوي**: الخدمة تتحقق إذا كان الـ item موجودًا ثم تحدّث الكمية بدلًا من استبدالها — سلوك "add to existing quantity".
 - **Computed fields**: `totalPrice` و `itemCount` لا يُحفظان في DB، بل يُحسبان في `toCartResponse()` وقت القراءة.
 - **Authorization:** `updateItem` و `removeItem` يستخدمان `assertItemBelongsToUser` لضمان أن الـ cart item يخصّ المستخدم الحالي (throws 403 وإلا).
@@ -376,6 +378,7 @@ graph TD
 ```
 
 **القاعدة الأساسية:**
+
 - **Known errors** → استخدم `throw new AppError("message", statusCode)` داخل الـ service. مثال:
   ```ts
   throw new AppError("Menu item not found", 404);
@@ -389,15 +392,15 @@ graph TD
 
 مخطط العلاقات الكامل متاح في [docs/ERD.svg](ERD.svg). الـ entities الرئيسية (23 موديول) مُصنَّفة كالتالي:
 
-| المجموعة | الـ Entities |
-|---|---|
-| 👤 **Users & Auth** | `user`, `userType`, `userRole`, `role`, `customer` |
-| 🛒 **Cart** | `cart`, `cartItem` |
-| 🍽️ **Restaurants** | `restaurant`, `restaurantDetails`, `menu`, `menuItem` |
-| 📦 **Orders** | `order`, `orderItem`, `orderStatus`, `orderTracking` |
-| 💳 **Payments** | `paymentIntegrationType`, `paymentTypeConfiguration`, `preferredPaymentSetting` |
-| 💰 **Transactions** | `transaction`, `transactionDetails`, `transactionStatus` |
-| 📍 **Misc** | `address`, `auditingEvent` |
+| المجموعة            | الـ Entities                                                                    |
+| ------------------- | ------------------------------------------------------------------------------- |
+| 👤 **Users & Auth** | `user`, `userType`, `userRole`, `role`, `customer`                              |
+| 🛒 **Cart**         | `cart`, `cartItem`                                                              |
+| 🍽️ **Restaurants**  | `restaurant`, `restaurantDetails`, `menu`, `menuItem`                           |
+| 📦 **Orders**       | `order`, `orderItem`, `orderStatus`, `orderTracking`                            |
+| 💳 **Payments**     | `paymentIntegrationType`, `paymentTypeConfiguration`, `preferredPaymentSetting` |
+| 💰 **Transactions** | `transaction`, `transactionDetails`, `transactionStatus`                        |
+| 📍 **Misc**         | `address`, `auditingEvent`                                                      |
 
 **Prisma schema:** [prisma/schema.prisma](../prisma/schema.prisma)
 
@@ -452,16 +455,16 @@ graph TB
 
 ## 11. Entry Points Summary
 
-| نقطة | المسار | الوصف |
-|---|---|---|
-| 🟢 Bootstrap | [src/server.ts](../src/server.ts) | `startServer()` — يُشغِّل كل شيء |
-| 🚀 App setup | [src/app.ts](../src/app.ts) | Middlewares + routes mounting |
-| 🛣️ Routes root | [src/routes/index.ts](../src/routes/index.ts) | تجميع كل moduleRouters تحت `/api/v1` |
-| 🗄️ DB connection | [src/config/prisma.ts](../src/config/prisma.ts) | Prisma Client + connect/disconnect |
-| ⚙️ Env config | [src/config/env.ts](../src/config/env.ts) | `PORT`, `DATABASE_URL`, `NODE_ENV`, ... |
-| 📝 Logger | [src/config/logger.ts](../src/config/logger.ts) | Winston setup |
-| 📚 API Docs | [src/openapi/serve.ts](../src/openapi/serve.ts) | Scalar + Swagger UI على `/api-docs` |
-| ❤️ Health | `/health` (in [app.ts](../src/app.ts)) | Liveness + DB connectivity check |
+| نقطة             | المسار                                          | الوصف                                   |
+| ---------------- | ----------------------------------------------- | --------------------------------------- |
+| 🟢 Bootstrap     | [src/server.ts](../src/server.ts)               | `startServer()` — يُشغِّل كل شيء        |
+| 🚀 App setup     | [src/app.ts](../src/app.ts)                     | Middlewares + routes mounting           |
+| 🛣️ Routes root   | [src/routes/index.ts](../src/routes/index.ts)   | تجميع كل moduleRouters تحت `/api/v1`    |
+| 🗄️ DB connection | [src/config/prisma.ts](../src/config/prisma.ts) | Prisma Client + connect/disconnect      |
+| ⚙️ Env config    | [src/config/env.ts](../src/config/env.ts)       | `PORT`, `DATABASE_URL`, `NODE_ENV`, ... |
+| 📝 Logger        | [src/config/logger.ts](../src/config/logger.ts) | Winston setup                           |
+| 📚 API Docs      | [src/openapi/serve.ts](../src/openapi/serve.ts) | Scalar + Swagger UI على `/api-docs`     |
+| ❤️ Health        | `/health` (in [app.ts](../src/app.ts))          | Liveness + DB connectivity check        |
 
 ---
 
@@ -478,6 +481,7 @@ graph TB
 
 **س: أين أرى كل الـ endpoints المتاحة؟**
 شغّل السيرفر ثم افتح:
+
 - `http://localhost:<PORT>/api-docs` (Scalar)
 - `http://localhost:<PORT>/api-docs/swagger` (Swagger UI)
 

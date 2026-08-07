@@ -25,42 +25,43 @@
 
 ## ✅ القسم أ — طلبات المراجع الفعلية (من المحاضر/التعليقات)
 
-| # | الطلب | المصدر | الحالة |
-|---|------|--------|--------|
-| 1 | rename `addTracking` → `addOrderStatusTracking` | تعليق كود | ✅ مُنجَز |
-| 2 | PascalCase لـ `OrderTracking` model | تعليق كود | ✅ مُنجَز |
-| 3 | Custom Exceptions (`orderErrors`, `cartErrors`) | تعليق كود | ✅ مُنجَز |
-| 4 | Service Abstraction (services بدل repos مباشرة) | محضر 2 | ✅ مُنجَز |
-| 5 | IN CLAUSE optimization (`findManyByIds`) | محضر 2 | ✅ مُنجَز |
-| 6 | إزالة fetch مكرر بعد update | محضر 2 | ✅ مُنجَز |
-| 7 | Join strategy في pagination | محضر 2 | ✅ مُنجَز (default في Prisma 7) |
-| 8 | Snapshot data في OrderItems (JSDoc) | محضر 1 | ✅ مُنجَز |
-| 9 | Cart Locking أثناء `placeOrder` | محضر 1 | ✅ مُنجَز |
-| 10 | Price Validation عند الـ checkout | محضر 1 | ✅ مُنجَز |
-| 11 | Item Availability Check | محضر 1 | ✅ مُنجَز |
-| 13 | Clear Cart بعد placeOrder | محضر 1 | ✅ مُنجَز |
-| 14 | إعادة بناء Transaction Model (generic) | محضر 1 (صريح) | ✅ مُنجَز |
-| 15 | Transaction Service مستقل | محضر 1 | ✅ مُنجَز |
-| 16 | Payment Strategy Pattern (Cash) | محضر 2 (صريح) | ✅ مُنجَز |
-| 20 | Date Range Filter (pagination) | محضر 2 | ✅ مُنجَز |
-| **23** | **دمج OrderStatus + OrderTracking في Order.timeline (JSON)** | **محضر 2 سطور 171-183, 423, 428-434, 442-444** | **✅ مُنجَز (refactor كامل)** |
-| 12 | Stock Management | محضر 1 (اقتراح) | ⏸️ مؤجَّل |
-| 17 | Tax Calculation | محضر 1 (ضعيف، "ليست دائماً") | ⏸️ هامشي |
-| 18 | Shipping Fee | محضر 1 (ضعيف، عابر) | ⏸️ هامشي |
-| 21 | Cursor-based pagination | محضر 1 (اقتراح) | ⏸️ مؤجَّل |
-| 22 | Chain of Responsibility / Saga | محضر 2 (اقتراح) | ⏸️ مؤجَّل |
+| #      | الطلب                                                        | المصدر                                         | الحالة                          |
+| ------ | ------------------------------------------------------------ | ---------------------------------------------- | ------------------------------- |
+| 1      | rename `addTracking` → `addOrderStatusTracking`              | تعليق كود                                      | ✅ مُنجَز                       |
+| 2      | PascalCase لـ `OrderTracking` model                          | تعليق كود                                      | ✅ مُنجَز                       |
+| 3      | Custom Exceptions (`orderErrors`, `cartErrors`)              | تعليق كود                                      | ✅ مُنجَز                       |
+| 4      | Service Abstraction (services بدل repos مباشرة)              | محضر 2                                         | ✅ مُنجَز                       |
+| 5      | IN CLAUSE optimization (`findManyByIds`)                     | محضر 2                                         | ✅ مُنجَز                       |
+| 6      | إزالة fetch مكرر بعد update                                  | محضر 2                                         | ✅ مُنجَز                       |
+| 7      | Join strategy في pagination                                  | محضر 2                                         | ✅ مُنجَز (default في Prisma 7) |
+| 8      | Snapshot data في OrderItems (JSDoc)                          | محضر 1                                         | ✅ مُنجَز                       |
+| 9      | Cart Locking أثناء `placeOrder`                              | محضر 1                                         | ✅ مُنجَز                       |
+| 10     | Price Validation عند الـ checkout                            | محضر 1                                         | ✅ مُنجَز                       |
+| 11     | Item Availability Check                                      | محضر 1                                         | ✅ مُنجَز                       |
+| 13     | Clear Cart بعد placeOrder                                    | محضر 1                                         | ✅ مُنجَز                       |
+| 14     | إعادة بناء Transaction Model (generic)                       | محضر 1 (صريح)                                  | ✅ مُنجَز                       |
+| 15     | Transaction Service مستقل                                    | محضر 1                                         | ✅ مُنجَز                       |
+| 16     | Payment Strategy Pattern (Cash)                              | محضر 2 (صريح)                                  | ✅ مُنجَز                       |
+| 20     | Date Range Filter (pagination)                               | محضر 2                                         | ✅ مُنجَز                       |
+| **23** | **دمج OrderStatus + OrderTracking في Order.timeline (JSON)** | **محضر 2 سطور 171-183, 423, 428-434, 442-444** | **✅ مُنجَز (refactor كامل)**   |
+| 12     | Stock Management                                             | محضر 1 (اقتراح)                                | ⏸️ مؤجَّل                       |
+| 17     | Tax Calculation                                              | محضر 1 (ضعيف، "ليست دائماً")                   | ⏸️ هامشي                        |
+| 18     | Shipping Fee                                                 | محضر 1 (ضعيف، عابر)                            | ⏸️ هامشي                        |
+| 21     | Cursor-based pagination                                      | محضر 1 (اقتراح)                                | ⏸️ مؤجَّل                       |
+| 22     | Chain of Responsibility / Saga                               | محضر 2 (اقتراح)                                | ⏸️ مؤجَّل                       |
 
 ## ⏸️ القسم ب — أُضيفت بواسطة Claude (ليست من المراجعة)
 
-| # | البند | لماذا أضفتها | الموقف |
-|---|-------|-------------|--------|
-| 19 | JWT Authentication | TODO في كودنا الأصلي + ضرورة للإنتاج | ⏸️ خارج نطاق المراجعة — يُؤجَّل |
+| #   | البند              | لماذا أضفتها                         | الموقف                          |
+| --- | ------------------ | ------------------------------------ | ------------------------------- |
+| 19  | JWT Authentication | TODO في كودنا الأصلي + ضرورة للإنتاج | ⏸️ خارج نطاق المراجعة — يُؤجَّل |
 
 ---
 
 ## 📌 الأولوية التالية
 
 بعد إكمال 16 طلباً من طلبات المراجع، المتبقي **مؤجَّل أو هامشي فقط**:
+
 - **Stock Management** (نقطة 12) — اختيارية، اقتراح المراجع
 - **Tax / Shipping** (نقطتا 17, 18) — هامشية، قابلة للتأجيل أو تنفيذ مُبسَّط
 - **Cursor-based pagination** (نقطة 21) — اختياري، offset كافٍ حالياً
@@ -72,12 +73,12 @@
 
 تم فحص الملفات الحالية ووُجد أن المشروع الحالي **أنظف من المشروع المراجَع**:
 
-| التعديل المقترح في المراجَع | الوضع في المشروع الحالي |
-|------------------------------|--------------------------|
-| تنظيف commented-out code في `order.service.ts` | ✅ نظيف بالفعل |
-| تنظيف pseudocode (`// get order`, `// yes -> update`) | ✅ نظيف بالفعل |
-| حذف `// IGNORE` comments | ✅ غير موجود |
-| تنظيف `// getOrders`, `// [orderId , createdAt...]` في controller | ✅ غير موجود |
+| التعديل المقترح في المراجَع                                       | الوضع في المشروع الحالي |
+| ----------------------------------------------------------------- | ----------------------- |
+| تنظيف commented-out code في `order.service.ts`                    | ✅ نظيف بالفعل          |
+| تنظيف pseudocode (`// get order`, `// yes -> update`)             | ✅ نظيف بالفعل          |
+| حذف `// IGNORE` comments                                          | ✅ غير موجود            |
+| تنظيف `// getOrders`, `// [orderId , createdAt...]` في controller | ✅ غير موجود            |
 
 لذا **تم حذف مرحلة التنظيف** من الخطة. النقاط أُعيد ترقيمها.
 
@@ -88,6 +89,7 @@
 ## ✅ المرحلة الأولى: إعادة التسميات (Renaming) — **مكتملة**
 
 ### ✅ 1️⃣ إعادة تسمية `addTracking` إلى `addOrderStatusTracking`
+
 - **السبب من المراجع**: تتبع الطلب أوسع من الحالة (يشمل الموقع والوقت المقدر للتسليم)
 - **الملفات المتأثرة**:
   - [src/modules/order/order.controller.ts](src/modules/order/order.controller.ts) — handler name
@@ -96,6 +98,7 @@
 - ✅ **تم التنفيذ** — URL يبقى `/tracking` كما هو
 
 ### ✅ 2️⃣ توحيد PascalCase لـ Prisma models
+
 - إعادة تسمية model `orderTracking` → `OrderTracking` في [prisma/schema.prisma](prisma/schema.prisma)
 - استخدام `@@map("orderTracking")` لحفظ اسم الجدول في DB (لا migration)
 - تحديث type في [src/modules/order/order.model.ts](src/modules/order/order.model.ts) من `orderTrackingModel` إلى `OrderTrackingModel`
@@ -107,6 +110,7 @@
 ## ✅ المرحلة الثانية: Custom Exceptions — **مكتملة**
 
 ### ✅ 3️⃣ إنشاء ملف errors بسيط لكل module
+
 - **النمط المختار**: object بسيط `as const` فيه أسماء الأخطاء + message + statusCode
 - **الفائدة**: لا classes، لا inheritance، لا تعقيد — مجرد constants
 - **الملف الجديد**:
@@ -122,6 +126,7 @@
 ## ✅ المرحلة الثالثة: Service Abstraction — **مكتملة**
 
 ### ✅ 4️⃣ منع استخدام Repository الخاصة بـ module آخر مباشرة
+
 - **القاعدة المعتمدة**: داخل نفس الـ module يجوز استخدام الـ repository مباشرة. خارج الـ module يجب المرور بالـ service
 - **الـ Services الجديدة** (thin wrappers):
   - [src/modules/customer/customer.service.ts](src/modules/customer/customer.service.ts)
@@ -133,6 +138,7 @@
 - ✅ **تم التنفيذ**
 
 ### ✅ 5️⃣ تحسين validation الـ menu items باستخدام IN CLAUSE
+
 - **المشكلة الحالية**: `Promise.all(items.map(findById))` = N queries
 - **الحل المُطَبَّق**: `menuItemService.findManyByIds(ids[])` = query واحد
 - **الملفات المُعَدَّلة**:
@@ -146,6 +152,7 @@
 ## ✅ المرحلة الرابعة: Order Flow Optimizations — **مكتملة**
 
 ### ✅ 6️⃣ إزالة fetch مكرر بعد update
+
 - **3 methods تم تحسينها** في [order.service.ts](src/modules/order/order.service.ts):
   - `cancelOrder`: حذف fetch ثاني، استخدام result من `updateStatus` + تعديل `order.orderStatus` في الذاكرة
   - `updateOrderStatus`: نفس النهج
@@ -154,11 +161,13 @@
 - ✅ **تم التنفيذ**
 
 ### ✅ 7️⃣ تحسين `findPaginatedByCustomer`
+
 - **اكتشاف**: Prisma 7.7 الجديد يستخدم `JOIN strategy` كـ **default behavior** (لا حاجة لـ `relationLoadStrategy: "join"` يدوياً)
 - **النتيجة**: الـ query الحالي محسَّن تلقائياً بـ JOIN
 - ✅ **مكتمل بالـ default**
 
 ### ✅ 8️⃣ توثيق Snapshot data في OrderItems
+
 - إضافة Prisma JSDoc (`///`) على حقلي `price` و `name` في [prisma/schema.prisma](prisma/schema.prisma):
   ```prisma
   /// Snapshot of menu item price at order time — never updated even if MenuItem.price changes later
@@ -173,11 +182,13 @@
 ## ✅ المرحلة الخامسة: Cart Locking & Concurrency — **مكتملة**
 
 ### 🔄 تغيير الـ Design في `PlaceOrderRequest`
+
 - **قبل**: الـ items تأتي في request body مباشرة (الكارت غير مشارك في checkout)
 - **بعد**: الـ items تُقرأ من الكارت (الـ design الصحيح لـ e-commerce)
 - **Breaking change** في API contract: `items` field removed من `PlaceOrderRequest`
 
 ### ✅ 9️⃣ Lock الـ Cart أثناء `placeOrder`
+
 - **التطبيق**: Prisma transaction + UPDATE noop على `Cart.updatedAt` (يفرض row-level lock في Postgres)
 - **الـ method الجديد**: [src/modules/cart/cart.repository.ts](src/modules/cart/cart.repository.ts) `lockByCustomerIdWithItems(customerId, tx)`
 - **wrapper في service**: [src/modules/cart/cart.service.ts](src/modules/cart/cart.service.ts)
@@ -189,6 +200,7 @@
 - ✅ **تم التنفيذ**
 
 ### ✅ 🔟 Price Validation عند الـ Checkout
+
 - **الخيار المعتمد**: **رفض الطلب** لو السعر تغير (`409 Conflict`)
 - المقارنة: `Number(currentMenuItem.price) !== Number(cartItem.price)` (snapshot من الكارت ضد السعر الحالي)
 - الخطأ الجديد: `PRICE_CHANGED` في [order.errors.ts](src/shared/exceptions/order.errors.ts)
@@ -196,6 +208,7 @@
 - ✅ **تم التنفيذ**
 
 ### ✅ 1️⃣1️⃣ Item Availability Check
+
 - **الخيار المعتمد**: **رفض الطلب** لو item غير موجود (`409 Conflict`)
 - استخدام `menuItemService.findManyByIds(ids[])` (IN CLAUSE من المرحلة 3)
 - الخطأ الجديد: `MENU_ITEM_UNAVAILABLE` في [order.errors.ts](src/shared/exceptions/order.errors.ts)
@@ -206,6 +219,7 @@
 ## ⏳ المرحلة السادسة: Inventory / Stock (مؤجل قابل للتفعيل)
 
 ### 1️⃣2️⃣ Stock Management (اختياري حسب البزنس)
+
 - **النقطة من الاجتماع 1**: المراجع طلب التفكير في stock management
 - **الملاحظة**: المشروع الحالي ليس عنده stock model
 - **القرار المطلوب**: نضيفه الآن أم نؤجله؟
@@ -220,6 +234,7 @@
 ## ✅ المرحلة السابعة: Clear Cart بعد Order (مُنجَزة)
 
 ### 1️⃣3️⃣ مسح الكارت بعد إنشاء الطلب ✅
+
 - **القرار**: مسح فوري **داخل** الـ transaction (atomic)، وحذف الـ `Cart` row بالكامل
 - **التنفيذ**:
   - `cartRepository.deleteByCustomerId(customerId, tx?)` — `deleteMany` (idempotent)
@@ -236,6 +251,7 @@
 ## ✅ المرحلة الثامنة: Transaction Model (مُنجَزة)
 
 ### 1️⃣4️⃣ إعادة بناء Transaction Model ✅
+
 - **الـ schema الجديد** (مُطبَّق في `prisma/schema.prisma`):
   ```prisma
   model Transaction {
@@ -263,11 +279,13 @@
 - **Order model**: إضافة `transactions Transaction[]` relation
 
 ### 1️⃣5️⃣ Transaction Model + Repository + Service ✅
+
 - **`transaction.model.ts`**: constants لـ `TRANSACTION_TYPES`, `TRANSACTION_STATUSES`, `PAYMENT_METHODS`
 - **`transaction.repository.ts`**: `findById`, `findByOrderId` (returns array), `findByExternalRef`, `createTransaction`, `updateStatus`
 - **`transaction.service.ts`** (جديد): thin wrapper
 
 ### ⏸️ مؤجَّل للمرحلة 9 (Payment Strategy)
+
 - التكامل داخل `placeOrder` (إنشاء transaction عند الطلب)
 - `refund(transactionId, amount?)` — يحتاج Payment Strategy
 - Stripe/PayPal adapters
@@ -277,6 +295,7 @@
 ## ⏳ المرحلة التاسعة: Payment Strategy Pattern
 
 ### 1️⃣6️⃣ Payment Strategy Pattern — Sub-Phase 9a ✅ مُنجَزة
+
 - **المُنفَّذ**:
   - `src/modules/payment/payment.strategy.ts` — interface `PaymentStrategy { method, pay() }`
   - `src/modules/payment/cash.strategy.ts` — `CashOnDeliveryStrategy` (يُرجع PENDING — الفلوس تُحصَّل عند التوصيل)
@@ -287,7 +306,9 @@
 - **مؤجَّل**: Stripe, PayPal, Wallet strategies (يمكن إضافتها بنفس النمط)
 
 ### 1️⃣7️⃣ Tax Calculation — ⚠️ هامشي
+
 > **سياق المحضر 1**: المراجع ذكر الضريبة 3 مرات (سطور 153, 156, 158) لكن قال:
+>
 > - "**احياناً احياناً مش دايماً**" (سطر 158)
 > - "**ما شفتهاش في مصر**" (سطر 158)
 >
@@ -296,6 +317,7 @@
 > **التوصية**: إن نُفِّذت، تكون **مُبسَّطة جداً** — config flag في `.env` (e.g. `TAX_RATE=0`) + breakdown في `OrderResponse`. وإلا تُؤجَّل.
 
 ### 1️⃣8️⃣ Shipping Fee — ⚠️ هامشي
+
 > **سياق المحضر 1**: ذكر عابر في سطر 156 ("فلوس التوصيل"). لا تفاصيل ولا متطلبات.
 >
 > **التوصية**: تُؤجَّل لمرحلة الـ business logic لاحقاً.
@@ -311,6 +333,7 @@
 > ستبقى هذه المرحلة في الخطة كـ **reference** لإكمال المشروع لاحقاً، لكنها **ليست أولوية** في تنفيذ تعديلات المراجع.
 
 ### 1️⃣9️⃣ تطبيق JWT Auth الكامل (مؤجَّل — خارج نطاق المراجعة)
+
 - استبدال `TEST_CUSTOMER_ID` بـ `req.user.id` من JWT middleware
 - **الملفات المتأثرة**:
   - [src/middlewares/auth.middleware.ts](src/middlewares/auth.middleware.ts) — موجود بالفعل ✅
@@ -326,6 +349,7 @@
 ## ✅ المرحلة الحادية عشر: Pagination Improvements (مُنجَزة)
 
 ### 2️⃣0️⃣ Date Range Filter للـ Orders ✅
+
 - **مصدر الطلب**: محضر 2 سطور 498-503 (Ahmed Emad: "اخترت التاريخ هو جاب لك اخر 10 معاملات")
 - **المُنفَّذ**:
   - `OrderQuerySchema` في `order.validation.ts` يمتد من `PaginationQuerySchema` ويضيف `from` و `to` (ISO 8601, optional)
@@ -336,6 +360,7 @@
   - `order.routes.ts` يستخدم `OrderQuerySchema` validator + OpenAPI docs محدّثة بـ `from`/`to` parameters
 
 ### 2️⃣1️⃣ (اختياري) Cursor-based Pagination
+
 - **النقطة**: المراجع تكلم عن أن offset-based pagination سيء للأداء على كميات بيانات كبيرة
 - **التوصية**: نؤجلها لأن offset-based يكفي للـ scale الحالي
 - **يحتاج نقاش**: نضيفها الآن أم نؤجلها؟
@@ -345,6 +370,7 @@
 ## ⏳ المرحلة الثانية عشر: Architectural Pattern (متقدم/اختياري)
 
 ### 2️⃣2️⃣ Chain of Responsibility / Saga Pattern لـ `placeOrder`
+
 - **اقتراح المراجع في الاجتماع 2**: تنظيم flow الطلب كـ chain من الـ handlers
 - **الـ Handlers المقترحة**:
   1. `LockCartHandler`
@@ -367,37 +393,40 @@
 
 ## 📊 ملخص حالة التقدم
 
-| المرحلة | النقاط | الوقت المتوقع | المخاطر | الحالة |
-|---------|--------|----------------|---------|--------|
-| ~~تنظيف الكود~~ | ~~قديمة~~ | — | — | ✅ غير لازم (نظيف بالفعل) |
-| **إعادة التسميات** | **1, 2** | **قليل** | **منخفضة** | **✅ مكتمل** |
-| **Custom Exceptions** | **3** | **متوسط** | **منخفضة** | **✅ مكتمل** |
-| **Service Abstraction** | **4, 5** | **متوسط** | **متوسطة** | **✅ مكتمل** |
-| **Order Flow Optimizations** | **6, 7, 8** | **متوسط** | **منخفضة** | **✅ مكتمل** |
-| **Cart Locking** | **9, 10, 11** | **كبير** | **متوسطة** | **✅ مكتمل** |
-| Stock (اختياري) | 12 | كبير | متوسطة | ⏳ التالي |
-| Clear Cart | 13 | قليل | منخفضة | ✅ مُنجَزة |
-| Transaction Model | 14, 15 | كبير | متوسطة | ✅ مُنجَزة |
-| Payment Strategy (9a) | 16 | متوسط | متوسطة | ✅ مُنجَزة |
-| Tax Calculation (9b) ⚠️ هامشي | 17 | متوسط | منخفضة | ⏸️ هامشي |
-| Shipping Fee (9c) ⚠️ هامشي | 18 | متوسط | متوسطة | ⏸️ هامشي |
-| ~~JWT Auth~~ ⚠️ ليست من المراجعة | 19 | متوسط | متوسطة | ⏸️ خارج النطاق |
-| Pagination (Date Range) | 20 | متوسط | منخفضة | ✅ مُنجَز |
-| Cursor-based Pagination | 21 | متوسط | منخفضة | ⏸️ مؤجَّل (اختياري) |
-| **دمج OrderStatus + OrderTracking في Order.timeline** | **23** | **كبير** | **متوسطة** | **✅ مُنجَز (refactor كامل)** |
-| Saga Pattern | 22 | كبير جداً | عالية | ⏳ معلَّق |
+| المرحلة                                               | النقاط        | الوقت المتوقع | المخاطر    | الحالة                        |
+| ----------------------------------------------------- | ------------- | ------------- | ---------- | ----------------------------- |
+| ~~تنظيف الكود~~                                       | ~~قديمة~~     | —             | —          | ✅ غير لازم (نظيف بالفعل)     |
+| **إعادة التسميات**                                    | **1, 2**      | **قليل**      | **منخفضة** | **✅ مكتمل**                  |
+| **Custom Exceptions**                                 | **3**         | **متوسط**     | **منخفضة** | **✅ مكتمل**                  |
+| **Service Abstraction**                               | **4, 5**      | **متوسط**     | **متوسطة** | **✅ مكتمل**                  |
+| **Order Flow Optimizations**                          | **6, 7, 8**   | **متوسط**     | **منخفضة** | **✅ مكتمل**                  |
+| **Cart Locking**                                      | **9, 10, 11** | **كبير**      | **متوسطة** | **✅ مكتمل**                  |
+| Stock (اختياري)                                       | 12            | كبير          | متوسطة     | ⏳ التالي                     |
+| Clear Cart                                            | 13            | قليل          | منخفضة     | ✅ مُنجَزة                    |
+| Transaction Model                                     | 14, 15        | كبير          | متوسطة     | ✅ مُنجَزة                    |
+| Payment Strategy (9a)                                 | 16            | متوسط         | متوسطة     | ✅ مُنجَزة                    |
+| Tax Calculation (9b) ⚠️ هامشي                         | 17            | متوسط         | منخفضة     | ⏸️ هامشي                      |
+| Shipping Fee (9c) ⚠️ هامشي                            | 18            | متوسط         | متوسطة     | ⏸️ هامشي                      |
+| ~~JWT Auth~~ ⚠️ ليست من المراجعة                      | 19            | متوسط         | متوسطة     | ⏸️ خارج النطاق                |
+| Pagination (Date Range)                               | 20            | متوسط         | منخفضة     | ✅ مُنجَز                     |
+| Cursor-based Pagination                               | 21            | متوسط         | منخفضة     | ⏸️ مؤجَّل (اختياري)           |
+| **دمج OrderStatus + OrderTracking في Order.timeline** | **23**        | **كبير**      | **متوسطة** | **✅ مُنجَز (refactor كامل)** |
+| Saga Pattern                                          | 22            | كبير جداً     | عالية      | ⏳ معلَّق                     |
 
 ---
 
 ## 📝 سجل التغييرات (Changelog)
 
 ### ✅ المرحلة الأولى — مكتملة
+
 **النقطة 1**: rename `addTracking` → `addOrderStatusTracking`
+
 - [src/modules/order/order.service.ts](src/modules/order/order.service.ts) — method name
 - [src/modules/order/order.controller.ts](src/modules/order/order.controller.ts) — handler name
 - [src/modules/order/order.routes.ts](src/modules/order/order.routes.ts) — route binding
 
 **النقطة 2**: Prisma model `orderTracking` → `OrderTracking`
+
 - [prisma/schema.prisma](prisma/schema.prisma) — model name + `@@map("orderTracking")` للحفاظ على اسم الجدول
 - [src/modules/order/order.model.ts](src/modules/order/order.model.ts) — type `orderTrackingModel` → `OrderTrackingModel`
 - اكتشاف: `prisma.orderTracking` delegate يبقى camelCase تلقائياً (Prisma behavior)
@@ -409,18 +438,26 @@
 ### ✅ المرحلة الثانية — مكتملة
 
 **النقطة 3**: ملف errors بسيط لكل module
+
 - إنشاء [src/shared/exceptions/order.errors.ts](src/shared/exceptions/order.errors.ts) — `orderErrors` object بسيط `as const`
 - إنشاء [src/shared/exceptions/cart.errors.ts](src/shared/exceptions/cart.errors.ts) — `cartErrors` object بسيط `as const`
 - تعديل [src/modules/order/order.service.ts](src/modules/order/order.service.ts) — استبدال 12 استخدام لـ `AppError` باستخدام constants من `orderErrors`
 - تعديل [src/modules/cart/cart.service.ts](src/modules/cart/cart.service.ts) — استبدال 5 استخدامات لـ `AppError` باستخدام constants من `cartErrors`
 
 **النمط المعتمد** (بسيط جداً):
+
 ```typescript
 // src/shared/exceptions/order.errors.ts
 export const orderErrors = {
   ORDER_NOT_FOUND: { message: "Order not found", statusCode: 404 },
-  ORDER_FORBIDDEN: { message: "This order does not belong to you", statusCode: 403 },
-  ORDER_NOT_CANCELLABLE: { message: "Only PENDING orders can be cancelled", statusCode: 400 },
+  ORDER_FORBIDDEN: {
+    message: "This order does not belong to you",
+    statusCode: 403,
+  },
+  ORDER_NOT_CANCELLABLE: {
+    message: "Only PENDING orders can be cancelled",
+    statusCode: 400,
+  },
   // ...
 } as const;
 
@@ -432,6 +469,7 @@ throw new AppError(
 ```
 
 **المفاتيح المتاحة في `orderErrors`**:
+
 - `ORDER_NOT_FOUND` (404)
 - `ORDER_FORBIDDEN` (403)
 - `ORDER_NOT_CANCELLABLE` (400)
@@ -444,11 +482,13 @@ throw new AppError(
 **ما تبقى من AppError بدون constants** (للأخطاء 500 — Internal Server Error):
 
 في `order.service.ts` (5 استخدامات):
+
 - "Order not found after creation" (في `placeOrder`)
 - "Order not found after update" (3 مرات: cancelOrder, updateOrderStatus, addOrderStatusTracking)
 - "Order has no status record" (updateOrderStatus)
 
 في `cart.service.ts` (3 استخدامات):
+
 - "Cart not found after update" (3 مرات: addItem, updateItem, removeItem)
 
 كل هذه ستُعالَج في المرحلة 4 (Order Flow Optimizations — إزالة fetch مكرر)
@@ -458,6 +498,7 @@ throw new AppError(
 ### ✅ المرحلة الثالثة — مكتملة
 
 **النقطة 4**: Service Abstraction
+
 - إنشاء [src/modules/customer/customer.service.ts](src/modules/customer/customer.service.ts) — thin wrapper
 - إنشاء [src/modules/address/address.service.ts](src/modules/address/address.service.ts) — thin wrapper
 - إنشاء [src/modules/menuItem/menuItem.service.ts](src/modules/menuItem/menuItem.service.ts) — thin wrapper
@@ -465,6 +506,7 @@ throw new AppError(
 - تعديل [src/modules/cart/cart.service.ts](src/modules/cart/cart.service.ts) — استبدال 2 cross-module repository imports بـ services
 
 **النقطة 5**: IN CLAUSE Optimization
+
 - إضافة `findManyByIds(ids[])` في [src/modules/menuItem/menuItem.repository.ts](src/modules/menuItem/menuItem.repository.ts)
 - إضافة wrapper في [src/modules/menuItem/menuItem.service.ts](src/modules/menuItem/menuItem.service.ts)
 - إعادة كتابة منطق validation menu items في `placeOrder`:
@@ -492,6 +534,7 @@ const menuItems = input.items.map((item) => {
 ```
 
 **الفوائد المحققة**:
+
 - ✅ منع الوصول المباشر لـ DB من خارج الـ module
 - ✅ تقليل query count من N إلى 1 في `placeOrder` (إذا كان الطلب يحتوي على 10 menu items: 10 queries → 1 query)
 - ✅ سهولة إضافة caching/events/logging لاحقاً في الـ service
@@ -501,32 +544,40 @@ const menuItems = input.items.map((item) => {
 ### ✅ المرحلة الرابعة — مكتملة
 
 **النقطة 6**: إزالة fetch مكرر بعد update
+
 - تحسين [order.service.ts](src/modules/order/order.service.ts) في 3 methods:
 
 **`cancelOrder`** (قبل/بعد):
+
 ```typescript
 // قبل (2 DB queries بعد التحقق)
 await orderStatusRepository.updateStatus(orderId, "CANCELLED");
-const updated = await orderRepository.findByIdWithDetails(orderId);  // ← fetch ثاني
+const updated = await orderRepository.findByIdWithDetails(orderId); // ← fetch ثاني
 if (!updated) throw new AppError("Order not found after update", 500);
 return this.toOrderResponse(updated);
 
 // بعد (1 DB query)
-const updatedStatus = await orderStatusRepository.updateStatus(orderId, "CANCELLED");
-order.orderStatus = [updatedStatus];  // ← update in-memory
+const updatedStatus = await orderStatusRepository.updateStatus(
+  orderId,
+  "CANCELLED",
+);
+order.orderStatus = [updatedStatus]; // ← update in-memory
 return this.toOrderResponse(order);
 ```
 
 **`updateOrderStatus`**: نفس النمط
 **`addOrderStatusTracking`**:
+
 - تغيير `findById` → `findByIdWithDetails` للحصول على full details من الأول
 - بعد `createTracking`، نضيف الـ result للـ array في الذاكرة: `order.orderTrackings = [newTracking, ...order.orderTrackings]`
 
 **النقطة 7**: `relationLoadStrategy: "join"`
+
 - **اكتشاف**: Prisma 7.7 يستخدم JOIN strategy كـ **default** — لا حاجة للتحديد اليدوي
 - الـ query الحالي محسَّن بالفعل
 
 **النقطة 8**: JSDoc لـ Snapshot data
+
 - إضافة `///` Prisma comments على `OrderItems.price` و `OrderItems.name` في [prisma/schema.prisma](prisma/schema.prisma):
   ```prisma
   /// Snapshot of menu item price at order time — never updated even if MenuItem.price changes later
@@ -536,11 +587,13 @@ return this.toOrderResponse(order);
   ```
 
 **النتيجة الإجمالية**:
+
 - ✅ توفير 3 round trips للـ DB في كل update operation
 - ✅ حذف 3 من 5 AppError 500 errors (التي ستحدث نظرياً فقط لو تم حذف الـ order بين الـ queries — مشكلة race condition لم تعد قائمة)
 - ✅ الكود أنظف وأسرع
 
 **ما تبقى من AppError 500s** (2 فقط الآن):
+
 - "Order not found after creation" في `placeOrder` (مبرر — يحدث لو فشلت الـ transaction بشكل غير متوقع)
 - "Order has no status record" في `updateOrderStatus` (مبرر — defensive check)
 
@@ -609,14 +662,17 @@ async lockByCustomerIdWithItems(customerId, tx) {
 ```
 
 **الأخطاء الجديدة** في [order.errors.ts](src/shared/exceptions/order.errors.ts):
+
 - `CART_NOT_FOUND` (404) — الكارت غير موجود
 - `CART_EMPTY` (400) — الكارت فارغ
 - `MENU_ITEM_UNAVAILABLE` (409) — item في الكارت تم حذفه من القائمة
 - `PRICE_CHANGED` (409) — السعر اختلف بين الكارت والـ MenuItem الحالي
 
 **سيناريو race condition تم حله**:
+
 1. User A: يبدأ checkout → يُقفل الكارت
 2. User B (admin): يحاول تعديل أسعار menu items → الـ UPDATE على الكارت يجعل قراءة الكارت في tx الأخرى تنتظر
 3. User A: يكمل الـ checkout بـ snapshot الكارت الحالي → يُحرَّر الـ lock
 4. User B: تنفذ التغييرات بعد ذلك
+
 - ✅ no race condition، no stale data، no overselling

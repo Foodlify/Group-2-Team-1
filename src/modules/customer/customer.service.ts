@@ -2,7 +2,10 @@ import { appError } from "../../middlewares/error.middleware";
 import { isUniqueViolation } from "../../shared/exceptions/prisma.errors";
 import { customerErrors } from "../../shared/exceptions/customer.errors";
 import { customerRepository } from "./customer.repository";
-import type { CustomerResponse, UpdateCustomerInput } from "./customer.validation";
+import type {
+  CustomerResponse,
+  UpdateCustomerInput,
+} from "./customer.validation";
 
 type CustomerDetails = NonNullable<
   Awaited<ReturnType<typeof customerRepository.findByUserIdWithDetails>>
@@ -50,7 +53,8 @@ class CustomerService {
         phone: input.phone,
       });
     } catch (e) {
-      if (isUniqueViolation(e)) throw appError(customerErrors.PHONE_ALREADY_EXISTS);
+      if (isUniqueViolation(e))
+        throw appError(customerErrors.PHONE_ALREADY_EXISTS);
       throw e;
     }
 

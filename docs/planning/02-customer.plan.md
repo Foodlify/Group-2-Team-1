@@ -25,6 +25,7 @@ model Customer {
 ```
 
 **الوضع الحالي في الكود:**
+
 - [`customer.service.ts`](../../src/modules/customer/customer.service.ts) — فيه `findById` فقط (يستخدمه cart/order للتحقق من وجود العميل).
 - [`customer.repository.ts`](../../src/modules/customer/customer.repository.ts) — `findById` فقط.
 - [`customer.model.ts`](../../src/modules/customer/customer.model.ts) — فارغ.
@@ -45,18 +46,21 @@ model Customer {
 
 ❓ **سؤال C-1:** هل نضيف حقولًا للعميل مثل `phone` / `avatarUrl`؟ أم نكتفي بالحالي ونعرض
 بيانات `User` (name/email) عبر الـ relation؟
+
 - **الخيار A —** بدون إضافة؛ ملف العميل = `Customer` + `User` المرتبط (name/email) + ملخص.
 - **الخيار B —** إضافة `phone String?` (وربما غيره) إلى `Customer` (يتطلب migration).
-> 🟡 التوصية: الخيار A الآن (أبسط، بلا migration). نضيف الحقول عند الحاجة الفعلية.
-> ✅ القرار: B AND PHONE IS REQUIRED AND UNIQE
+  > 🟡 التوصية: الخيار A الآن (أبسط، بلا migration). نضيف الحقول عند الحاجة الفعلية.
+  > ✅ القرار: B AND PHONE IS REQUIRED AND UNIQE
 
 **تبعات قرار C-1 (phone مطلوب + فريد) — يجب تنفيذها:**
+
 ```prisma
 model Customer {
   // ...
   phone String @unique   // ← جديد: مطلوب + فريد
 }
 ```
+
 1. **`RegisterRequestSchema`** (في موديول user) يجب أن يحمل `phone` **مطلوبًا** (لا `phone?`) — يُمرَّر
    لإنشاء `Customer` داخل نفس الـ transaction.
 2. **تكرار phone → `409`** (نضيف `PHONE_ALREADY_EXISTS` لكتالوج أخطاء user/customer).
@@ -73,14 +77,14 @@ model Customer {
 > مُزامَن مع الإجابات: **C-2=1** (me فقط، بلا CRUD إداري للعملاء) · **C-3=A** (العناوين sub-resource) ·
 > **C-5** (سجل الطلبات يبقى في موديول order، لا يُكشف هنا).
 
-| Method | Path | الوصف | الحماية |
-|---|---|---|---|
-| GET | `/api/v1/customers/me` | ملف العميل الحالي (Customer + User + ملخص: عدد الطلبات/العناوين، وجود عربة) | مُصادَق (`req.user.id`) |
-| PATCH | `/api/v1/customers/me` | تعديل بيانات العميل (name/phone) | صاحب الحساب |
-| GET | `/api/v1/customers/me/addresses` | قائمة عناوين العميل | مُصادَق |
-| POST | `/api/v1/customers/me/addresses` | إضافة عنوان | مُصادَق |
-| PATCH | `/api/v1/customers/me/addresses/:addressId` | تعديل عنوان | صاحب العنوان |
-| DELETE | `/api/v1/customers/me/addresses/:addressId` | حذف عنوان | صاحب العنوان |
+| Method | Path                                        | الوصف                                                                       | الحماية                 |
+| ------ | ------------------------------------------- | --------------------------------------------------------------------------- | ----------------------- |
+| GET    | `/api/v1/customers/me`                      | ملف العميل الحالي (Customer + User + ملخص: عدد الطلبات/العناوين، وجود عربة) | مُصادَق (`req.user.id`) |
+| PATCH  | `/api/v1/customers/me`                      | تعديل بيانات العميل (name/phone)                                            | صاحب الحساب             |
+| GET    | `/api/v1/customers/me/addresses`            | قائمة عناوين العميل                                                         | مُصادَق                 |
+| POST   | `/api/v1/customers/me/addresses`            | إضافة عنوان                                                                 | مُصادَق                 |
+| PATCH  | `/api/v1/customers/me/addresses/:addressId` | تعديل عنوان                                                                 | صاحب العنوان            |
+| DELETE | `/api/v1/customers/me/addresses/:addressId` | حذف عنوان                                                                   | صاحب العنوان            |
 
 > **مؤجَّل (C-2=1):** `GET /customers` و`GET /customers/:id` (إداري) — تُضاف في PR لاحق عند الحاجة.
 > **سجل الطلبات (C-5):** لا يُكشف هنا — يبقى في موديول `order` (`GET /orders?status=DELIVERED`).
@@ -89,24 +93,27 @@ model Customer {
 > `addressRepository`/`addressService` الموجودة. تذكّر أن `Order.addressId` يحتاج عنوانًا صالحًا يخص العميل.
 
 ❓ **سؤال C-2:** ما نطاق الكشف المطلوب؟
+
 - (1) `me` فقط (الملف الشخصي للعميل الحالي) — الأبسط والأكثر فائدة فورية.
 - (2) `me` + CRUD إداري كامل (قائمة + عميل بالـ id).
-> 🟡 التوصية: (1) أولًا، وإضافة الإداري لاحقًا مع نظام الأدوار.
-> ✅ القرار: 1
+  > 🟡 التوصية: (1) أولًا، وإضافة الإداري لاحقًا مع نظام الأدوار.
+  > ✅ القرار: 1
 
 ❓ **سؤال C-3 — إدارة العناوين (Addresses):**
 يوجد موديول مستقل [`address`](../../src/modules/address/) (فيه repository/service/model فقط، بلا routes).
 العناوين منطقيًا تابعة للعميل (`Customer.addresses[]`). أين نكشف عمليات العناوين؟
+
 - **الخيار A —** ضمن موديول customer كـ sub-resource: `GET/POST /api/v1/customers/me/addresses`،
   `PATCH/DELETE /api/v1/customers/me/addresses/:addressId`.
 - **الخيار B —** موديول address مستقل بمساره الخاص `/api/v1/addresses` (يحتاج ملف تخطيط منفصل).
 - **الخيار C —** خارج نطاق هذه الجولة تمامًا (نخطط له لاحقًا).
-> 🟡 التوصية: الخيار A (sub-resource تحت customer) لأنه أقرب للنموذج الذهني، أو C لو
-> أردت تقليل النطاق الآن. (Order بالفعل يحتاج `addressId` صالحًا، فالعناوين مهمة قريبًا.)
-> ✅ القرار: A
+  > 🟡 التوصية: الخيار A (sub-resource تحت customer) لأنه أقرب للنموذج الذهني، أو C لو
+  > أردت تقليل النطاق الآن. (Order بالفعل يحتاج `addressId` صالحًا، فالعناوين مهمة قريبًا.)
+  > ✅ القرار: A
 
 ❓ **سؤال C-5 — سجل الطلبات (Order History):** هل نكشفه تحت `/customers/me/orders` (غلاف يستدعي
 `orderService`) أم نتركه في موديول `order` فقط (`GET /orders?status=DELIVERED`)؟
+
 > 🟡 التوصية: تركه في موديول `order` (مسؤوليته)، وإضافة فلتر `status` هناك — لتجنّب التكرار.
 > ✅ القرار: ممتازة التوصية
 
@@ -118,30 +125,36 @@ model Customer {
 ## 4. تفصيل ملفات الموديول
 
 ### `customer.validation.ts`
+
 - `UpdateCustomerRequestSchema` (الحقول حسب قرار C-1، مثل `{ name?, phone? }`).
 - `CustomerIdParamsSchema` { id }، `CustomerQuerySchema` = `PaginationQuerySchema`.
 - **Responses:** `CustomerResponseSchema` { id, userId, user: { name, email }, addressesCount, ordersCount, hasCart, createdAt, updatedAt }،
-  + `CustomerSuccessResponseSchema`، `CustomerListSuccessResponseSchema`.
+  - `CustomerSuccessResponseSchema`، `CustomerListSuccessResponseSchema`.
 - **لا مخططات auth هنا** (انتقلت لموديول user).
 - (لو اخترنا C-3 خيار A: مخططات `AddressResponse` / `CreateAddressRequest` / `UpdateAddressRequest`.)
 
 ### `customer.repository.ts` (إضافات فوق الموجود)
+
 - `findByUserId(userId)` — لجلب العميل من `req.user.id`.
 - `findByIdWithRelations(id)` — `include`/`_count` لعدّ `addresses`/`orders` ووجود `cart`.
 
 ### `customer.service.ts` (توسيع الحالي — بلا auth)
+
 - `getMe(userId)` → `findByUserId` → جلب مع العلاقات → `404` → `toCustomerResponse`.
 - `updateMe(customerId, input)` → تحديث (وقد يحدّث `User.name`).
 - `list(query)` → `findPaginated`. `findById` (موجود، يُبقى لاستخدام cart/order الداخلي — **لا يتغيّر توقيعه**).
 - `toCustomerResponse(customer)` helper (computed: addressesCount/ordersCount/hasCart).
 
 ### `customer.controller.ts`
+
 - `getMe / updateMe / list / getById` — `asyncHandler`، عبر `sendSuccess/sendError`. (بلا register/login.)
 
 ### `customer.routes.ts`
+
 - `validate` + handlers + `authenticate` (يقرأ الكوكي) على `me` + `authorize("ADMIN")` على القوائم + `routeRegistry.push(...)`.
 
 ### `customer.model.ts`
+
 - `CustomerWithRelations` (نوع مشتق من Prisma مع `_count` أو الـ includes).
 
 ---
@@ -151,7 +164,10 @@ model Customer {
 ```ts
 export const customerErrors = {
   CUSTOMER_NOT_FOUND: { message: "Customer not found", statusCode: 404 },
-  FORBIDDEN:          { message: "You are not allowed to access this customer", statusCode: 403 },
+  FORBIDDEN: {
+    message: "You are not allowed to access this customer",
+    statusCode: 403,
+  },
 } as const;
 ```
 
@@ -200,7 +216,8 @@ export const customerErrors = {
      register/login العميل في موديول **user** («User Management»). لذا هذا الملف **بلا auth**.
 
 ### تحديث توصياتنا (بعد إجابات المعلم):
+
 - **C-1:** التوصية → إضافة `phone String?` (اختياريًا أولًا لتفادي كسر seed، أو مطلوبًا+فريدًا
-  لمطابقة Group-1). ملاحظة: لو register يجمع `phone`، فهو في موديول user الآن. ✅ القرار: ____________
+  لمطابقة Group-1). ملاحظة: لو register يجمع `phone`، فهو في موديول user الآن. ✅ القرار: \***\*\_\_\_\_\*\***
 - **C-3:** نُبقي تعدّد العناوين (`addresses[]`) — CRUD كامل تحت `/customers/me/addresses`، بخلاف نموذج Group-1 الأحادي.
 - **register/login:** ليست هنا — في موديول [`user`](./01-user.plan.md) (راجع C-4 المحسوم أعلاه).

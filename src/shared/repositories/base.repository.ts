@@ -86,9 +86,7 @@ export abstract class BaseRepository<
     ).findFirst(args) as Promise<DelegateReturn<TDelegate, "findFirst">>;
   }
 
-  async count(
-    args?: DelegateArg<TDelegate, "count">,
-  ): Promise<number> {
+  async count(args?: DelegateArg<TDelegate, "count">): Promise<number> {
     return (
       this.delegate as unknown as {
         count: (a?: unknown) => Promise<number>;
@@ -136,7 +134,9 @@ export abstract class BaseRepository<
     ).upsert(args) as Promise<DelegateReturn<TDelegate, "upsert">>;
   }
 
-  transaction<T>(callback: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  transaction<T>(
+    callback: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
     return prisma.$transaction(callback);
   }
 

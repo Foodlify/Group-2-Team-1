@@ -17,7 +17,9 @@ export const isForeignKeyViolation = (e: unknown): boolean =>
  * Detects a unique-constraint violation (Prisma P2002). Raised on a duplicate
  * value for a `@unique` field (e.g. email/phone already registered).
  */
-export const isUniqueViolation = (e: unknown): e is { code: "P2002"; meta?: unknown } =>
+export const isUniqueViolation = (
+  e: unknown,
+): e is { code: "P2002"; meta?: unknown } =>
   typeof e === "object" &&
   e !== null &&
   (e as { code?: unknown }).code === "P2002";
@@ -34,7 +36,8 @@ export const uniqueViolationIncludes = (e: unknown, field: string): boolean => {
     driverAdapterError?: { cause?: { constraint?: { fields?: unknown } } };
   };
   const fields = meta.driverAdapterError?.cause?.constraint?.fields;
-  if (Array.isArray(fields)) return fields.some((f) => String(f).includes(field));
+  if (Array.isArray(fields))
+    return fields.some((f) => String(f).includes(field));
   if (Array.isArray(meta.target)) {
     return meta.target.some((t) => String(t).includes(field));
   }
