@@ -1,0 +1,79 @@
+import app from "./app";
+import env from "./config/env";
+import logger from "./config/logger";
+import { connectPrisma, disconnectPrisma } from "./config/prisma";
+import { connectRedis, disconnectRedis } from "./config/redis";
+import { startCartSweeper } from "./jobs/cartSweeper";
+
+const startServer = async (): Promise<void> => {
+  let isShuttingDown = false;
+
+  // ── Connect to DB First ─────────────────────────────
+  await connectPrisma();
+
+  // ── Cache (optional — never fatal) ──────────────────
+  await connectRedis();
+
+  // ── Background Jobs ─────────────────────────────────
+  const stopCartSweeper = startCartSweeper();
+
+  // ── Start HTTP Server ───────────────────────────────
+  const server = app.listen(env.PORT, () => {
+    logger.info(`Server running on port ${env.PORT} in ${env.NODE_ENV} mode`);
+  });
+
+  server.on("error", (error: Error) => {
+    logger.error("HTTP server error", {
+      message: error.message,
+      stack: error.stack,
+    });
+    process.exit(1);
+  });
+
+  // ── Graceful Shutdown ───────────────────────────────
+  const shutdown = async (signal: string): Promise<void> => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+
+    logger.warn(`${signal} received. Shutting down gracefully...`);
+
+    stopCartSweeper();
+
+    // Stop accepting new requests
+    server.close(async () => {
+      logger.info("HTTP server closed.");
+
+      // Close DB + cache connections
+      await disconnectPrisma();
+      await disconnectRedis();
+
+      process.exit(0);
+    });
+
+    // Force exit if shutdown takes too long (10 seconds)
+    setTimeout(() => {
+      logger.error("Forced shutdown after timeout");
+      process.exit(1);
+    }, 10_000).unref();
+  };
+
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
+
+  // ── Unhandled Errors ────────────────────────────────
+  process.on("unhandledRejection", (reason: unknown) => {
+    logger.error("Unhandled Rejection", { reason });
+    shutdown("unhandledRejection");
+  });
+
+  process.on("uncaughtException", (error: Error) => {
+    logger.error("Uncaught Exception", { message: error.message });
+    shutdown("uncaughtException");
+  });
+};
+
+// ── Bootstrap ─────────────────────────────────────────
+startServer().catch((error) => {
+  logger.error("Failed to start server", { error });
+  process.exit(1);
+});

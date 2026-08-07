@@ -1,0 +1,179 @@
+import { z } from "zod";
+import { schemaRegistry } from "../../openapi/registry";
+
+// ═══════════════════════════════════════════════════════════════
+// Request Schemas (inputs)
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Body schema for POST /carts/me/items
+ */
+export const AddCartItemRequestSchema = z
+  .object({
+    menuItemId: z.cuid2().meta({
+      description: "ID of the menu item to add",
+      example: "clxyz...",
+    }),
+    quantity: z.number().int().positive().meta({
+      description: "Quantity to add",
+      example: 1,
+    }),
+  })
+  .meta({
+    id: "AddCartItemRequest",
+    description: "Payload to add an item to the cart",
+  });
+
+/**
+ * Body schema for PATCH /carts/me/items/:itemId
+ */
+export const UpdateCartItemRequestSchema = z
+  .object({
+    quantity: z.number().int().positive().meta({
+      description: "New quantity for the item",
+      example: 3,
+    }),
+  })
+  .meta({
+    id: "UpdateCartItemRequest",
+    description: "Payload to update a cart item's quantity",
+  });
+
+/**
+ * Path parameter schema for routes with :itemId
+ */
+export const CartItemIdParamsSchema = z
+  .object({
+    itemId: z.cuid2().meta({
+      description: "Cart item ID",
+      example: "clabc...",
+    }),
+  })
+  .meta({ id: "CartItemIdParams" });
+
+/**
+ * Body schema for POST /carts/merge — folds a guest cart into the
+ * signed-in customer's cart.
+ */
+export const MergeGuestCartRequestSchema = z
+  .object({
+    guestToken: z.string().min(1).meta({
+      description: "The X-Cart-Token value the guest cart was created with",
+      example: "b0Zt7c1Qk...",
+    }),
+  })
+  .meta({
+    id: "MergeGuestCartRequest",
+    description: "Merge an anonymous cart into my cart after signing in",
+  });
+
+// ═══════════════════════════════════════════════════════════════
+// Response Schemas (outputs)
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Single cart item in responses — includes the menuItem details for convenience.
+ */
+export const CartItemResponseSchema = z
+  .object({
+    id: z.cuid2(),
+    menuItemId: z.cuid2(),
+    quantity: z.number().int().positive(),
+    menuItem: z.object({
+      id: z.cuid2(),
+      name: z.string(),
+      price: z.number(),
+    }),
+    createdAt: z.iso.datetime(),
+    updatedAt: z.iso.datetime(),
+  })
+  .meta({ id: "CartItemResponse" });
+
+/**
+ * Full cart with items and computed total.
+ */
+export const CartResponseSchema = z
+  .object({
+    id: z.cuid2(),
+    customerId: z.cuid2().nullable().meta({
+      description: "Null while the cart belongs to an anonymous visitor",
+    }),
+    restaurantId: z.cuid2(),
+    items: z.array(CartItemResponseSchema),
+    totalPrice: z.number().meta({
+      description: "Sum of (menuItem.price × quantity) for all items",
+      example: 37.98,
+    }),
+    itemCount: z.number().int().nonnegative().meta({
+      description: "Total quantity across all items",
+      example: 5,
+    }),
+    createdAt: z.iso.datetime(),
+    updatedAt: z.iso.datetime(),
+  })
+  .meta({ id: "CartResponse" });
+
+/**
+ * Standard success wrapper used across all cart endpoints.
+ */
+export const CartSuccessResponseSchema = z
+  .object({
+    success: z.literal(true),
+    message: z.string(),
+    data: CartResponseSchema.nullable(),
+  })
+  .meta({ id: "CartSuccessResponse" });
+
+/**
+ * Result of an abandoned-cart sweep.
+ */
+export const CartSweepSuccessResponseSchema = z
+  .object({
+    success: z.literal(true),
+    message: z.string(),
+    data: z.object({
+      deleted: z.number().int().nonnegative().meta({
+        description: "How many abandoned carts were removed",
+        example: 12,
+      }),
+    }),
+  })
+  .meta({ id: "CartSweepSuccessResponse" });
+
+/**
+ * Empty success response for delete/clear operations.
+ */
+export const EmptySuccessResponseSchema = z
+  .object({
+    success: z.literal(true),
+    message: z.string(),
+    data: z.null(),
+  })
+  .meta({ id: "EmptySuccessResponse" });
+
+// ═══════════════════════════════════════════════════════════════
+// Registry
+// ═══════════════════════════════════════════════════════════════
+
+schemaRegistry.register("AddCartItemRequest", AddCartItemRequestSchema);
+schemaRegistry.register("UpdateCartItemRequest", UpdateCartItemRequestSchema);
+schemaRegistry.register("CartItemIdParams", CartItemIdParamsSchema);
+schemaRegistry.register("MergeGuestCartRequest", MergeGuestCartRequestSchema);
+schemaRegistry.register(
+  "CartSweepSuccessResponse",
+  CartSweepSuccessResponseSchema,
+);
+schemaRegistry.register("CartItemResponse", CartItemResponseSchema);
+schemaRegistry.register("CartResponse", CartResponseSchema);
+schemaRegistry.register("CartSuccessResponse", CartSuccessResponseSchema);
+schemaRegistry.register("EmptySuccessResponse", EmptySuccessResponseSchema);
+
+// ═══════════════════════════════════════════════════════════════
+// TypeScript Types
+// ═══════════════════════════════════════════════════════════════
+
+export type AddCartItemInput = z.infer<typeof AddCartItemRequestSchema>;
+export type UpdateCartItemInput = z.infer<typeof UpdateCartItemRequestSchema>;
+export type CartItemIdParams = z.infer<typeof CartItemIdParamsSchema>;
+export type MergeGuestCartInput = z.infer<typeof MergeGuestCartRequestSchema>;
+export type CartResponse = z.infer<typeof CartResponseSchema>;

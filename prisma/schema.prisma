@@ -1,0 +1,512 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Users & Access Control
+// ═══════════════════════════════════════════════════════════════
+
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+model User {
+  id    String @id @default(cuid())
+  name  String
+  email String @unique
+  /// Hashed password (bcrypt). Never returned in any API response.
+  password String
+  /// Account role — CUSTOMER for storefront users, ADMIN for dashboard.
+  role     Role   @default(CUSTOMER)
+  /// When email ownership was proven via the registration OTP. Null until
+  /// verified — login stays blocked while it is null.
+  emailVerifiedAt DateTime?
+  /// Enable/Disable account: admins flip it for any account, customers can
+  /// deactivate their own. A disabled account can't log in and its existing
+  /// sessions are revoked.
+  isActive        Boolean   @default(true)
+
+  customer      Customer?
+  refreshTokens RefreshToken[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// One row per issued refresh token (multi-device sessions). Only the SHA-256
+/// hash is stored — a DB leak never exposes usable tokens. Rotation revokes the
+/// presented token and inserts its successor; logout revokes just that session.
+model RefreshToken {
+  id        String   @id @default(cuid())
+  /// SHA-256 hash of the refresh JWT (see jwt.helper `hashToken`).
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// Email verification codes. Only the bcrypt hash of the 6-digit code is
+/// stored; codes expire after a short window and are single-use.
+model Otp {
+  id       String @id @default(cuid())
+  email    String
+  /// bcrypt hash of the 6-digit code — the plaintext is only ever emailed.
+  codeHash String
+  /// What the code proves: "registration" | "password_reset".
+  purpose  String
+  used     Boolean @default(false)
+
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email, purpose])
+}
+
+model Customer {
+  id     String @id @default(cuid())
+  userId String @unique
+  /// Contact phone — required and unique per customer.
+  phone  String @unique
+
+  cart              Cart?
+  addresses         Address[]
+  orders            Order[]
+  rates             RestaurantRate[]
+  preferredPayments PreferredPaymentSetting[]
+  supportTickets    SupportTicket[]
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Address {
+  id           String  @id @default(cuid())
+  customerId   String
+  addressLine1 String
+  addressLine2 String?
+  city         String
+  postalCode   String
+  country      String
+  /// Pre-selected address at checkout — the order still records its own
+  /// addressId, so the customer can always pick a different address per
+  /// order (S12 rule). At most one default per customer, kept consistent
+  /// inside a transaction (first address auto-defaults; deleting the
+  /// default promotes the newest remaining address).
+  isDefault    Boolean @default(false)
+
+  orders Order[]
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerId])
+}
+
+/// Customer's saved payment preference — the official "Preferred Payment
+/// Setting" table of Customer Management. Stores only the METHOD: card and
+/// wallet details live with the payment gateway, never in our DB. Mirrors
+/// the default-address semantics (first saved method auto-defaults, at most
+/// one default per customer, kept consistent inside a transaction).
+model PreferredPaymentSetting {
+  id         String        @id @default(cuid())
+  customerId String
+  method     PaymentMethod
+  isDefault  Boolean       @default(false)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([customerId, method])
+  @@index([customerId])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Restaurants & Menus
+// ═══════════════════════════════════════════════════════════════
+
+model Restaurant {
+  id   String @id @default(cuid())
+  name String
+  /// Soft delete — a deleted restaurant disappears from every read (listing,
+  /// search, discovery) but its rows stay put so past orders keep resolving.
+  /// Deleting cascades the flag down to menus and items; restoring reverses it.
+  isDeleted Boolean @default(false)
+  /// Auditing — the id of the User behind the last create / update. Nullable:
+  /// rows created before auditing existed have no actor to attribute.
+  createdBy String?
+  updatedBy String?
+
+  menus  Menu[]
+  carts  Cart[]
+  orders Order[]
+  rates  RestaurantRate[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Menu {
+  id           String @id @default(cuid())
+  name         String
+  restaurantId String
+  /// Soft delete — see `Restaurant.isDeleted`.
+  isDeleted Boolean @default(false)
+  createdBy String?
+  updatedBy String?
+
+  menuItems  MenuItem[]
+  changeLogs MenuChangeLog[]
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([restaurantId])
+}
+
+enum MenuChangeEntity {
+  MENU
+  MENU_ITEM
+}
+
+enum MenuChangeAction {
+  CREATED
+  UPDATED
+  DELETED
+  RESTORED
+}
+
+/// Append-only audit of catalog changes per menu — powers the official
+/// "View History List of Menu" endpoint. The snapshot carries the row state
+/// after the change (for deletes: the last state before removal).
+model MenuChangeLog {
+  id       String           @id @default(cuid())
+  menuId   String
+  entity   MenuChangeEntity
+  entityId String
+  action   MenuChangeAction
+  snapshot Json
+  /// Id of the User who made the change — the "who" the snapshot alone can't
+  /// answer. Nullable for entries written before auditing existed.
+  changedBy String?
+
+  menu Menu @relation(fields: [menuId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([menuId, createdAt(sort: Desc)])
+}
+
+model MenuItem {
+  id     String  @id @default(cuid())
+  menuId String
+  name   String
+  price  Decimal
+  /// Units available. NULL means the restaurant doesn't track stock for this
+  /// item (always orderable). When set, checkout decrements it with a
+  /// conditional UPDATE so concurrent orders can never oversell it.
+  stock  Int?
+  /// Soft delete — this is the one that matters most: an item referenced by a
+  /// past order could never be hard-deleted (`onDelete: Restrict`), so menus
+  /// accumulated dead items forever. The flag hides it while the order history
+  /// keeps resolving. Checkout also refuses to reserve stock for a deleted item.
+  isDeleted Boolean @default(false)
+  createdBy String?
+  updatedBy String?
+
+  cartItems  CartItem[]
+  orderItems OrderItems[]
+  menu       Menu         @relation(fields: [menuId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([menuId])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Cart
+// ═══════════════════════════════════════════════════════════════
+
+/// A cart belongs to EITHER a signed-in customer (`customerId`) or an
+/// anonymous visitor (`guestToken`) — never both, never neither. The
+/// migration adds a CHECK constraint that enforces that at the DB level.
+/// On login the guest cart is merged into the customer's (see cart.service
+/// `mergeGuestCart`).
+model Cart {
+  id           String  @id @default(cuid())
+  customerId   String? @unique
+  /// Opaque token handed to an anonymous visitor and sent back as the
+  /// `X-Cart-Token` header. Null once the cart belongs to a customer.
+  guestToken   String? @unique
+  restaurantId String
+
+  cartItems CartItem[]
+
+  customer   Customer?  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([restaurantId])
+  // Supports the abandoned-cart sweep, which scans by last activity.
+  @@index([updatedAt])
+}
+
+model CartItem {
+  id         String  @id @default(cuid())
+  cartId     String
+  menuItemId String
+  quantity   Int
+  price      Decimal
+  name       String
+
+  cart     Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([cartId, menuItemId])
+  @@index([cartId])
+  @@index([menuItemId])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Orders
+// ═══════════════════════════════════════════════════════════════
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+
+model Order {
+  id           String      @id @default(cuid())
+  customerId   String
+  addressId    String
+  restaurantId String
+  orderDate    DateTime    @default(now())
+  /// Current effective status — mirrors the latest entry in `timeline` for
+  /// fast indexed queries (e.g. "list all PENDING orders").
+  status       OrderStatus @default(PENDING)
+  /// Snapshot of the order total at checkout time — frozen at order creation
+  /// and never recomputed from OrderItems. Survives later price changes.
+  totalAmount  Decimal
+  /// Append-only event log capturing status transitions and delivery tracking
+  /// updates as a single chronological stream. Each entry shape:
+  /// { status, changedAt, changedBy?, location?, estimatedDeliveryTime? }
+  timeline     Json        @default("[]")
+
+  orderItems     OrderItems[]
+  transactions   Transaction[]
+  rate           RestaurantRate?
+  supportTickets SupportTicket[]
+
+  customer   Customer    @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  address    Address     @relation(fields: [addressId], references: [id], onDelete: Restrict)
+  restaurant Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([addressId])
+  @@index([restaurantId])
+  @@index([status])
+  @@index([customerId, createdAt(sort: Desc)])
+}
+
+model OrderItems {
+  id         String  @id @default(cuid())
+  orderId    String
+  menuItemId String
+  quantity   Int
+  /// Snapshot of menu item price at order time — never updated even if MenuItem.price changes later
+  price      Decimal
+  /// Snapshot of menu item name at order time — never updated even if MenuItem.name changes later
+  name       String
+
+  order    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([menuItemId])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Ratings
+// ═══════════════════════════════════════════════════════════════
+
+/// Customer rating of a restaurant, tied to one DELIVERED order.
+/// "One rating per order" is enforced by the DB itself (unique orderId) —
+/// no racy pre-check in application code. The restaurantId is derived from
+/// the order at insert time, never accepted from the client.
+model RestaurantRate {
+  id           String  @id @default(cuid())
+  restaurantId String
+  orderId      String  @unique
+  customerId   String
+  /// 1–5 stars. Range enforced in validation; kept Int for SQL aggregates.
+  rating       Int
+  comment      String?
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  order      Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  customer   Customer   @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([restaurantId])
+  @@index([customerId])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Customer Support
+// ═══════════════════════════════════════════════════════════════
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_CUSTOMER
+  RESOLVED
+  CLOSED
+  ESCALATED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketCategory {
+  ORDER_ISSUE
+  PAYMENT
+  DELIVERY_DELAY
+  REFUND
+  ACCOUNT
+  OTHERS
+}
+
+/// Customer-service agent. `assignedTickets` counts currently-assigned open
+/// tickets and is kept accurate inside the same transaction that assigns or
+/// resolves a ticket — new tickets go to the least-loaded agent of the
+/// matching section.
+model CustomerServiceEmployee {
+  id              String         @id @default(cuid())
+  name            String
+  section         TicketCategory
+  assignedTickets Int            @default(0)
+
+  supportTickets SupportTicket[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// One-shot support ticket ("Raise a Complain" / "Need Help"). `requestId`
+/// is the opaque public reference quoted by support — separate from the PK
+/// so ticket ids can't be enumerated. Reads are always ownership-scoped.
+model SupportTicket {
+  id              String         @id @default(cuid())
+  requestId       String         @unique
+  customerId      String
+  orderId         String?
+  category        TicketCategory
+  priority        TicketPriority @default(MEDIUM)
+  status          TicketStatus   @default(OPEN)
+  subject         String
+  description     String
+  assignedAgentId String?
+  resolution      String?
+  resolvedAt      DateTime?
+
+  customer      Customer                 @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  assignedAgent CustomerServiceEmployee? @relation(fields: [assignedAgentId], references: [id], onDelete: SetNull)
+  order         Order?                   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([status])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Payments / Transactions
+// ═══════════════════════════════════════════════════════════════
+
+enum TransactionType {
+  ORDER_PAYMENT
+  REFUND
+  PARTIAL_REFUND
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum PaymentMethod {
+  CASH
+  CREDIT_CARD
+  PAYPAL
+  WALLET
+}
+
+/// Generic financial transaction record. Supports order payments, refunds,
+/// and external gateway integrations (Stripe, PayPal, etc.). The optional
+/// orderId allows future non-order transactions (wallet top-ups, etc.).
+model Transaction {
+  id             String          @id @default(cuid())
+  type           TransactionType
+  amount         Decimal
+  currency       String          @default("EGP")
+  status         TransactionStatus
+  paymentMethod  PaymentMethod
+  /// Internal system financial reference number, separate from external gateway IDs
+  internalTxNumber String       @unique
+  externalRef    String?
+  orderId        String?
+  metadata       Json?
+
+  order Order? @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([externalRef])
+}
