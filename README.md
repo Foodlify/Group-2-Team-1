@@ -399,30 +399,28 @@ under `src/modules/` containing all files related to that entity.
 | **Repository** | Database CRUD, thin wrapper on Prisma                         | `return this.findUnique({ where: { userId } })`                   |
 | **Model**      | Entity-specific type aliases (only if needed)                 | `type CartWithItems = Cart & { items: CartItem[] }`               |
 
-### The 23 entities
+### The modules
 
-Each entity from the Prisma schema has its own module folder:
+17 module folders under `src/modules/`, each owning one slice of the domain:
 
 ```
-src/modules/
-├── address/                        ├── orderStatus/
-├── auditingEvent/                  ├── orderTracking/
-├── cart/                           ├── paymentIntegrationType/
-├── cartItem/                       ├── paymentTypeConfiguration/
-├── customer/                       ├── preferredPaymentSetting/
-├── menu/                           ├── restaurant/
-├── menuItem/                       ├── restaurantDetails/
-├── order/                          ├── role/
-├── orderItem/                      ├── transaction/
-                                    ├── transactionDetails/
-                                    ├── transactionStatus/
-                                    ├── user/
-                                    ├── userRole/
-                                    └── userType/
+address/     cartItem/    menuItem/       order/       otp/                rating/       support/
+cart/        customer/    notification/   orderItem/   payment/            restaurant/   transaction/
+             menu/                                     preferredPayment/                 user/
 ```
 
-Currently each module contains only `{entity}.model.ts` and `{entity}.repository.ts` —
-the other files are created per-entity as feature branches implement them.
+A fully built module has six files — `.model.ts`, `.repository.ts`, `.service.ts`,
+`.controller.ts`, `.routes.ts`, `.validation.ts` — plus the occasional helper
+(`order.status.ts`). See [Module Anatomy](docs/ARCHITECTURE.md) for what each does.
+
+> **Not one folder per table.** The official mindmap lists 23 entities; the schema has
+> 18 tables and the code has 17 modules. Lookup tables (`orderStatus`, `role`,
+> `userType`, `transactionStatus`, …) became Postgres enums, and `orderTracking` became
+> the `timeline` JSON column on `Order`. The mapping is spelled out in
+> [ARCHITECTURE.md § 9](docs/ARCHITECTURE.md).
+
+**Database ERD:** [docs/ERD.md](docs/ERD.md) — every table, every relationship, and the
+delete behaviour (Cascade / Restrict / SetNull) that a diagram alone can't show.
 
 ### BaseRepository
 
