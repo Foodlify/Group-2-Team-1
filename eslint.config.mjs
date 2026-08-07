@@ -5,12 +5,18 @@ import prettier from "eslint-config-prettier";
 export default tseslint.config(
   {
     // Build output, deps, generated Prisma client and logs are not linted.
+    // `scripts/` and `perf/*.js` are plain CommonJS Node tooling run directly
+    // by npm scripts, not application source — they legitimately use
+    // `require`, `__dirname` and `process`, none of which this config's
+    // browser-neutral globals allow. `perf/seed-load.ts` is NOT excluded: it
+    // imports from `src/` and is held to the same standard as the app.
     ignores: [
       "dist/**",
       "node_modules/**",
       "src/generated/**",
       "logs/**",
       "scripts/**",
+      "perf/*.js",
     ],
   },
   js.configs.recommended,

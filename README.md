@@ -28,6 +28,7 @@ featuring OpenAPI 3.1 documentation via Scalar and Swagger UI.
 - [Architecture](#architecture)
 - [Soft Delete & Auditing](#soft-delete--auditing)
 - [Testing](#testing)
+- [Load Testing](#load-testing)
 - [Adding a New Feature](#adding-a-new-feature)
 - [Continuous Integration](#continuous-integration)
 - [Available Scripts](#available-scripts)
@@ -563,6 +564,37 @@ for a read-then-write, the `tx` dropped from `clearCart`, the `Decimal`
 subtotal reverted to float multiplication. A test that passes either way is
 worse than no test, because it advertises safety it doesn't provide. One
 assertion was vacuous on the first attempt and only revealed it this way.
+
+---
+
+## Load Testing
+
+Two Apache JMeter plans in [`perf/`](perf), driving 500 concurrent customers
+through 1000 requests each. Full write-up with all measurements:
+**[docs/LOAD_TESTING.md](docs/LOAD_TESTING.md)**.
+
+| Plan                     | What it measures                  | Result                               |
+| ------------------------ | --------------------------------- | ------------------------------------ |
+| `01-baseline-order-flow` | Add to cart + checkout under load | 1000/1000 ok, p95 249 ms, ~102 req/s |
+| `02-stock-contention`    | 500 customers racing for 50 units | exactly 50 sold, 450 × 409, 0 × 5xx  |
+
+```bash
+npm run perf:seed     # 500 customers + their access tokens
+npm run perf:plan1
+npm run perf:plan2
+```
+
+Two findings came out of it. The pool in `config/prisma.ts` was capped at 10
+connections and is now `DATABASE_POOL_MAX` (default 20). And **login is the
+system's ceiling**: `bcryptjs` is pure JavaScript, so a cost-12 hash spends
+~250 ms _blocking the event loop_, which puts one instance at roughly 4 logins
+per second per core. That is a capacity limit rather than a bug — the reasoning,
+the measurement and the options are in the document.
+
+Two things the plans depend on, both explained there: they run with
+`NODE_ENV=test` so the rate limiter doesn't turn 480 of 500 customers into
+`429`s, and virtual users arrive pre-authenticated so the plans measure the
+order path instead of bcrypt.
 
 ---
 

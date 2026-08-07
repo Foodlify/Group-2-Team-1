@@ -109,3 +109,6 @@ Thumbs.db
 
 # Prisma
 src/generated/
+# Load testing — generated per run, not source
+perf/data/
+perf/results/
