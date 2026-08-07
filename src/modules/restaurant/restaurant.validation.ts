@@ -18,6 +18,11 @@ export const RestaurantQuerySchema = PaginationQuerySchema.extend({
     description: "Case-insensitive name search",
     example: "pizza",
   }),
+  includeDeleted: z.stringbool().optional().meta({
+    description:
+      "Include soft-deleted restaurants. Honoured for ADMIN callers only — ignored for everyone else.",
+    example: "true",
+  }),
 }).meta({
   id: "RestaurantQuery",
   description: "Pagination + optional name search",
@@ -51,6 +56,11 @@ export const RestaurantResponseSchema = z
   .object({
     id: z.cuid2(),
     name: z.string(),
+    isDeleted: z.boolean().meta({
+      description:
+        "Soft-delete flag. Always false on public reads — deleted restaurants are filtered out.",
+      example: false,
+    }),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
   })

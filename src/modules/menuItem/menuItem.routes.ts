@@ -49,6 +49,13 @@ router.delete(
   validate({ params: MenuItemIdParamsSchema }),
   controller.deleteMenuItem,
 );
+router.patch(
+  "/:menuItemId/restore",
+  authenticate,
+  authorize("ADMIN"),
+  validate({ params: MenuItemIdParamsSchema }),
+  controller.restoreMenuItem,
+);
 
 // ─── OpenAPI ─────────────────────────────────────────────
 const tag = "Catalog";
@@ -159,6 +166,8 @@ routeRegistry.push({
     delete: {
       tags: [tag],
       summary: "Delete a menu item (ADMIN)",
+      description:
+        "Soft delete — the item leaves the menu, the search and the checkout, but stays on past orders. This used to be impossible for any item that had ever been ordered.",
       security,
       parameters: [menuItemIdParam],
       responses: {
@@ -171,8 +180,40 @@ routeRegistry.push({
           description: "Menu item not found",
           content: { "application/json": { schema: errorRef } },
         },
+      },
+    },
+  },
+});
+
+routeRegistry.push({
+  path: "/api/v1/menu-items/{menuItemId}/restore",
+  pathItem: {
+    patch: {
+      tags: [tag],
+      summary: "Restore a soft-deleted menu item (ADMIN)",
+      description:
+        "Undoes a delete. Find the id with `GET /menus/{menuId}/items?includeDeleted=true` or in the menu history. Fails if the owning menu is itself deleted — restore that first.",
+      security,
+      parameters: [menuItemIdParam],
+      responses: {
+        "200": {
+          description: "Restored",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/MenuItemSuccessResponse" },
+            },
+          },
+        },
+        "403": {
+          description: "Forbidden",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "404": {
+          description: "Menu item not found",
+          content: { "application/json": { schema: errorRef } },
+        },
         "409": {
-          description: "Referenced by existing carts or orders",
+          description: "Item is not deleted, or its menu still is",
           content: { "application/json": { schema: errorRef } },
         },
       },

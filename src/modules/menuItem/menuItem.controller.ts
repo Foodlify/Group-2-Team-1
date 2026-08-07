@@ -28,7 +28,10 @@ export const getMenuItem = asyncHandler(
 // ─── Admin management (ADMIN only) ───────────────────────
 export const createMenuItem = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
-    const item = await menuItemService.create(req.body as CreateMenuItemInput);
+    const item = await menuItemService.create(
+      req.body as CreateMenuItemInput,
+      req.user!.id,
+    );
     sendSuccess(res, item, "Menu item created", 201);
   },
 );
@@ -38,6 +41,7 @@ export const updateMenuItem = asyncHandler(
     const item = await menuItemService.update(
       req.params.menuItemId,
       req.body as UpdateMenuItemInput,
+      req.user!.id,
     );
     sendSuccess(res, item, "Menu item updated");
   },
@@ -45,7 +49,17 @@ export const updateMenuItem = asyncHandler(
 
 export const deleteMenuItem = asyncHandler(
   async (req: Request<MenuItemIdParams>, res: Response): Promise<void> => {
-    await menuItemService.remove(req.params.menuItemId);
+    await menuItemService.remove(req.params.menuItemId, req.user!.id);
     sendSuccess(res, null, "Menu item deleted");
+  },
+);
+
+export const restoreMenuItem = asyncHandler(
+  async (req: Request<MenuItemIdParams>, res: Response): Promise<void> => {
+    const item = await menuItemService.restore(
+      req.params.menuItemId,
+      req.user!.id,
+    );
+    sendSuccess(res, item, "Menu item restored");
   },
 );

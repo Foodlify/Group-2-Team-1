@@ -13,13 +13,18 @@ export class MenuHistoryRepository extends BaseRepository<
     super(prisma.menuChangeLog);
   }
 
-  /** Appends one audit entry — called by the menu/menuItem services after a mutation. */
+  /**
+   * Appends one audit entry — called by the menu/menuItem services after a
+   * mutation. `changedBy` is the id of the User behind it: the snapshot says
+   * what the row became, this says who made it so.
+   */
   async log(entry: {
     menuId: string;
     entity: MenuChangeEntityValue;
     entityId: string;
     action: MenuChangeActionValue;
     snapshot: Prisma.InputJsonValue;
+    changedBy?: string;
   }) {
     return this.create({ data: entry });
   }

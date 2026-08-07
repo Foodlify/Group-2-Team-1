@@ -16,9 +16,17 @@ export const getMenu = asyncHandler(
   },
 );
 
+/** See `restaurant.controller` — the flag only applies to admins. */
+const wantsDeleted = (req: Request): boolean =>
+  req.user?.role === "ADMIN" &&
+  (req.query as { includeDeleted?: boolean }).includeDeleted === true;
+
 export const getMenuItems = asyncHandler(
   async (req: Request<MenuIdParams>, res: Response): Promise<void> => {
-    const items = await menuService.listItems(req.params.menuId);
+    const items = await menuService.listItems(
+      req.params.menuId,
+      wantsDeleted(req),
+    );
     sendSuccess(res, items, "Menu items retrieved");
   },
 );
@@ -26,7 +34,10 @@ export const getMenuItems = asyncHandler(
 // ─── Admin management (ADMIN only) ───────────────────────
 export const createMenu = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
-    const menu = await menuService.create(req.body as CreateMenuInput);
+    const menu = await menuService.create(
+      req.body as CreateMenuInput,
+      req.user!.id,
+    );
     sendSuccess(res, menu, "Menu created", 201);
   },
 );
@@ -36,6 +47,7 @@ export const updateMenu = asyncHandler(
     const menu = await menuService.update(
       req.params.menuId,
       req.body as UpdateMenuInput,
+      req.user!.id,
     );
     sendSuccess(res, menu, "Menu updated");
   },
@@ -43,8 +55,15 @@ export const updateMenu = asyncHandler(
 
 export const deleteMenu = asyncHandler(
   async (req: Request<MenuIdParams>, res: Response): Promise<void> => {
-    await menuService.remove(req.params.menuId);
+    await menuService.remove(req.params.menuId, req.user!.id);
     sendSuccess(res, null, "Menu deleted");
+  },
+);
+
+export const restoreMenu = asyncHandler(
+  async (req: Request<MenuIdParams>, res: Response): Promise<void> => {
+    const menu = await menuService.restore(req.params.menuId, req.user!.id);
+    sendSuccess(res, menu, "Menu restored");
   },
 );
 

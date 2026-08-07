@@ -1,7 +1,12 @@
 import { Router } from "express";
 import { validate } from "../../middlewares/validate.middleware";
-import { authenticate, authorize } from "../../middlewares/auth.middleware";
+import {
+  authenticate,
+  authorize,
+  optionalAuthenticate,
+} from "../../middlewares/auth.middleware";
 import { routeRegistry } from "../../openapi/registry";
+import { IncludeDeletedQuerySchema } from "../menu/menu.validation";
 import * as controller from "./restaurant.controller";
 import {
   CreateRestaurantRequestSchema,
@@ -13,8 +18,12 @@ import {
 const router: Router = Router();
 
 // ─── Public catalog reads ────────────────────────────────
+// `optionalAuthenticate` on the two list endpoints: they stay open to everyone,
+// but an ADMIN token unlocks `includeDeleted` (the only way to find a
+// soft-deleted id to restore).
 router.get(
   "/",
+  optionalAuthenticate,
   validate({ query: RestaurantQuerySchema }),
   controller.listRestaurants,
 );
@@ -25,7 +34,11 @@ router.get(
 );
 router.get(
   "/:restaurantId/menus",
-  validate({ params: RestaurantIdParamsSchema }),
+  optionalAuthenticate,
+  validate({
+    params: RestaurantIdParamsSchema,
+    query: IncludeDeletedQuerySchema,
+  }),
   controller.getRestaurantMenus,
 );
 
@@ -53,6 +66,13 @@ router.delete(
   authorize("ADMIN"),
   validate({ params: RestaurantIdParamsSchema }),
   controller.deleteRestaurant,
+);
+router.patch(
+  "/:restaurantId/restore",
+  authenticate,
+  authorize("ADMIN"),
+  validate({ params: RestaurantIdParamsSchema }),
+  controller.restoreRestaurant,
 );
 
 // ─── OpenAPI ─────────────────────────────────────────────
@@ -96,6 +116,13 @@ routeRegistry.push({
           in: "query",
           schema: { type: "string" },
           description: "Case-insensitive name search",
+        },
+        {
+          name: "includeDeleted",
+          in: "query",
+          schema: { type: "boolean" },
+          description:
+            "Include soft-deleted restaurants. Requires an ADMIN token; ignored otherwise.",
         },
       ],
       responses: {
@@ -147,7 +174,16 @@ routeRegistry.push({
     get: {
       tags: [tag],
       summary: "List a restaurant's menus",
-      parameters: [restaurantIdParam],
+      parameters: [
+        restaurantIdParam,
+        {
+          name: "includeDeleted",
+          in: "query",
+          schema: { type: "boolean" },
+          description:
+            "Include soft-deleted menus. Requires an ADMIN token; ignored otherwise.",
+        },
+      ],
       responses: {
         "200": {
           description: "Menus",
@@ -232,6 +268,8 @@ routeRegistry.push({
     delete: {
       tags: [tag],
       summary: "Delete a restaurant (ADMIN)",
+      description:
+        "Soft delete — the restaurant and its whole catalog stop appearing in every read, but the rows stay so past orders keep resolving. Reversible via the restore endpoint.",
       security,
       parameters: [restaurantIdParam],
       responses: {
@@ -244,8 +282,42 @@ routeRegistry.push({
           description: "Restaurant not found",
           content: { "application/json": { schema: errorRef } },
         },
+      },
+    },
+  },
+});
+
+routeRegistry.push({
+  path: "/api/v1/restaurants/{restaurantId}/restore",
+  pathItem: {
+    patch: {
+      tags: [tag],
+      summary: "Restore a soft-deleted restaurant (ADMIN)",
+      description:
+        "Undoes a delete, bringing the restaurant's menus and items back with it. Find the id with `GET /restaurants?includeDeleted=true`.",
+      security,
+      parameters: [restaurantIdParam],
+      responses: {
+        "200": {
+          description: "Restored",
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/RestaurantSuccessResponse",
+              },
+            },
+          },
+        },
+        "403": {
+          description: "Forbidden",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "404": {
+          description: "Restaurant not found",
+          content: { "application/json": { schema: errorRef } },
+        },
         "409": {
-          description: "Restaurant referenced by existing orders",
+          description: "Restaurant is not deleted",
           content: { "application/json": { schema: errorRef } },
         },
       },

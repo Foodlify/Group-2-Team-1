@@ -18,4 +18,19 @@ export const catalogErrors = {
       "Cannot delete: this resource is still referenced by existing carts or orders",
     statusCode: 409,
   },
+  // Restore only makes sense for a row that is currently soft-deleted.
+  NOT_DELETED: {
+    message: "Cannot restore: this resource is not deleted",
+    statusCode: 409,
+  },
+  // Restoring a child into a deleted parent would leave it invisible anyway.
+  PARENT_DELETED: {
+    message: "Cannot restore: the parent menu is deleted — restore it first",
+    statusCode: 409,
+  },
+  PARENT_RESTAURANT_DELETED: {
+    message:
+      "Cannot restore: the parent restaurant is deleted — restore it first",
+    statusCode: 409,
+  },
 } as const;

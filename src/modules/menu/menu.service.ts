@@ -1,8 +1,8 @@
 import type { MenuModel } from "../../generated/prisma/models";
 import { AppError } from "../../middlewares/error.middleware";
 import { catalogErrors } from "../../shared/exceptions/catalog.errors";
-import { isForeignKeyViolation } from "../../shared/exceptions/prisma.errors";
 import { menuItemService } from "../menuItem/menuItem.service";
+import { menuItemRepository } from "../menuItem/menuItem.repository";
 // Imported as a repository (not the service) to avoid a circular dependency:
 // restaurant.service already imports menuService.
 import { restaurantRepository } from "../restaurant/restaurant.repository";
@@ -33,8 +33,14 @@ const restaurantNotFound = (): AppError =>
   );
 
 class MenuService {
-  async listByRestaurant(restaurantId: string): Promise<MenuResponse[]> {
-    const menus = await menuRepository.findByRestaurantId(restaurantId);
+  async listByRestaurant(
+    restaurantId: string,
+    includeDeleted = false,
+  ): Promise<MenuResponse[]> {
+    const menus = await menuRepository.findByRestaurantId(
+      restaurantId,
+      includeDeleted,
+    );
     return menus.map((m) => this.toMenuResponse(m));
   }
 
@@ -62,19 +68,34 @@ class MenuService {
     await cache.del(cacheKeys.menu(menuId));
   }
 
-  async listItems(menuId: string): Promise<MenuItemResponse[]> {
-    const menu = await menuRepository.findById(menuId);
+  async listItems(
+    menuId: string,
+    includeDeleted = false,
+  ): Promise<MenuItemResponse[]> {
+    // An admin asking for deleted items has to be able to reach them through a
+    // deleted menu too, otherwise a cascaded delete is a dead end.
+    const menu = includeDeleted
+      ? await menuRepository.findByIdIncludingDeleted(menuId)
+      : await menuRepository.findById(menuId);
     if (!menu) throw menuNotFound();
-    return menuItemService.listByMenu(menuId);
+    return menuItemService.listByMenu(menuId, includeDeleted);
   }
 
   // ─── Admin management (CRUD) ──────────────────────────
-  async create(input: CreateMenuInput): Promise<MenuWithItemsResponse> {
+  async create(
+    input: CreateMenuInput,
+    actorId: string,
+  ): Promise<MenuWithItemsResponse> {
     if (!(await restaurantRepository.findById(input.restaurantId))) {
       throw restaurantNotFound();
     }
     const menu = await menuRepository.create({
-      data: { name: input.name, restaurantId: input.restaurantId },
+      data: {
+        name: input.name,
+        restaurantId: input.restaurantId,
+        createdBy: actorId,
+        updatedBy: actorId,
+      },
     });
     await menuHistoryRepository.log({
       menuId: menu.id,
@@ -82,6 +103,7 @@ class MenuService {
       entityId: menu.id,
       action: "CREATED",
       snapshot: { name: menu.name },
+      changedBy: actorId,
     });
     // A freshly created menu has no items yet.
     return { ...this.toMenuResponse(menu), items: [] };
@@ -90,15 +112,20 @@ class MenuService {
   async update(
     id: string,
     input: UpdateMenuInput,
+    actorId: string,
   ): Promise<MenuWithItemsResponse> {
     await this.assertExists(id);
-    const updated = await menuRepository.update({ where: { id }, data: input });
+    const updated = await menuRepository.update({
+      where: { id },
+      data: { ...input, updatedBy: actorId },
+    });
     await menuHistoryRepository.log({
       menuId: id,
       entity: "MENU",
       entityId: id,
       action: "UPDATED",
       snapshot: { name: updated.name },
+      changedBy: actorId,
     });
     await this.invalidateMenu(id);
     return this.getByIdWithItems(id);
@@ -109,7 +136,10 @@ class MenuService {
     menuId: string,
     query: MenuHistoryQuery,
   ): Promise<{ data: MenuChangeLogResponse[]; meta: PaginationMeta }> {
-    await this.assertExists(menuId);
+    // Deliberately resolves deleted menus too — the history of a menu that was
+    // just deleted is precisely what an admin needs to see to undo it.
+    const menu = await menuRepository.findByIdIncludingDeleted(menuId);
+    if (!menu) throw menuNotFound();
     const page = await menuHistoryRepository.findPaginatedByMenu(
       menuId,
       query.page,
@@ -122,28 +152,68 @@ class MenuService {
         entityId: e.entityId,
         action: e.action,
         snapshot: (e.snapshot ?? {}) as Record<string, unknown>,
+        changedBy: e.changedBy,
         createdAt: e.createdAt.toISOString(),
       })),
       meta: page.meta,
     };
   }
 
-  async remove(id: string): Promise<void> {
-    await this.assertExists(id);
-    try {
-      await menuRepository.delete({ where: { id } });
-      await this.invalidateMenu(id);
-    } catch (e) {
-      // Cascades to menu items, which may be referenced by carts/orders
-      // (`onDelete: Restrict`).
-      if (isForeignKeyViolation(e)) {
-        throw new AppError(
-          catalogErrors.RESOURCE_IN_USE.message,
-          catalogErrors.RESOURCE_IN_USE.statusCode,
-        );
-      }
-      throw e;
+  /**
+   * Soft delete, cascading to the menu's items in one transaction. Unlike the
+   * hard delete this replaces, it can never fail on a reference from an older
+   * cart or order — which was the whole problem: a menu whose items had ever
+   * been ordered could not be retired.
+   */
+  async remove(id: string, actorId: string): Promise<void> {
+    const menu = await this.assertExists(id);
+    await menuRepository.transaction(async (tx) => {
+      await menuItemRepository.softDeleteByMenuIds([id], actorId, tx);
+      await menuRepository.softDeleteById(id, actorId, tx);
+    });
+    await this.invalidateMenu(id);
+    await menuHistoryRepository.log({
+      menuId: id,
+      entity: "MENU",
+      entityId: id,
+      action: "DELETED",
+      snapshot: { name: menu.name },
+      changedBy: actorId,
+    });
+  }
+
+  /** Undoes `remove`, restoring the menu's items along with it. */
+  async restore(id: string, actorId: string): Promise<MenuWithItemsResponse> {
+    const menu = await menuRepository.findByIdIncludingDeleted(id);
+    if (!menu) throw menuNotFound();
+    if (!menu.isDeleted) {
+      throw new AppError(
+        catalogErrors.NOT_DELETED.message,
+        catalogErrors.NOT_DELETED.statusCode,
+      );
     }
+    // Same reason as menu items: restoring into a deleted restaurant would
+    // leave the menu just as invisible as it was.
+    if (!(await restaurantRepository.findById(menu.restaurantId))) {
+      throw new AppError(
+        catalogErrors.PARENT_RESTAURANT_DELETED.message,
+        catalogErrors.PARENT_RESTAURANT_DELETED.statusCode,
+      );
+    }
+    await menuRepository.transaction(async (tx) => {
+      await menuItemRepository.restoreByMenuIds([id], actorId, tx);
+      await menuRepository.restoreById(id, actorId, tx);
+    });
+    await this.invalidateMenu(id);
+    await menuHistoryRepository.log({
+      menuId: id,
+      entity: "MENU",
+      entityId: id,
+      action: "RESTORED",
+      snapshot: { name: menu.name },
+      changedBy: actorId,
+    });
+    return this.getByIdWithItems(id);
   }
 
   private async assertExists(id: string): Promise<MenuModel> {
@@ -152,11 +222,13 @@ class MenuService {
     return menu;
   }
 
+  /** `createdBy` / `updatedBy` stay internal — see `restaurant.service`. */
   private toMenuResponse(menu: MenuModel): MenuResponse {
     return {
       id: menu.id,
       name: menu.name,
       restaurantId: menu.restaurantId,
+      isDeleted: menu.isDeleted,
       createdAt: menu.createdAt.toISOString(),
       updatedAt: menu.updatedAt.toISOString(),
     };

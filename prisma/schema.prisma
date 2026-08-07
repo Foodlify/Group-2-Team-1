@@ -146,6 +146,14 @@ model PreferredPaymentSetting {
 model Restaurant {
   id   String @id @default(cuid())
   name String
+  /// Soft delete — a deleted restaurant disappears from every read (listing,
+  /// search, discovery) but its rows stay put so past orders keep resolving.
+  /// Deleting cascades the flag down to menus and items; restoring reverses it.
+  isDeleted Boolean @default(false)
+  /// Auditing — the id of the User behind the last create / update. Nullable:
+  /// rows created before auditing existed have no actor to attribute.
+  createdBy String?
+  updatedBy String?
 
   menus  Menu[]
   carts  Cart[]
@@ -160,6 +168,10 @@ model Menu {
   id           String @id @default(cuid())
   name         String
   restaurantId String
+  /// Soft delete — see `Restaurant.isDeleted`.
+  isDeleted Boolean @default(false)
+  createdBy String?
+  updatedBy String?
 
   menuItems  MenuItem[]
   changeLogs MenuChangeLog[]
@@ -181,6 +193,7 @@ enum MenuChangeAction {
   CREATED
   UPDATED
   DELETED
+  RESTORED
 }
 
 /// Append-only audit of catalog changes per menu — powers the official
@@ -193,6 +206,9 @@ model MenuChangeLog {
   entityId String
   action   MenuChangeAction
   snapshot Json
+  /// Id of the User who made the change — the "who" the snapshot alone can't
+  /// answer. Nullable for entries written before auditing existed.
+  changedBy String?
 
   menu Menu @relation(fields: [menuId], references: [id], onDelete: Cascade)
 
@@ -210,6 +226,13 @@ model MenuItem {
   /// item (always orderable). When set, checkout decrements it with a
   /// conditional UPDATE so concurrent orders can never oversell it.
   stock  Int?
+  /// Soft delete — this is the one that matters most: an item referenced by a
+  /// past order could never be hard-deleted (`onDelete: Restrict`), so menus
+  /// accumulated dead items forever. The flag hides it while the order history
+  /// keeps resolving. Checkout also refuses to reserve stock for a deleted item.
+  isDeleted Boolean @default(false)
+  createdBy String?
+  updatedBy String?
 
   cartItems  CartItem[]
   orderItems OrderItems[]
