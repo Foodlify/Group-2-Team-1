@@ -27,6 +27,7 @@ featuring OpenAPI 3.1 documentation via Scalar and Swagger UI.
 - [API Documentation](#api-documentation)
 - [Architecture](#architecture)
 - [Soft Delete & Auditing](#soft-delete--auditing)
+- [Testing](#testing)
 - [Adding a New Feature](#adding-a-new-feature)
 - [Continuous Integration](#continuous-integration)
 - [Available Scripts](#available-scripts)
@@ -509,6 +510,62 @@ covers `CREATED` / `UPDATED` / `DELETED` / `RESTORED`.
 
 ---
 
+## Testing
+
+Two suites, deliberately separate.
+
+| Suite           | Command                    | Needs a database |
+| --------------- | -------------------------- | ---------------- |
+| **Unit**        | `npm test`                 | No               |
+| **Integration** | `npm run test:integration` | Yes              |
+
+`npm test` runs with **no external service at all** — no PostgreSQL, no Redis,
+no SMTP. That is a property worth protecting: it is why a new contributor can
+clone the repo and get a green suite before configuring anything. Integration
+tests live in `tests/integration/` and are excluded from that config.
+
+### What belongs where
+
+Anything a mock can answer is a unit test. Integration tests are for the
+things mocks structurally _cannot_ reach:
+
+- **Real concurrency.** Two checkouts racing for the last unit in stock. A
+  read-then-write reservation passes every unit test and still oversells —
+  the integration suite catches it selling one unit to two customers.
+- **Constraints written in SQL.** The two CHECK constraints added by hand to
+  migrations (a cart has exactly one owner; stock is never negative), the
+  unique indexes the services lean on instead of a racy pre-check, and the
+  `Cascade` / `Restrict` / `SetNull` referential actions.
+- **Raw SQL.** `appendTimelineEntry` appends to a `jsonb` column and mirrors
+  the status in one statement; there is no way to unit-test that.
+- **`Decimal` round-tripping.** That money survives the trip out to a
+  `Decimal` column and back.
+- **The migrations themselves.** `globalSetup` runs `prisma migrate deploy`,
+  so a broken migration fails the suite.
+
+### Running the integration suite
+
+Copy [`.env.test.example`](.env.test.example) to `.env.test` and point
+`DATABASE_URL_TEST` at a database whose name contains `test` — the suite
+refuses to start otherwise, because it truncates every table between tests.
+The example file lists three ways to get one, including a throwaway `initdb`
+instance if you have no server running.
+
+```bash
+npm run test:integration
+```
+
+### A convention worth keeping
+
+Every assertion in these suites was checked against a **deliberately broken
+copy of the code** before being committed — the atomic stock UPDATE swapped
+for a read-then-write, the `tx` dropped from `clearCart`, the `Decimal`
+subtotal reverted to float multiplication. A test that passes either way is
+worse than no test, because it advertises safety it doesn't provide. One
+assertion was vacuous on the first attempt and only revealed it this way.
+
+---
+
 ## Adding a New Feature
 
 Features are developed in isolation on their own branches. This keeps the setup branch
@@ -633,8 +690,9 @@ stable and lets features merge independently.
 ## Continuous Integration
 
 Every push and pull request targeting `main` or `develop` runs
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml), which executes exactly
-the same checks as `npm run verify`:
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml), in two parallel jobs.
+
+**`verify`** — the same checks as `npm run verify`, no database:
 
 | Step       | Command                  | Catches                                               |
 | ---------- | ------------------------ | ----------------------------------------------------- |
@@ -646,13 +704,33 @@ the same checks as `npm run verify`:
 | Build      | `npm run build`          | anything that compiles under `--noEmit` but not to JS |
 | OpenAPI    | `npm run verify:openapi` | broken route registration, dangling schema `$ref`s    |
 
-**Run the whole thing locally before pushing:** `npm run verify`.
+**`integration`** — a real `postgres:17-alpine` service container:
 
-The workflow needs no secrets — `DATABASE_URL` and the JWT secrets are
-placeholders defined in the workflow itself. Nothing in CI connects to a
-database yet; a PostgreSQL service will be added alongside the integration
-tests, and the migration-drift check belongs with it (it needs a shadow
-database).
+| Step              | Catches                                                         |
+| ----------------- | --------------------------------------------------------------- |
+| Migration drift   | a `schema.prisma` edited without a matching migration           |
+| Integration tests | everything under [Testing](#testing) that needs a real database |
+
+**Run the whole thing locally before pushing:** `npm run verify` (and
+`npm run test:integration` if you touched the schema or the checkout path).
+
+The `verify` job needs no secrets: `DATABASE_URL` and the JWT secrets are
+placeholders defined in the workflow, present only because
+`prisma.config.ts` resolves `DATABASE_URL` eagerly and `postinstall` runs
+`prisma generate` — so `npm ci` itself would fail without it. Nothing in that
+job connects to a database.
+
+### Migration drift
+
+`prisma migrate diff --from-migrations` replays the whole `prisma/migrations`
+folder into a scratch database and compares the result against
+`schema.prisma`. If someone edits the schema and forgets the migration, this
+fails in CI instead of on someone's deploy.
+
+It needs that scratch database, supplied through `datasource.shadowDatabaseUrl`
+in [`prisma.config.ts`](prisma.config.ts) — Prisma 7 does not accept the
+`--shadow-database-url` flag its own error message suggests. Outside CI the
+variable is unset and the check simply isn't run.
 
 ---
 
@@ -660,12 +738,13 @@ database).
 
 ### Development
 
-| Script           | Description                                   |
-| ---------------- | --------------------------------------------- |
-| `npm run dev`    | Start the server with hot reload              |
-| `npm start`      | Start the server in production mode           |
-| `npm test`       | Run the unit-test suite (Vitest)              |
-| `npm run verify` | Run every CI check locally, in the same order |
+| Script                     | Description                                                            |
+| -------------------------- | ---------------------------------------------------------------------- |
+| `npm run dev`              | Start the server with hot reload                                       |
+| `npm start`                | Start the server in production mode                                    |
+| `npm test`                 | Run the unit-test suite (Vitest, no database)                          |
+| `npm run test:integration` | Run the integration suite (needs PostgreSQL — see [Testing](#testing)) |
+| `npm run verify`           | Run every CI check locally, in the same order                          |
 
 ### Database (Prisma)
 
