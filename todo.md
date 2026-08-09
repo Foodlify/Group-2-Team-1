@@ -123,11 +123,35 @@ Still open in this area:
 - **No CSV/PDF export and no caching.** Every request recomputes. Fine at this
   data size; revisit if a report ever gets slow.
 
-### SMTP in production
+### ~~SMTP~~ — configured and verified live (2026-08-09)
 
-- The mailer falls back to logging when `SMTP_HOST` is unset (dev/test only) and
-  refuses to send in production. Provision real SMTP credentials before launch.
-- Order notifications and OTP both depend on it.
+- Real credentials, real inbox, driven through the HTTP API: registration sends
+  a verification code that arrives and verifies the account, and checkout sends
+  an order confirmation with the right items and total. See
+  [docs/EMAIL.md](docs/EMAIL.md).
+- The failure path was exercised too, by pointing `SMTP_HOST` at a dead port:
+  orders are still placed and status still changes, with the real reason
+  (`ECONNREFUSED`) in the log.
+- Three fixes came out of it: a transport failure now answers `503` instead of a
+  bare `500`; a recipient the server rejects is logged instead of passing as
+  delivered; and the notification log carries the error's message rather than
+  `{}`. `.env.example` gained the SMTP block it never had — its absence is why
+  the variables were misnamed (`STAMP_MAIL`) and silently ignored in the first
+  place.
+
+**Open items it produced:**
+
+- **Gmail accepts messages and then discards them, and nothing here can tell.**
+  A burst of ~15 messages in 10 minutes saw some delivered and the rest vanish —
+  not in spam, not in trash — every one answered `250 OK`. Not content-related:
+  an identical control arrived at 14:49 and disappeared at 14:51, and delivery
+  resumed once the burst stopped. **A personal Gmail account is a demo channel,
+  not a production one.** Real traffic needs a transactional provider (SES,
+  SendGrid, Brevo, Postmark) on a domain with SPF/DKIM/DMARC, which is also the
+  only way to get delivery and bounce events.
+- **No bounce handling and no retry.** A failed notification is logged and
+  dropped; a hard bounce after acceptance is invisible.
+- **The mail body is plain text only**, with no HTML alternative.
 
 ### ~~JMeter load testing (S18 task)~~ — done (2026-08-07)
 
