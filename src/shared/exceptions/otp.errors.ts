@@ -13,4 +13,12 @@ export const otpErrors = {
     message: "Email delivery is not configured",
     statusCode: 503,
   },
+  // Configured but unreachable — the real production failure mode, and the one
+  // that used to surface as a bare 500. 503 says "try again", which is true:
+  // the account and its code already exist, so a retry re-sends rather than
+  // re-registers.
+  MAIL_SEND_FAILED: {
+    message: "Could not send the email — please try again shortly",
+    statusCode: 503,
+  },
 } as const;

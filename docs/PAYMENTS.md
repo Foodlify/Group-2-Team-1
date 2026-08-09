@@ -272,7 +272,24 @@ Final ledger:
  CANCELLED    | FAILED  | CREDIT_CARD | 136.50 | cs_test_a1dYBC37ZUWLF6
 ```
 
-Checks 7, 9 and 10 are the ones worth repeating after any change to the webhook:
+### Refund retry, verified live — 2026-08-09
+
+| #   | Check                                                                                                    | Result                                                            |
+| --- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| 1   | Refund fails (gateway reference removed), then cancel                                                    | `200`, stock released, `REFUND … FAILED` with its reason          |
+| 2   | `GET /refunds/outstanding`                                                                               | One row, with the failure reason attached                         |
+| 3   | Reference restored, `POST /refunds/{id}/retry`                                                           | `200`, `REFUND … SUCCESS`, `re_3U2XHc…`                           |
+| 4   | Retry the now-settled refund                                                                             | `409 This refund has already been paid back`                      |
+| 5   | **Double-refund test** — ledger forced back to `FAILED` while Stripe still held the refund, then retried | Adopted the **same** `re_3U2XHc…`, no second refund created       |
+| 6   | **Stripe's own figures afterwards**                                                                      | charged `9100`, `amount_refunded` `9100` — refunded exactly once  |
+| 7   | Auth                                                                                                     | `401` no token, `403` customer, `400` bad limit, `404` unknown id |
+| 8   | Webhook still routes past the new admin router                                                           | `400` on an unsigned call, as before                              |
+
+Check 5 is the whole point of the feature, and check 6 is what proves it: had
+the lookup been missing, `amount_refunded` would read `18200` against a `9100`
+charge.
+
+Checks 7, 9 and 10 below are the ones worth repeating after any change to the webhook:
 they are the difference between a payment system and a payment system that
 double-charges or leaks stock.
 
@@ -336,6 +353,44 @@ the ledger entry is the whole of the action. (In practice cash never reaches
 here — an order can only be cancelled before `DELIVERED`, and cash is not
 settled until delivery, so there is no collected money to return.)
 
+### Chasing a refund that did not go through
+
+Two ADMIN-only endpoints, because a `FAILED` refund row that nobody can see or
+act on is not much better than no record at all.
+
+| Endpoint                                   | What it does                                                                           |
+| ------------------------------------------ | -------------------------------------------------------------------------------------- |
+| `GET /api/v1/payments/refunds/outstanding` | Lists `FAILED` **and** `PENDING` refunds, oldest first, each with the reason it failed |
+| `POST /api/v1/payments/refunds/{id}/retry` | Sends one to the gateway again                                                         |
+
+`PENDING` is listed alongside `FAILED` on purpose: a refund stuck pending for
+days is an unpaid obligation just as much as a failed one, and listing only
+failures would hide it.
+
+**Retrying is safe to repeat, and that is not a hope about timing.** Before
+creating anything, the strategy asks Stripe what refunds it already holds for
+that PaymentIntent and looks for one tagged with this exact ledger row's id. If
+it finds one, it adopts it — same refund id, marked `reconciled` — instead of
+sending the money again.
+
+The idempotency key alone would not be enough: **Stripe expires those keys after
+24 hours**, and a retry is by definition later than the attempt it retries.
+Without the lookup, retrying a refund that actually succeeded — and whose result
+we simply failed to record — would pay the customer twice the next day. One
+extra round-trip on a rare operation buys "cannot double-refund" as a property
+of the code.
+
+The match is on our own `refundTransactionId` metadata, not on the amount: two
+refunds of the same order for the same amount are indistinguishable by value,
+and adopting the wrong one would settle one obligation with another's money. A
+refund issued by hand from the Stripe dashboard carries no such metadata and is
+deliberately **not** adopted — a human refunding manually is not evidence that
+_this_ row was paid.
+
+**There is no automatic retry.** Sending customers' money back on a schedule,
+with nobody looking, is not a decision a cron job should make — a failed refund
+usually means something is wrong that a retry alone will not fix.
+
 ### A failed refund is recorded, never thrown
 
 If Stripe rejects the refund, the request still returns `200`. The cancellation
@@ -372,9 +427,9 @@ changes nothing.
 
 - **Partial refunds.** A cancellation always refunds the full payment. The
   amount is a parameter throughout, so this is a small change when needed.
-- **Retrying a failed refund.** There is no automatic retry and no admin
-  endpoint — a `FAILED` REFUND row currently needs someone to look at it and
-  refund from the Stripe dashboard. Worth building if it ever happens twice.
+- **Alerting.** Nothing tells anyone an outstanding refund exists; someone has
+  to call the endpoint. A scheduled check that reports the count would close
+  that without any automatic money movement.
 - **Wallet and PayPal.** Present in the `PaymentMethod` enum, no strategy
   behind either, absent from `SUPPORTED_PAYMENT_METHODS`.
 - **Partial refunds**, saved cards, and 3-D Secure step-up handling beyond what

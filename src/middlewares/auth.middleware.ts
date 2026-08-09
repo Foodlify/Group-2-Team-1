@@ -66,7 +66,12 @@ export const authenticate = asyncHandler(
       );
     }
 
-    req.user = payload;
+    // The role comes from the row, never from the token's claim. The lookup
+    // above already exists so a deleted or disabled account stops working at
+    // once rather than at token expiry; a demotion is the same problem, and
+    // trusting the claim would leave someone admin for the rest of the
+    // token's fifteen minutes.
+    req.user = { ...payload, role: user.role };
     next();
   },
 );

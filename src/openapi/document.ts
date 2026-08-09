@@ -16,6 +16,7 @@ import "../modules/restaurant/restaurant.validation";
 import "../modules/cart/cart.validation";
 import "../modules/order/order.validation";
 import "../modules/dashboard/dashboard.validation";
+import "../modules/payment/payment.validation";
 
 // Ensure every route's OpenAPI path is registered too. Routes push into
 // `routeRegistry` as a side effect of being imported; importing them here (not

@@ -3,7 +3,13 @@ import { StatusCodes } from "http-status-codes";
 import { asyncHandler } from "../../utils/asyncHandler";
 import logger from "../../config/logger";
 import { describeError } from "../../shared/errors/describe";
+import { sendSuccess } from "../../utils/response";
+import { paymentService } from "./payment.service";
 import { paymentWebhookService } from "./payment.webhook.service";
+import type {
+  OutstandingRefundsQuery,
+  TransactionIdParams,
+} from "./payment.validation";
 
 /**
  * Stripe's webhook endpoint.
@@ -11,6 +17,21 @@ import { paymentWebhookService } from "./payment.webhook.service";
  * Deliberately not wrapped in `sendSuccess`: Stripe does not read our response
  * envelope, it reads the status code. Anything outside 2xx is a retry signal.
  */
+export const listOutstandingRefunds = asyncHandler(
+  async (req: Request, res: Response): Promise<void> => {
+    const query = req.query as unknown as OutstandingRefundsQuery;
+    const refunds = await paymentService.outstandingRefunds(query.limit);
+    sendSuccess(res, refunds, "Outstanding refunds retrieved");
+  },
+);
+
+export const retryRefund = asyncHandler(
+  async (req: Request<TransactionIdParams>, res: Response): Promise<void> => {
+    const refund = await paymentService.retryRefund(req.params.transactionId);
+    sendSuccess(res, refund, "Refund retried");
+  },
+);
+
 export const stripeWebhook = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     // `express.raw` on this route leaves the body as a Buffer — the signature

@@ -156,6 +156,36 @@ class TransactionService {
   }
 
   /**
+   * Refunds that have not reached the customer: `FAILED` ones the gateway
+   * rejected, and `PENDING` ones we never heard back about.
+   *
+   * Both are unsettled obligations, which is why they are returned together —
+   * a PENDING refund that has been sitting for days is as much a problem as a
+   * failed one, and listing only failures would hide it.
+   */
+  async findOutstandingRefunds(limit = 100) {
+    return transactionRepository.findMany({
+      where: { type: "REFUND", status: { in: ["FAILED", "PENDING"] } },
+      orderBy: { createdAt: "asc" },
+      take: limit,
+    });
+  }
+
+  /**
+   * The payment a refund is returning money from — the SUCCESS `ORDER_PAYMENT`
+   * on the same order. Needed to reach the gateway reference, which lives on
+   * the payment and not on the refund.
+   */
+  async findPaymentForRefund(refund: TransactionModel) {
+    if (!refund.orderId) return null;
+    const txs = await transactionRepository.findByOrderId(refund.orderId);
+    return (
+      txs.find((t) => t.type === "ORDER_PAYMENT" && t.status === "SUCCESS") ??
+      null
+    );
+  }
+
+  /**
    * Records a gateway's answer on a payment or a refund: the resulting state
    * plus the provider's own reference and metadata, in a single write.
    */

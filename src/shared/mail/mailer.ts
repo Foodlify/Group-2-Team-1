@@ -4,6 +4,7 @@ import env from "../../config/env";
 import logger from "../../config/logger";
 import { appError } from "../../middlewares/error.middleware";
 import { otpErrors } from "../exceptions/otp.errors";
+import { describeError } from "../errors/describe";
 
 /**
  * Thin wrapper around nodemailer so services never touch SMTP details.
@@ -50,11 +51,45 @@ class Mailer {
       return;
     }
 
-    await this.transporter.sendMail({
-      from: env.MAIL_FROM ?? env.SMTP_USER,
+    let info;
+    try {
+      info = await this.transporter.sendMail({
+        from: env.MAIL_FROM ?? env.SMTP_USER,
+        to,
+        subject,
+        text,
+      });
+    } catch (error) {
+      // A transport failure is operational, not a bug: an unreachable or
+      // refusing mail server would otherwise escape as a bare 500 with the
+      // reason visible only in the logs.
+      logger.error("Sending email failed", {
+        to,
+        subject,
+        ...describeError(error),
+      });
+      throw appError(otpErrors.MAIL_SEND_FAILED);
+    }
+
+    // `sendMail` resolves as long as the server accepted *some* recipient, so
+    // a rejected address is otherwise indistinguishable from a delivered one.
+    if (info.rejected.length > 0) {
+      logger.warn("Mail server rejected a recipient", {
+        rejected: info.rejected,
+        subject,
+        response: info.response,
+      });
+    }
+
+    // The provider's id is the only handle for tracing "I never got the email"
+    // back to a specific send. Acceptance is not delivery — a provider can
+    // answer 250 and still drop the message — so this is the last point where
+    // the application knows anything at all about it.
+    logger.info("Email handed to the mail server", {
       to,
       subject,
-      text,
+      messageId: info.messageId,
+      response: info.response,
     });
   }
 

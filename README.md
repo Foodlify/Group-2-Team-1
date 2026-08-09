@@ -30,6 +30,7 @@ featuring OpenAPI 3.1 documentation via Scalar and Swagger UI.
 - [Testing](#testing)
 - [Load Testing](#load-testing)
 - [Payments](#payments)
+- [Email](#email)
 - [Dashboard & Reports](#dashboard--reports)
 - [Adding a New Feature](#adding-a-new-feature)
 - [Continuous Integration](#continuous-integration)
@@ -545,6 +546,10 @@ things mocks structurally _cannot_ reach:
   `Decimal` column and back.
 - **The migrations themselves.** `globalSetup` runs `prisma migrate deploy`,
   so a broken migration fails the suite.
+- **The HTTP layer.** Routing, `validate`, `authenticate` / `authorize`, the
+  body parsers, the 404 handler, the error middleware and the security headers
+  only exist on a real request. Supertest drives the real Express app in
+  `http.auth.*` and `http.contract.*`; a service test calls past all of them.
 
 ### Running the integration suite
 
@@ -633,10 +638,44 @@ the ledger never claims money moved before it did. A refund that fails does not
 fail the cancellation — it is recorded as `FAILED` with its reason, because that
 row is money still owed and someone has to see it.
 
+Two ADMIN endpoints chase those: `GET /api/v1/payments/refunds/outstanding`
+lists what has not reached the customer, and
+`POST /api/v1/payments/refunds/{id}/retry` sends one again. **Retrying cannot
+double-refund** — the gateway is asked what it already holds for that ledger row
+before anything is created, because Stripe's idempotency keys expire after 24
+hours and a retry is always later than that.
+
 > Verified end-to-end against a live Stripe test account on 2026-08-09 — real
 > Checkout Sessions, real card payments, real refunds confirmed against Stripe's
 > own records, plus replayed events, an expired session releasing its stock, and
 > the failed-refund path. See `docs/PAYMENTS.md`.
+
+---
+
+## Email
+
+Verification codes and order notifications go out over SMTP. Full write-up:
+**[docs/EMAIL.md](docs/EMAIL.md)**.
+
+| Message             | Sent when                    | If it fails           |
+| ------------------- | ---------------------------- | --------------------- |
+| Verification code   | registration, password reset | request fails (`503`) |
+| Order confirmation  | checkout commits             | logged, order stands  |
+| Order status change | any transition, incl. cancel | logged, change stands |
+
+With `SMTP_HOST` unset the mailer logs messages instead of sending them, so the
+suite and a fresh clone work with no credentials; in production it refuses
+rather than silently swallowing a verification code.
+
+> Verified end-to-end against a real mailbox on 2026-08-09 — a registration code
+> that arrived and verified the account, an order confirmation with the right
+> items and total, and the unreachable-server path (orders still placed, reason
+> logged, `503` instead of `500`).
+
+> **A personal Gmail account is not a production email channel.** Gmail answered
+> `250 OK` and then silently discarded a large share of a test burst — nothing
+> in spam or trash, and nothing the application can detect. Use a transactional
+> provider on a verified domain for real traffic; see `docs/EMAIL.md`.
 
 ---
 

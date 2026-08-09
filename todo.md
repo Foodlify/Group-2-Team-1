@@ -18,7 +18,7 @@ in code reviews. Items here are **known and deliberately deferred**, not oversig
   Writing them found and fixed a real bug — line subtotals were computed with
   float multiplication and served `24.450000000000003` for `8.15 x 3`.
 
-### Integration tests — 28 tests (2026-08-07)
+### Integration tests — 81 tests (2026-08-07, HTTP layer added 2026-08-09)
 
 - **Done:** Order & Payment against a real PostgreSQL (mentor requirement,
   S17), plus the CI database service and the migration-drift check that
@@ -28,10 +28,31 @@ in code reviews. Items here are **known and deliberately deferred**, not oversig
   `DATABASE_URL_TEST` works with docker-compose, any local PostgreSQL, or a
   throwaway `initdb` instance — and it is what the CI service container
   supplies anyway.
-- **Still uncovered:** the HTTP layer. Every one of these calls the service
-  directly, so routing, `validate` middleware, auth and the error middleware
-  are only exercised by hand. Supertest against the Express app would close
-  that, and is the obvious next step for this suite.
+
+### ~~HTTP-layer coverage~~ — done (2026-08-09), 39 tests
+
+- Supertest against the real Express app, every middleware in the real order:
+  `tests/integration/http.auth.integration.test.ts` (22) and
+  `http.contract.integration.test.ts` (17). 17 mutations, all caught.
+- Covers what a service test calls past: the cookie/Bearer transports, tokens
+  that were valid when issued but whose account has since been deleted,
+  disabled or demoted, role enforcement, `validate` (including Express 5's
+  re-parsing `req.query` getter), the error envelope, the 404 handler, helmet's
+  headers on success _and_ on errors, credentialed CORS, and the Stripe
+  webhook's position ahead of both `express.json()` and the admin router.
+
+**Two real bugs it found, both fixed in the same commit:**
+
+- **A malformed JSON body answered `500`.** Body-parser failures carry their
+  own 4xx status and never reached it — so the caller was told their own broken
+  request was a server fault, and every one filed a fake incident in the log.
+- **The role came from the token, not the account.** `authenticate` already
+  re-read the row so a deleted or disabled account stopped working immediately,
+  but `authorize` still trusted the token's `role` claim. A demoted admin kept
+  admin rights until their token expired.
+
+**Still uncovered here:** the rate limiter, which skips itself under
+`NODE_ENV=test` — see the load-testing item below.
 
 **Convention worth keeping:** every new assertion here was checked against a
 deliberately broken copy of the code before being committed. A test that
@@ -63,10 +84,18 @@ first attempt and only showed it under that check.
   and is settled by the gateway's answer, so the ledger never claims money moved
   before it did. Verified live: 91.00 EGP refunded and confirmed against
   Stripe's own record, plus the PaymentIntent-fallback and failed-refund paths.
-- **A `FAILED` REFUND row is money still owed, and nothing chases it.** There is
-  no retry and no admin endpoint — it needs a human and the Stripe dashboard.
-  Worth watching with
-  `select * from "Transaction" where type='REFUND' and status in ('FAILED','PENDING')`.
+- ~~**A `FAILED` REFUND row is money still owed, and nothing chases it.**~~ —
+  done (2026-08-09). `GET /api/v1/payments/refunds/outstanding` lists `FAILED`
+  and `PENDING` refunds with their reasons, and
+  `POST /api/v1/payments/refunds/{id}/retry` sends one again. Retrying is safe
+  to repeat: the gateway is asked what it already holds first, so a retry
+  reconciles instead of paying twice — proved live by forcing that exact case
+  and confirming Stripe still showed one refund of 9100 against a 9100 charge.
+- **Nothing alerts anyone that an outstanding refund exists.** Someone has to
+  call the endpoint. A scheduled check reporting the count would close that with
+  no automatic money movement — and automatic retrying is deliberately **not**
+  built: sending money back on a timer with nobody looking is not a cron job's
+  decision.
 - **Partial refunds** are not supported; a cancellation always refunds in full.
 - **Abandoned card orders depend on `checkout.session.expired`.** Stock is
   reserved at checkout, and that 24-hour event is what releases it. If the
@@ -115,11 +144,35 @@ Still open in this area:
 - **No CSV/PDF export and no caching.** Every request recomputes. Fine at this
   data size; revisit if a report ever gets slow.
 
-### SMTP in production
+### ~~SMTP~~ — configured and verified live (2026-08-09)
 
-- The mailer falls back to logging when `SMTP_HOST` is unset (dev/test only) and
-  refuses to send in production. Provision real SMTP credentials before launch.
-- Order notifications and OTP both depend on it.
+- Real credentials, real inbox, driven through the HTTP API: registration sends
+  a verification code that arrives and verifies the account, and checkout sends
+  an order confirmation with the right items and total. See
+  [docs/EMAIL.md](docs/EMAIL.md).
+- The failure path was exercised too, by pointing `SMTP_HOST` at a dead port:
+  orders are still placed and status still changes, with the real reason
+  (`ECONNREFUSED`) in the log.
+- Three fixes came out of it: a transport failure now answers `503` instead of a
+  bare `500`; a recipient the server rejects is logged instead of passing as
+  delivered; and the notification log carries the error's message rather than
+  `{}`. `.env.example` gained the SMTP block it never had — its absence is why
+  the variables were misnamed (`STAMP_MAIL`) and silently ignored in the first
+  place.
+
+**Open items it produced:**
+
+- **Gmail accepts messages and then discards them, and nothing here can tell.**
+  A burst of ~15 messages in 10 minutes saw some delivered and the rest vanish —
+  not in spam, not in trash — every one answered `250 OK`. Not content-related:
+  an identical control arrived at 14:49 and disappeared at 14:51, and delivery
+  resumed once the burst stopped. **A personal Gmail account is a demo channel,
+  not a production one.** Real traffic needs a transactional provider (SES,
+  SendGrid, Brevo, Postmark) on a domain with SPF/DKIM/DMARC, which is also the
+  only way to get delivery and bounce events.
+- **No bounce handling and no retry.** A failed notification is logged and
+  dropped; a hard bounce after acceptance is invisible.
+- **The mail body is plain text only**, with no HTML alternative.
 
 ### ~~JMeter load testing (S18 task)~~ — done (2026-08-07)
 
