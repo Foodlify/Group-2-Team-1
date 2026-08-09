@@ -1,3 +1,4 @@
+import type Stripe from "stripe";
 import { Prisma } from "../../generated/prisma/client";
 import type { TransactionModel } from "../../generated/prisma/models";
 import env from "../../config/env";
@@ -90,6 +91,20 @@ export class StripeCardStrategy implements PaymentStrategy {
     };
   }
 
+  /**
+   * Returns money for `refundTransaction`, or reports the refund that already
+   * exists for it.
+   *
+   * The lookup at the top is what makes retrying safe. The idempotency key
+   * below stops a *duplicate request* becoming a duplicate refund, but Stripe
+   * expires those keys after 24 hours — and a retry is by definition later than
+   * the attempt it is retrying. Without this check, retrying a refund that
+   * actually succeeded (and whose result we failed to record) the next day
+   * would send the customer their money a second time.
+   *
+   * One extra round-trip on a rare operation buys "cannot double-refund" as a
+   * property of the code rather than a hope about timing.
+   */
   async refund(
     refundTransaction: TransactionModel,
     originalPayment: TransactionModel,
@@ -97,6 +112,26 @@ export class StripeCardStrategy implements PaymentStrategy {
   ): Promise<RefundOutcome> {
     const paymentIntentId =
       await StripeCardStrategy.resolvePaymentIntentId(originalPayment);
+
+    const existing = await this.findExistingRefund(
+      paymentIntentId,
+      refundTransaction.id,
+    );
+    if (existing) {
+      return {
+        status: StripeCardStrategy.toTransactionStatus(existing.status),
+        externalRef: existing.id,
+        metadata: {
+          gateway: "stripe",
+          refundId: existing.id,
+          refundStatus: existing.status,
+          paymentIntentId,
+          // Recorded so the ledger shows this row was reconciled with a refund
+          // Stripe had already made, not that a new one was sent.
+          reconciled: true,
+        },
+      };
+    }
 
     const refund = await getStripe().refunds.create(
       {
@@ -126,6 +161,35 @@ export class StripeCardStrategy implements PaymentStrategy {
         paymentIntentId,
       },
     };
+  }
+
+  /**
+   * A refund Stripe already holds for this payment that we issued for this
+   * exact ledger row, or null.
+   *
+   * Matched on our own `refundTransactionId` metadata rather than on the
+   * amount: two separate refunds of the same order for the same amount are
+   * indistinguishable by value, and adopting the wrong one would mark a second
+   * obligation settled by the first one's money.
+   *
+   * A refund issued from the Stripe dashboard carries no such metadata and is
+   * deliberately NOT matched — a human refunding by hand is not evidence that
+   * *this* row was paid.
+   */
+  private async findExistingRefund(
+    paymentIntentId: string,
+    refundTransactionId: string,
+  ): Promise<Stripe.Refund | null> {
+    const refunds = await getStripe().refunds.list({
+      payment_intent: paymentIntentId,
+      limit: 100,
+    });
+    return (
+      refunds.data.find(
+        (refund) =>
+          refund.metadata?.refundTransactionId === refundTransactionId,
+      ) ?? null
+    );
   }
 
   /**

@@ -1,6 +1,6 @@
 import type { Prisma } from "../../generated/prisma/client";
 import type { TransactionModel } from "../../generated/prisma/models";
-import { AppError } from "../../middlewares/error.middleware";
+import { AppError, appError } from "../../middlewares/error.middleware";
 import logger from "../../config/logger";
 import { paymentErrors } from "../../shared/exceptions/payment.errors";
 import { describeError } from "../../shared/errors/describe";
@@ -17,6 +17,7 @@ import type {
 import { cashOnDeliveryStrategy } from "./cash.strategy";
 import { stripeCardStrategy } from "./stripe.strategy";
 import { isStripeConfigured } from "./stripe.client";
+import type { TransactionResponse } from "./payment.validation";
 
 class PaymentService {
   private strategies: Map<PaymentMethod, PaymentStrategy> = new Map();
@@ -172,6 +173,54 @@ class PaymentService {
     }
   }
 
+  /**
+   * Retries one unsettled refund against its gateway.
+   *
+   * Deliberately manual — there is no timer that does this. Sending customers'
+   * money back automatically, on a schedule, with nobody looking, is not a
+   * decision a cron job should be making; a failed refund usually means
+   * something is wrong that a retry alone will not fix.
+   *
+   * Safe to call repeatedly: the strategy first asks the gateway whether it
+   * already holds a refund for this ledger row, so a retry reconciles rather
+   * than sends the money twice.
+   */
+  async retryRefund(transactionId: string): Promise<TransactionResponse> {
+    const refund = await transactionService.findById(transactionId);
+    if (!refund || refund.type !== "REFUND") {
+      throw appError(paymentErrors.REFUND_NOT_FOUND);
+    }
+    if (refund.status === "SUCCESS") {
+      // Already settled. Re-running would be a no-op at best, so say plainly
+      // that there is nothing owed rather than pretending work was done.
+      throw appError(paymentErrors.REFUND_ALREADY_SETTLED);
+    }
+
+    const payment = await transactionService.findPaymentForRefund(refund);
+    if (!payment) {
+      // Nothing succeeded on this order, so there is no money to give back and
+      // no gateway reference to give it back through.
+      await transactionService.recordGatewayOutcome(refund.id, "FAILED", {
+        metadata: { error: "no successful payment found for this order" },
+      });
+      throw appError(paymentErrors.REFUND_NO_PAYMENT);
+    }
+
+    await this.refundPayments([{ refund, payment }]);
+
+    // Re-read: `refundPayments` records the outcome, so the row in hand is
+    // stale by the time it returns. Reporting the pre-retry state would tell
+    // the admin the retry did nothing.
+    const settled = await transactionService.findById(transactionId);
+    return toTransactionResponse(settled ?? refund);
+  }
+
+  /** Refunds that have not reached the customer yet. */
+  async outstandingRefunds(limit?: number): Promise<TransactionResponse[]> {
+    const refunds = await transactionService.findOutstandingRefunds(limit);
+    return refunds.map(toTransactionResponse);
+  }
+
   /** Methods with a registered strategy — the honest list of what works. */
   supportedMethods(): PaymentMethod[] {
     return [...this.strategies.keys()];
@@ -188,5 +237,28 @@ class PaymentService {
     return strategy;
   }
 }
+
+/**
+ * Ledger row → API shape. `error` is lifted out of the metadata blob because
+ * "why is this refund still owed" is the whole reason an admin opens the list,
+ * and making them dig through JSON for it helps nobody.
+ */
+const toTransactionResponse = (t: TransactionModel): TransactionResponse => {
+  const metadata = t.metadata as { error?: unknown } | null;
+  return {
+    id: t.id,
+    type: t.type,
+    status: t.status,
+    amount: Number(t.amount),
+    currency: t.currency,
+    paymentMethod: t.paymentMethod,
+    internalTxNumber: t.internalTxNumber,
+    externalRef: t.externalRef,
+    orderId: t.orderId,
+    error: typeof metadata?.error === "string" ? metadata.error : null,
+    createdAt: t.createdAt.toISOString(),
+    updatedAt: t.updatedAt.toISOString(),
+  };
+};
 
 export const paymentService = new PaymentService();

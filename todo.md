@@ -63,10 +63,18 @@ first attempt and only showed it under that check.
   and is settled by the gateway's answer, so the ledger never claims money moved
   before it did. Verified live: 91.00 EGP refunded and confirmed against
   Stripe's own record, plus the PaymentIntent-fallback and failed-refund paths.
-- **A `FAILED` REFUND row is money still owed, and nothing chases it.** There is
-  no retry and no admin endpoint — it needs a human and the Stripe dashboard.
-  Worth watching with
-  `select * from "Transaction" where type='REFUND' and status in ('FAILED','PENDING')`.
+- ~~**A `FAILED` REFUND row is money still owed, and nothing chases it.**~~ —
+  done (2026-08-09). `GET /api/v1/payments/refunds/outstanding` lists `FAILED`
+  and `PENDING` refunds with their reasons, and
+  `POST /api/v1/payments/refunds/{id}/retry` sends one again. Retrying is safe
+  to repeat: the gateway is asked what it already holds first, so a retry
+  reconciles instead of paying twice — proved live by forcing that exact case
+  and confirming Stripe still showed one refund of 9100 against a 9100 charge.
+- **Nothing alerts anyone that an outstanding refund exists.** Someone has to
+  call the endpoint. A scheduled check reporting the count would close that with
+  no automatic money movement — and automatic retrying is deliberately **not**
+  built: sending money back on a timer with nobody looking is not a cron job's
+  decision.
 - **Partial refunds** are not supported; a cancellation always refunds in full.
 - **Abandoned card orders depend on `checkout.session.expired`.** Stock is
   reserved at checkout, and that 24-hour event is what releases it. If the

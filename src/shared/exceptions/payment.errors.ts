@@ -14,4 +14,18 @@ export const paymentErrors = {
     message: "Webhook signature verification failed",
     statusCode: 400,
   },
+  REFUND_NOT_FOUND: {
+    message: "Refund not found",
+    statusCode: 404,
+  },
+  // 409, not 400: the request was well formed, it just describes an obligation
+  // that no longer exists.
+  REFUND_ALREADY_SETTLED: {
+    message: "This refund has already been paid back",
+    statusCode: 409,
+  },
+  REFUND_NO_PAYMENT: {
+    message: "No successful payment found for this order to refund against",
+    statusCode: 409,
+  },
 } as const;
