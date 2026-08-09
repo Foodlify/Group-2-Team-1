@@ -13,6 +13,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  AdminLoginRequestSchema,
   CreateUserRequestSchema,
   LoginRequestSchema,
   RegisterRequestSchema,
@@ -86,15 +87,37 @@ describe("where a password is set", () => {
 });
 
 describe("where a password is only checked", () => {
-  it("does not cap login", () => {
-    // An account created before the cap may hold a longer password. Rejecting
-    // it here would lock someone out of an account they can still sign into —
-    // bcrypt compares the same 72 bytes either way.
+  it("rejects an over-long password at login too", () => {
+    // Every path that sets a password caps at 72 bytes, so a stored password
+    // longer than that cannot exist. Refusing one here costs nobody an account
+    // and removes the last place a 200-character password could be submitted
+    // and quietly matched on its first 72 bytes.
     const result = LoginRequestSchema.safeParse({
       email: "jane@example.com",
       password: "A".repeat(200),
     });
 
+    expect(result.success).toBe(false);
+  });
+
+  it("does not impose the registration minimum on login", () => {
+    // Login must not restate the password policy: a 400 for "too short" tells
+    // an attacker which candidates are not worth trying. Anything within the
+    // byte limit gets compared and fails as a plain 401.
+    const result = LoginRequestSchema.safeParse({
+      email: "jane@example.com",
+      password: "short",
+    });
+
     expect(result.success).toBe(true);
+  });
+
+  it("caps admin login on the same rule", () => {
+    const result = AdminLoginRequestSchema.safeParse({
+      email: "admin@example.com",
+      password: "A".repeat(73),
+    });
+
+    expect(result.success).toBe(false);
   });
 });

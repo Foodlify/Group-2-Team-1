@@ -193,10 +193,22 @@ Still open in this area:
   under the Dockerfile's `npm ci --ignore-scripts`.
 - ~~**bcrypt silently truncates at 72 bytes.**~~ — done (2026-08-09). Flagged in
   the mentor's S18 material and confirmed against this codebase: a 92-character
-  password matched both its own 72-byte prefix and a different tail. Registration,
-  admin-created accounts and the reset flow now cap at 72 **bytes** (40 Arabic
-  letters are under any character limit and over the byte one). Login is
-  deliberately uncapped so older accounts are not locked out.
+  password matched both its own 72-byte prefix and a different tail. Every path
+  now caps at 72 **bytes** — registration, admin-created accounts, the reset
+  flow, and both login endpoints (40 Arabic letters are under any character
+  limit and over the byte one). Capping login is only safe because there is no
+  production data and no path can create a longer password any more; login keeps
+  a minimum of 1 so it does not restate the password policy to an attacker.
+  Re-measured under JMeter, same 500 concurrent logins: **23.6% → 100% success,
+  p50 35.5 s → 786 ms, ~46 logins/s, and 0 pool timeouts against 499 before.**
+  Plan committed as `perf/plans/03-login.jmx` (`npm run perf:login`) — login had
+  no re-runnable plan of its own until now.
+- **`UV_THREADPOOL_SIZE` must be set in deployment.** libuv defaults to 4
+  threads on any machine, so on the 12-core host used here the native binding
+  hashed on a third of the available cores: 18 logins/s at the default, 46 with
+  it set to the core count. It is not in `.env.example` on purpose — libuv reads
+  it as the process starts, before any `.env` is loaded, so it belongs on the
+  container or service definition.
 - **Login capacity is still ~4 logins/s/core** — that part is CPU and cannot be
   optimised away, only scaled horizontally. Needs no code change; it is a
   deployment decision about instance count.
