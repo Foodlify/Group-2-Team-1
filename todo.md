@@ -66,9 +66,26 @@ Still open in this area:
   Prisma can't express them; worth adding by hand to a migration if the catalog
   ever grows enough for it to matter.
 
-### Dashboard & Reports module
+### ~~Dashboard & Reports module~~ — done (2026-08-09)
 
-- Not started. No team has built it, so it is the clearest differentiator left.
+- The seventh official module. Three ADMIN-only read endpoints: system
+  overview, daily/monthly transaction report, and the same per restaurant.
+  No new tables and no migration. See [docs/DASHBOARD.md](docs/DASHBOARD.md).
+- Still the only one of the seven that **no other team has built**.
+
+**Open items it produced:**
+
+- **Reports are UTC-only.** `createdAt` is `timestamp` without a zone, so
+  "today" starts at 02:00/03:00 Cairo time and late-night orders land in the
+  next day's bucket. The response says `"timezone": "UTC"` rather than hiding
+  it. Fixing it properly means `timestamptz` or an explicit timezone parameter
+  — a real change, not a display tweak.
+- **Anything writing timestamps outside Prisma must write UTC.** The column
+  carries no zone, so the writer decides what it means. A `psql` script using
+  `now()` writes Cairo local time and silently falls outside every report
+  window; use `now() at time zone 'UTC'`.
+- **No CSV/PDF export and no caching.** Every request recomputes. Fine at this
+  data size; revisit if a report ever gets slow.
 
 ### SMTP in production
 

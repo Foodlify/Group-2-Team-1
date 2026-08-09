@@ -29,6 +29,7 @@ featuring OpenAPI 3.1 documentation via Scalar and Swagger UI.
 - [Soft Delete & Auditing](#soft-delete--auditing)
 - [Testing](#testing)
 - [Load Testing](#load-testing)
+- [Dashboard & Reports](#dashboard--reports)
 - [Adding a New Feature](#adding-a-new-feature)
 - [Continuous Integration](#continuous-integration)
 - [Available Scripts](#available-scripts)
@@ -595,6 +596,30 @@ Two things the plans depend on, both explained there: they run with
 `NODE_ENV=test` so the rate limiter doesn't turn 480 of 500 customers into
 `429`s, and virtual users arrive pre-authenticated so the plans measure the
 order path instead of bcrypt.
+
+---
+
+## Dashboard & Reports
+
+The seventh official module — three ADMIN-only read endpoints, no new tables.
+Full write-up: **[docs/DASHBOARD.md](docs/DASHBOARD.md)**.
+
+| Endpoint                                 | Answers                                          |
+| ---------------------------------------- | ------------------------------------------------ |
+| `GET /api/v1/dashboard/overview`         | Restaurant / customer / order counters + revenue |
+| `GET /api/v1/dashboard/transactions`     | Daily or monthly money over a window             |
+| `GET /api/v1/dashboard/restaurants/{id}` | The same, scoped to one restaurant               |
+
+Four rules decide whether these numbers are true, each explained in the
+document: **refunds are subtracted, never added** (the ledger stores what moved,
+not which direction); **only `SUCCESS` counts** (a pending payment is a checkout
+page, not money); **money is summed in SQL as `Decimal`** (three payments of
+`19.99` less a `19.99` refund returns `39.98`, where floats give
+`39.980000000000004`); and **soft-deleted restaurants are excluded**.
+
+> Buckets and the "today"/"this month" counters are **UTC** — `createdAt` has no
+> stored time zone. The response says so explicitly. For Cairo that means a day
+> starts at 02:00/03:00 local; the trade-off is recorded in `todo.md`.
 
 ---
 
