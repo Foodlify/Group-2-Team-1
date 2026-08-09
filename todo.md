@@ -18,7 +18,7 @@ in code reviews. Items here are **known and deliberately deferred**, not oversig
   Writing them found and fixed a real bug — line subtotals were computed with
   float multiplication and served `24.450000000000003` for `8.15 x 3`.
 
-### Integration tests — 28 tests (2026-08-07)
+### Integration tests — 81 tests (2026-08-07, HTTP layer added 2026-08-09)
 
 - **Done:** Order & Payment against a real PostgreSQL (mentor requirement,
   S17), plus the CI database service and the migration-drift check that
@@ -28,10 +28,31 @@ in code reviews. Items here are **known and deliberately deferred**, not oversig
   `DATABASE_URL_TEST` works with docker-compose, any local PostgreSQL, or a
   throwaway `initdb` instance — and it is what the CI service container
   supplies anyway.
-- **Still uncovered:** the HTTP layer. Every one of these calls the service
-  directly, so routing, `validate` middleware, auth and the error middleware
-  are only exercised by hand. Supertest against the Express app would close
-  that, and is the obvious next step for this suite.
+
+### ~~HTTP-layer coverage~~ — done (2026-08-09), 39 tests
+
+- Supertest against the real Express app, every middleware in the real order:
+  `tests/integration/http.auth.integration.test.ts` (22) and
+  `http.contract.integration.test.ts` (17). 17 mutations, all caught.
+- Covers what a service test calls past: the cookie/Bearer transports, tokens
+  that were valid when issued but whose account has since been deleted,
+  disabled or demoted, role enforcement, `validate` (including Express 5's
+  re-parsing `req.query` getter), the error envelope, the 404 handler, helmet's
+  headers on success _and_ on errors, credentialed CORS, and the Stripe
+  webhook's position ahead of both `express.json()` and the admin router.
+
+**Two real bugs it found, both fixed in the same commit:**
+
+- **A malformed JSON body answered `500`.** Body-parser failures carry their
+  own 4xx status and never reached it — so the caller was told their own broken
+  request was a server fault, and every one filed a fake incident in the log.
+- **The role came from the token, not the account.** `authenticate` already
+  re-read the row so a deleted or disabled account stopped working immediately,
+  but `authorize` still trusted the token's `role` claim. A demoted admin kept
+  admin rights until their token expired.
+
+**Still uncovered here:** the rate limiter, which skips itself under
+`NODE_ENV=test` — see the load-testing item below.
 
 **Convention worth keeping:** every new assertion here was checked against a
 deliberately broken copy of the code before being committed. A test that

@@ -21,6 +21,35 @@ export const appError = (def: {
   statusCode: number;
 }): AppError => new AppError(def.message, def.statusCode);
 
+/**
+ * Recognises a failure the *caller* caused, raised by middleware we did not
+ * write — chiefly the body parsers: malformed JSON (`400`) and a payload over
+ * the limit (`413`). They arrive as `http-errors`, carrying their own status
+ * and `expose: true` to mark the message safe to send back.
+ *
+ * Without this they land in the 500 branch below, which tells the caller their
+ * own broken request was a server fault and files it in the log as an
+ * unexpected error — an incident that never happened.
+ */
+const asClientError = (
+  err: unknown,
+): { status: number; message: string } | null => {
+  if (typeof err !== "object" || err === null) return null;
+  const candidate = err as Record<string, unknown>;
+  if (candidate.expose !== true) return null;
+
+  const raw = candidate.status ?? candidate.statusCode;
+  if (typeof raw !== "number" || raw < 400 || raw >= 500) return null;
+
+  return {
+    status: raw,
+    message:
+      typeof candidate.message === "string" && candidate.message.length > 0
+        ? candidate.message
+        : "Bad Request",
+  };
+};
+
 export const errorMiddleware = (
   err: Error | AppError,
   req: Request,
@@ -38,6 +67,20 @@ export const errorMiddleware = (
     res.status(err.statusCode).json({
       success: false,
       message: err.message,
+    });
+    return;
+  }
+
+  const clientError = asClientError(err);
+  if (clientError) {
+    logger.warn("Malformed request", {
+      message: clientError.message,
+      statusCode: clientError.status,
+    });
+
+    res.status(clientError.status).json({
+      success: false,
+      message: clientError.message,
     });
     return;
   }

@@ -17,7 +17,6 @@ vi.mock("../../src/modules/transaction/transaction.service", () => ({
 
 import { paymentService } from "../../src/modules/payment/payment.service";
 import { transactionService } from "../../src/modules/transaction/transaction.service";
-import { SUPPORTED_PAYMENT_METHODS } from "../../src/modules/transaction/transaction.model";
 import { paymentErrors } from "../../src/shared/exceptions/payment.errors";
 
 const mockedTransactions = vi.mocked(transactionService);

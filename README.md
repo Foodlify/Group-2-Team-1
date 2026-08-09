@@ -546,6 +546,10 @@ things mocks structurally _cannot_ reach:
   `Decimal` column and back.
 - **The migrations themselves.** `globalSetup` runs `prisma migrate deploy`,
   so a broken migration fails the suite.
+- **The HTTP layer.** Routing, `validate`, `authenticate` / `authorize`, the
+  body parsers, the 404 handler, the error middleware and the security headers
+  only exist on a real request. Supertest drives the real Express app in
+  `http.auth.*` and `http.contract.*`; a service test calls past all of them.
 
 ### Running the integration suite
 
