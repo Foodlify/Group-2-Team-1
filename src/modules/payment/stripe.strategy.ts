@@ -2,11 +2,13 @@ import { Prisma } from "../../generated/prisma/client";
 import type { TransactionModel } from "../../generated/prisma/models";
 import env from "../../config/env";
 import { getStripe } from "./stripe.client";
+import type { TransactionStatus } from "../transaction/transaction.model";
 import type {
   PaymentContextData,
   PaymentInitiation,
   PaymentResult,
   PaymentStrategy,
+  RefundOutcome,
 } from "./payment.strategy";
 
 /**
@@ -86,6 +88,98 @@ export class StripeCardStrategy implements PaymentStrategy {
         expiresAt: session.expires_at,
       },
     };
+  }
+
+  async refund(
+    refundTransaction: TransactionModel,
+    originalPayment: TransactionModel,
+    amount: number,
+  ): Promise<RefundOutcome> {
+    const paymentIntentId =
+      await StripeCardStrategy.resolvePaymentIntentId(originalPayment);
+
+    const refund = await getStripe().refunds.create(
+      {
+        payment_intent: paymentIntentId,
+        amount: StripeCardStrategy.toMinorUnits(amount),
+        reason: "requested_by_customer",
+        metadata: {
+          orderId: originalPayment.orderId ?? "",
+          refundTransactionId: refundTransaction.id,
+        },
+      },
+      {
+        // Keyed on our REFUND row, which exists exactly once per refund. A
+        // retried request therefore returns the original refund instead of
+        // sending the customer's money back a second time.
+        idempotencyKey: `refund-${refundTransaction.id}`,
+      },
+    );
+
+    return {
+      status: StripeCardStrategy.toTransactionStatus(refund.status),
+      externalRef: refund.id,
+      metadata: {
+        gateway: "stripe",
+        refundId: refund.id,
+        refundStatus: refund.status,
+        paymentIntentId,
+      },
+    };
+  }
+
+  /**
+   * Stripe refunds a PaymentIntent, not a Checkout Session, so the session id
+   * in `externalRef` cannot be used directly.
+   *
+   * The id is normally recorded on the payment's metadata by the webhook that
+   * confirmed it. Payments settled before that was stored — and any whose
+   * metadata was lost — fall back to reading it off the session, so an old
+   * order is still refundable rather than silently unrefundable.
+   */
+  static async resolvePaymentIntentId(
+    payment: TransactionModel,
+  ): Promise<string> {
+    const metadata = payment.metadata as { paymentIntentId?: unknown } | null;
+    if (typeof metadata?.paymentIntentId === "string") {
+      return metadata.paymentIntentId;
+    }
+
+    if (!payment.externalRef) {
+      throw new Error(
+        `Payment ${payment.id} has no gateway reference to refund against`,
+      );
+    }
+
+    const session = await getStripe().checkout.sessions.retrieve(
+      payment.externalRef,
+    );
+    const intent = session.payment_intent;
+    const id = typeof intent === "string" ? intent : intent?.id;
+    if (!id) {
+      throw new Error(
+        `Checkout session ${payment.externalRef} has no payment intent to refund`,
+      );
+    }
+    return id;
+  }
+
+  /**
+   * Stripe's refund lifecycle mapped onto our three states. `pending` and
+   * `requires_action` stay PENDING deliberately: the money has not reached the
+   * customer yet, and calling that SUCCESS would put a lie in the ledger. Those
+   * settle later via the refund webhook.
+   */
+  static toTransactionStatus(refundStatus: string | null): TransactionStatus {
+    switch (refundStatus) {
+      case "succeeded":
+        return "SUCCESS";
+      case "failed":
+      case "canceled":
+        return "FAILED";
+      default:
+        return "PENDING";
+    }
   }
 
   /**

@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import { asyncHandler } from "../../utils/asyncHandler";
 import logger from "../../config/logger";
+import { describeError } from "../../shared/errors/describe";
 import { paymentWebhookService } from "./payment.webhook.service";
 
 /**
@@ -28,7 +29,7 @@ export const stripeWebhook = asyncHandler(
       logger.error("Stripe webhook handler failed", {
         eventId: event.id,
         type: event.type,
-        error,
+        ...describeError(error),
       });
       res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
         success: false,

@@ -3,7 +3,11 @@ import type { TransactionModel } from "../../generated/prisma/models";
 import { AppError } from "../../middlewares/error.middleware";
 import logger from "../../config/logger";
 import { paymentErrors } from "../../shared/exceptions/payment.errors";
-import { transactionService } from "../transaction/transaction.service";
+import { describeError } from "../../shared/errors/describe";
+import {
+  transactionService,
+  type PendingGatewayRefund,
+} from "../transaction/transaction.service";
 import type { PaymentMethod } from "../transaction/transaction.model";
 import type {
   PaymentContextData,
@@ -92,6 +96,80 @@ class PaymentService {
     }
 
     return initiation;
+  }
+
+  /**
+   * Executes refunds against the gateway that took the money, and records what
+   * came back. MUST be called after the cancelling transaction has committed.
+   *
+   * A refund that fails is marked FAILED and logged rather than thrown: the
+   * cancellation itself already succeeded and is correct — the order is gone
+   * and the stock is back — so failing the customer's request now would report
+   * something untrue. What must never happen is the failure going unrecorded,
+   * because a FAILED REFUND row is money this business still owes someone.
+   */
+  async refundPayments(refunds: PendingGatewayRefund[]): Promise<void> {
+    for (const { refund, payment } of refunds) {
+      const strategy = this.strategies.get(payment.paymentMethod);
+      if (!strategy?.refund) {
+        // The method that took the money no longer has a strategy — the key
+        // was removed, or the payment predates it. Nobody can return this
+        // automatically, so say so loudly instead of leaving it PENDING.
+        logger.error("No refund strategy for a settled payment", {
+          transactionId: refund.id,
+          orderId: refund.orderId,
+          method: payment.paymentMethod,
+        });
+        await transactionService.recordGatewayOutcome(refund.id, "FAILED", {
+          metadata: { error: "no refund strategy for this payment method" },
+        });
+        continue;
+      }
+
+      try {
+        const outcome = await strategy.refund(
+          refund,
+          payment,
+          Number(refund.amount),
+        );
+        await transactionService.recordGatewayOutcome(
+          refund.id,
+          outcome.status,
+          {
+            externalRef: outcome.externalRef,
+            metadata: outcome.metadata,
+          },
+        );
+        logger.info("Refund sent to the gateway", {
+          transactionId: refund.id,
+          orderId: refund.orderId,
+          status: outcome.status,
+          externalRef: outcome.externalRef,
+        });
+      } catch (error) {
+        logger.error("Gateway refund failed — money is still owed", {
+          transactionId: refund.id,
+          orderId: refund.orderId,
+          amount: String(refund.amount),
+          ...describeError(error),
+        });
+        try {
+          await transactionService.recordGatewayOutcome(refund.id, "FAILED", {
+            metadata: {
+              error: error instanceof Error ? error.message : String(error),
+            },
+          });
+        } catch (writeError) {
+          // Last resort. If even this write fails the row stays PENDING, which
+          // still reads as "unfinished" rather than "done" — the safe way to
+          // be wrong.
+          logger.error("Could not record the failed refund", {
+            transactionId: refund.id,
+            ...describeError(writeError),
+          });
+        }
+      }
+    }
   }
 
   /** Methods with a registered strategy — the honest list of what works. */

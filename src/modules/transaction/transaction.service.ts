@@ -3,11 +3,18 @@ import {
   transactionRepository,
   TransactionRepository,
 } from "./transaction.repository";
+import type { TransactionModel } from "../../generated/prisma/models";
 import type {
   TransactionType,
   TransactionStatus,
   PaymentMethod,
 } from "./transaction.model";
+
+/** A REFUND row awaiting execution against the gateway that took the money. */
+export interface PendingGatewayRefund {
+  refund: TransactionModel;
+  payment: TransactionModel;
+}
 
 class TransactionService {
   async findById(id: string) {
@@ -104,31 +111,61 @@ class TransactionService {
    * Reconciles an order's transactions when it is cancelled: issues a
    * matching REFUND for every successful payment, and marks any
    * still-pending payment as FAILED. Runs inside the caller's transaction.
+   *
+   * A gateway-backed refund is written as **PENDING**, not SUCCESS: the money
+   * has not moved until the provider says so, and a ledger that claims
+   * otherwise is simply wrong. Returns those rows so the caller can execute
+   * them against the gateway once the transaction has committed — the network
+   * call must not happen in here.
+   *
+   * Cash refunds stay SUCCESS: there is no gateway to call, so the ledger
+   * entry is the whole of the action.
    */
   async refundOrderTransactions(
     orderId: string,
     tx: Prisma.TransactionClient,
-  ): Promise<void> {
+  ): Promise<PendingGatewayRefund[]> {
     const txs = await transactionRepository.findByOrderId(orderId, tx);
+    const pending: PendingGatewayRefund[] = [];
+
     for (const t of txs) {
-      if (t.status === "SUCCESS") {
-        await transactionRepository.createTransaction(
-          {
-            type: "REFUND",
-            amount: Number(t.amount),
-            currency: t.currency,
-            status: "SUCCESS",
-            paymentMethod: t.paymentMethod,
-            orderId,
-            internalTxNumber:
-              TransactionRepository.generateRefundTxNumber(orderId),
-          },
-          tx,
-        );
-      } else {
+      if (t.status !== "SUCCESS") {
         await transactionRepository.updateStatus(t.id, "FAILED", tx);
+        continue;
       }
+
+      const viaGateway = t.paymentMethod !== "CASH";
+      const refund = await transactionRepository.createTransaction(
+        {
+          type: "REFUND",
+          amount: Number(t.amount),
+          currency: t.currency,
+          status: viaGateway ? "PENDING" : "SUCCESS",
+          paymentMethod: t.paymentMethod,
+          orderId,
+          internalTxNumber:
+            TransactionRepository.generateRefundTxNumber(orderId),
+        },
+        tx,
+      );
+
+      if (viaGateway) pending.push({ refund, payment: t });
     }
+
+    return pending;
+  }
+
+  /**
+   * Records a gateway's answer on a payment or a refund: the resulting state
+   * plus the provider's own reference and metadata, in a single write.
+   */
+  async recordGatewayOutcome(
+    id: string,
+    status: TransactionStatus,
+    data: { externalRef?: string; metadata?: Prisma.InputJsonValue },
+    tx?: Prisma.TransactionClient,
+  ) {
+    return transactionRepository.recordGatewayOutcome(id, status, data, tx);
   }
 }
 

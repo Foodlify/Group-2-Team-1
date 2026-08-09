@@ -626,11 +626,16 @@ HTTPS round-trip inside it would hold the cart's row lock and a pooled
 connection); stock is reserved at checkout rather than at payment; and every
 webhook handler is idempotent, because Stripe redelivers events for three days.
 
+Cancelling a paid card order **refunds it through Stripe**. The `REFUND` ledger
+row starts `PENDING` and only becomes `SUCCESS` when the gateway confirms, so
+the ledger never claims money moved before it did. A refund that fails does not
+fail the cancellation — it is recorded as `FAILED` with its reason, because that
+row is money still owed and someone has to see it.
+
 > Verified end-to-end against a live Stripe test account on 2026-08-09 — real
-> Checkout Session, real card payment, real webhooks, including replayed events
-> and an expired session releasing its stock. **Gateway refunds are still not
-> implemented**, so a cancelled card order does not return the money. See
-> `docs/PAYMENTS.md`.
+> Checkout Sessions, real card payments, real refunds confirmed against Stripe's
+> own records, plus replayed events, an expired session releasing its stock, and
+> the failed-refund path. See `docs/PAYMENTS.md`.
 
 ---
 

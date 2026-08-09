@@ -12,8 +12,8 @@ Two payment methods, one strategy interface.
 > Session, real card payment, real webhook deliveries, including the replay and
 > expiry paths. See [What the live run proved](#what-the-live-run-proved).
 >
-> Still missing before this handles real money: **gateway refunds** (see
-> [What is not built](#what-is-not-built)).
+> **Gateway refunds** are built and verified live too — see
+> [Refunds](#refunds).
 
 ---
 
@@ -276,14 +276,105 @@ Checks 7, 9 and 10 are the ones worth repeating after any change to the webhook:
 they are the difference between a payment system and a payment system that
 double-charges or leaks stock.
 
+### Refunds, verified live — 2026-08-09
+
+Three paid card orders were cancelled by an admin, against the live test
+account.
+
+| #   | Check                                                                            | Result                                                                                                           |
+| --- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| 1   | `paymentIntentId` captured when the payment settled                              | `pi_3U2VVAPvEuNLWkDe27kN53mh` stored on the payment                                                              |
+| 2   | **Refund of a paid order** (91.00 EGP)                                           | `REFUND … SUCCESS`, `externalRef` = `re_3U2VVAPvEuNLWkDe2gMRMRrj`                                                |
+| 3   | **Stripe's own record**                                                          | `amount: 9100`, `currency: egp`, `status: succeeded`, `reason: requested_by_customer` — money really moved       |
+| 4   | Order and stock                                                                  | `CANCELLED`, held units returned                                                                                 |
+| 5   | Replayed `refund.updated`                                                        | ignored — still one REFUND row, stock unchanged                                                                  |
+| 6   | **PaymentIntent fallback** — metadata stripped, then cancelled (45.50 EGP)       | refunded anyway via session lookup, `amount: 4550` confirmed by Stripe                                           |
+| 7   | **Failed refund** — every gateway reference removed, then cancelled (182.00 EGP) | cancel returned `200`, stock released, `REFUND … FAILED` with the reason stored, logged as "money is still owed" |
+
+Check 7 is the important one. The system stayed usable and told the truth: the
+customer's order was cancelled, the stock came back, and the unpaid obligation
+is sitting in the ledger as `FAILED` where someone can find it.
+
+**A defect this run found:** the failure was first logged as `"error":{}`.
+`Error` has no enumerable properties, so `JSON.stringify` empties it — the most
+important log line in the system arrived with no reason attached. Fixed with
+`shared/errors/describe.ts`, and re-verified: the message and stack now appear.
+
+---
+
+## Refunds
+
+Cancelling a paid card order returns the money through Stripe.
+
+```
+PATCH /api/v1/orders/{id}/status  { "status": "CANCELLED" }   (or DELETE, by the customer)
+│
+├─ ── database transaction ──────────────────────────────
+│    order → CANCELLED
+│    release the reserved stock
+│    write a REFUND row as **PENDING**        ← no money has moved yet
+│  ── commit ─────────────────────────────────────────────
+│
+├─ POST /v1/refunds to Stripe                  ← strategy.refund()
+│    idempotencyKey: refund-<our REFUND row id>
+│
+└─ REFUND row → SUCCESS (+ Stripe's re_... as externalRef)
+              → FAILED  (+ the reason, in metadata)
+              → PENDING (gateway still working; settled later by webhook)
+```
+
+### The REFUND row is never SUCCESS before the gateway says so
+
+The old behaviour wrote `REFUND … SUCCESS` the moment an order was cancelled,
+which was simply false — nothing had been sent anywhere. It now starts PENDING
+and is only settled by the gateway's answer. `refundOrderTransactions` returns
+those rows so the caller can execute them **after the commit**, because the
+network call must not happen inside the transaction.
+
+Cash is unchanged and still SUCCESS immediately: there is no gateway to call, so
+the ledger entry is the whole of the action. (In practice cash never reaches
+here — an order can only be cancelled before `DELIVERED`, and cash is not
+settled until delivery, so there is no collected money to return.)
+
+### A failed refund is recorded, never thrown
+
+If Stripe rejects the refund, the request still returns `200`. The cancellation
+already succeeded and is correct — the order is gone and the stock is back — so
+failing the caller now would report something untrue.
+
+What must never happen is the failure going unnoticed. It is logged at `error`
+with _"Gateway refund failed — money is still owed"_ and the REFUND row is
+marked **FAILED** with the reason in its metadata. **A `FAILED` REFUND row is
+money this business still owes someone** and needs a human.
+
+> Watch for these. `select * from "Transaction" where type='REFUND' and status
+in ('FAILED','PENDING')` is the query that finds unpaid obligations.
+
+### Refunding needs the PaymentIntent, not the session
+
+Stripe refunds a PaymentIntent; `externalRef` holds the Checkout **Session** id,
+which its refund API rejects. The webhook that confirms payment therefore stores
+`paymentIntentId` on the payment's metadata. Payments settled before that
+existed fall back to retrieving the session and reading it from there, so an old
+order is still refundable rather than silently stuck.
+
+### Idempotency, again
+
+The refund request is keyed on our own REFUND row id, which exists exactly once
+per refund — a retried call returns the original refund instead of sending the
+money back twice. `refund.updated` / `refund.failed` webhooks settle refunds the
+gateway left pending, and re-applying the same status is skipped, so redelivery
+changes nothing.
+
 ---
 
 ## What is not built
 
-- **Refunds through the gateway.** Cancelling a paid card order writes a
-  `REFUND` transaction to our ledger but does not call Stripe's refund API, so
-  the money is not actually returned. Cash orders are unaffected. This must be
-  built before the card path handles real money.
+- **Partial refunds.** A cancellation always refunds the full payment. The
+  amount is a parameter throughout, so this is a small change when needed.
+- **Retrying a failed refund.** There is no automatic retry and no admin
+  endpoint — a `FAILED` REFUND row currently needs someone to look at it and
+  refund from the Stripe dashboard. Worth building if it ever happens twice.
 - **Wallet and PayPal.** Present in the `PaymentMethod` enum, no strategy
   behind either, absent from `SUPPORTED_PAYMENT_METHODS`.
 - **Partial refunds**, saved cards, and 3-D Secure step-up handling beyond what

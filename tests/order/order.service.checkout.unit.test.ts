@@ -47,7 +47,11 @@ vi.mock("../../src/modules/address/address.service", () => ({
 }));
 
 vi.mock("../../src/modules/payment/payment.service", () => ({
-  paymentService: { processPayment: vi.fn(), initiatePayment: vi.fn() },
+  paymentService: {
+    processPayment: vi.fn(),
+    initiatePayment: vi.fn(),
+    refundPayments: vi.fn(),
+  },
 }));
 
 vi.mock("../../src/modules/transaction/transaction.service", () => ({

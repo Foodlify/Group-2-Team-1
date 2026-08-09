@@ -46,6 +46,7 @@ vi.mock("../../src/modules/payment/payment.service", () => ({
     processPayment: vi.fn(),
     // Cash has no gateway phase; armed in `beforeEach` to return nothing.
     initiatePayment: vi.fn(),
+    refundPayments: vi.fn(),
   },
 }));
 

@@ -8,6 +8,7 @@ import { transactionService } from "../transaction/transaction.service";
 import { notificationService } from "../notification/notification.service";
 import type { TimelineEntry } from "../order/order.model";
 import { getStripe } from "./stripe.client";
+import { StripeCardStrategy } from "./stripe.strategy";
 import env from "../../config/env";
 
 /**
@@ -77,6 +78,14 @@ class PaymentWebhookService {
       case "checkout.session.async_payment_failed":
         await this.markUnpaid(event.data.object);
         break;
+      // Card refunds usually settle instantly, but Stripe may leave one
+      // `pending` and finish it later. These events are what close that gap —
+      // without them such a refund would sit PENDING in our ledger forever
+      // even though the customer has their money back.
+      case "refund.updated":
+      case "refund.failed":
+        await this.settleRefundEvent(event.data.object);
+        break;
       default:
         // Not an error. Stripe sends whatever the endpoint is subscribed to,
         // and unknown types must still be acknowledged or it keeps retrying.
@@ -98,7 +107,22 @@ class PaymentWebhookService {
       // Already settled by an earlier delivery of this same event.
       if (!pending) return "already-settled" as const;
 
-      await transactionService.updateStatus(pending.id, "SUCCESS", tx);
+      // The PaymentIntent id is captured here because it is the only thing
+      // Stripe will refund against later — `externalRef` holds the Checkout
+      // Session id, which its refund API does not accept.
+      await transactionService.recordGatewayOutcome(
+        pending.id,
+        "SUCCESS",
+        {
+          metadata: {
+            gateway: "stripe",
+            stage: "paid",
+            sessionId: session.id,
+            paymentIntentId: this.readPaymentIntentId(session),
+          },
+        },
+        tx,
+      );
 
       // Conditional on the order still being PENDING, so this cannot drag an
       // order an admin has already advanced back to CONFIRMED. The payment is
@@ -171,7 +195,49 @@ class PaymentWebhookService {
     });
   }
 
+  /**
+   * Brings a refund's ledger row into line with the gateway's own view.
+   *
+   * Located by the refund id we stored when we created it, so an event for a
+   * refund issued outside this system (from the Stripe dashboard, say) finds
+   * nothing and is ignored rather than guessed at. Re-applying the same status
+   * is harmless, which is what makes this safe to redeliver.
+   */
+  private async settleRefundEvent(refund: Stripe.Refund): Promise<void> {
+    const existing = await transactionService.findByExternalRef(refund.id);
+    if (!existing || existing.type !== "REFUND") {
+      logger.info("Stripe refund event did not match a refund we issued", {
+        refundId: refund.id,
+      });
+      return;
+    }
+
+    const status = StripeCardStrategy.toTransactionStatus(refund.status);
+    if (existing.status === status) return;
+
+    await transactionService.recordGatewayOutcome(existing.id, status, {
+      metadata: {
+        gateway: "stripe",
+        refundId: refund.id,
+        refundStatus: refund.status,
+        failureReason: refund.failure_reason ?? null,
+      },
+    });
+    logger.info("Refund status updated by Stripe", {
+      transactionId: existing.id,
+      orderId: existing.orderId,
+      status,
+    });
+  }
+
   // ─── Helpers ──────────────────────────────────────────────
+
+  /** The PaymentIntent id from a session, whether expanded or not. */
+  private readPaymentIntentId(session: Stripe.Checkout.Session): string | null {
+    const intent = session.payment_intent;
+    if (!intent) return null;
+    return typeof intent === "string" ? intent : intent.id;
+  }
 
   /**
    * Our order id, as attached to the session when it was created. Without it

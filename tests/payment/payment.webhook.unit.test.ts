@@ -49,6 +49,8 @@ vi.mock("../../src/modules/transaction/transaction.service", () => ({
   transactionService: {
     findPendingGatewayPayment: vi.fn(),
     updateStatus: vi.fn(),
+    recordGatewayOutcome: vi.fn(),
+    findByExternalRef: vi.fn(),
   },
 }));
 
@@ -91,6 +93,9 @@ const signedEvent = (
 const session = {
   id: "cs_test_1",
   object: "checkout.session",
+  // Stripe sends this unexpanded, as a bare id — the shape the handler has to
+  // cope with in production.
+  payment_intent: "pi_test_1",
   metadata: { orderId: "order_1", transactionId: "txn_1" },
 };
 
@@ -196,9 +201,26 @@ describe("a completed checkout settles the payment and confirms the order", () =
   it("marks the pending payment SUCCESS", async () => {
     await paymentWebhookService.handleEvent(completed);
 
-    expect(mockedTransactions.updateStatus).toHaveBeenCalledWith(
+    expect(mockedTransactions.recordGatewayOutcome).toHaveBeenCalledWith(
       "txn_1",
       "SUCCESS",
+      expect.anything(),
+      tx,
+    );
+  });
+
+  it("captures the PaymentIntent id, without which no refund is possible", async () => {
+    await paymentWebhookService.handleEvent(completed);
+
+    // `externalRef` holds the Checkout Session id, which Stripe's refund API
+    // rejects. If this is not stored now, refunding later means an extra
+    // round-trip to look it up — or, if the session is gone, nothing at all.
+    expect(mockedTransactions.recordGatewayOutcome).toHaveBeenCalledWith(
+      "txn_1",
+      "SUCCESS",
+      expect.objectContaining({
+        metadata: expect.objectContaining({ paymentIntentId: "pi_test_1" }),
+      }),
       tx,
     );
   });
@@ -222,7 +244,8 @@ describe("a completed checkout settles the payment and confirms the order", () =
 
     // Both writes must land together: a SUCCESS payment on an order still
     // showing PENDING is a customer who paid and sees nothing happen.
-    expect(mockedTransactions.updateStatus).toHaveBeenCalledWith(
+    expect(mockedTransactions.recordGatewayOutcome).toHaveBeenCalledWith(
+      expect.anything(),
       expect.anything(),
       expect.anything(),
       tx,
@@ -252,9 +275,10 @@ describe("a completed checkout settles the payment and confirms the order", () =
     await paymentWebhookService.handleEvent(completed);
 
     // Money arriving is a fact regardless of the order's status.
-    expect(mockedTransactions.updateStatus).toHaveBeenCalledWith(
+    expect(mockedTransactions.recordGatewayOutcome).toHaveBeenCalledWith(
       "txn_1",
       "SUCCESS",
+      expect.anything(),
       tx,
     );
     expect(mockedNotifications.notifyOrderStatusChanged).not.toHaveBeenCalled();
@@ -267,7 +291,7 @@ describe("a completed checkout settles the payment and confirms the order", () =
       data: { object: { id: "cs_x", metadata: {} } },
     } as never);
 
-    expect(mockedTransactions.updateStatus).not.toHaveBeenCalled();
+    expect(mockedTransactions.recordGatewayOutcome).not.toHaveBeenCalled();
   });
 });
 
@@ -285,7 +309,7 @@ describe("redelivery cannot apply the same event twice", () => {
 
     await paymentWebhookService.handleEvent(completed);
 
-    expect(mockedTransactions.updateStatus).not.toHaveBeenCalled();
+    expect(mockedTransactions.recordGatewayOutcome).not.toHaveBeenCalled();
     expect(mockedOrders.appendTimelineEntry).not.toHaveBeenCalled();
     expect(mockedNotifications.notifyOrderStatusChanged).not.toHaveBeenCalled();
   });
@@ -367,6 +391,95 @@ describe("an unpaid checkout releases what the order was holding", () => {
 });
 
 // ═══════════════════════════════════════════════════════════
+describe("refund events keep our ledger honest", () => {
+  const refundEvent = (status: string, id = "re_1") =>
+    ({
+      id: "evt_r",
+      type: "refund.updated",
+      data: { object: { id, object: "refund", status } },
+    }) as never;
+
+  const pendingRefund = {
+    id: "txn_refund_1",
+    type: "REFUND",
+    status: "PENDING",
+    orderId: "order_1",
+  };
+
+  it("marks a pending refund SUCCESS once Stripe says it succeeded", async () => {
+    mockedTransactions.findByExternalRef.mockResolvedValue(
+      pendingRefund as never,
+    );
+
+    await paymentWebhookService.handleEvent(refundEvent("succeeded"));
+
+    expect(mockedTransactions.recordGatewayOutcome).toHaveBeenCalledWith(
+      "txn_refund_1",
+      "SUCCESS",
+      expect.anything(),
+    );
+  });
+
+  it("marks it FAILED when the refund fails — money still owed", async () => {
+    mockedTransactions.findByExternalRef.mockResolvedValue(
+      pendingRefund as never,
+    );
+
+    await paymentWebhookService.handleEvent(refundEvent("failed"));
+
+    expect(mockedTransactions.recordGatewayOutcome).toHaveBeenCalledWith(
+      "txn_refund_1",
+      "FAILED",
+      expect.anything(),
+    );
+  });
+
+  it("leaves it PENDING while Stripe still says pending", async () => {
+    mockedTransactions.findByExternalRef.mockResolvedValue(
+      pendingRefund as never,
+    );
+
+    await paymentWebhookService.handleEvent(refundEvent("pending"));
+
+    // Already PENDING — writing the same status again is pointless churn.
+    expect(mockedTransactions.recordGatewayOutcome).not.toHaveBeenCalled();
+  });
+
+  it("ignores a refund issued outside this system", async () => {
+    // Someone refunded from the Stripe dashboard: no matching ledger row.
+    mockedTransactions.findByExternalRef.mockResolvedValue(null);
+
+    await paymentWebhookService.handleEvent(refundEvent("succeeded", "re_x"));
+
+    expect(mockedTransactions.recordGatewayOutcome).not.toHaveBeenCalled();
+  });
+
+  it("refuses to treat a payment row as a refund", async () => {
+    // An externalRef collision must not let a refund event flip a PAYMENT.
+    mockedTransactions.findByExternalRef.mockResolvedValue({
+      id: "txn_1",
+      type: "ORDER_PAYMENT",
+      status: "SUCCESS",
+    } as never);
+
+    await paymentWebhookService.handleEvent(refundEvent("failed"));
+
+    expect(mockedTransactions.recordGatewayOutcome).not.toHaveBeenCalled();
+  });
+
+  it("is safe to redeliver once the refund has settled", async () => {
+    mockedTransactions.findByExternalRef.mockResolvedValue({
+      ...pendingRefund,
+      status: "SUCCESS",
+    } as never);
+
+    await paymentWebhookService.handleEvent(refundEvent("succeeded"));
+
+    expect(mockedTransactions.recordGatewayOutcome).not.toHaveBeenCalled();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
 describe("unrecognised events", () => {
   it("acknowledges without touching anything", async () => {
     await expect(
@@ -377,7 +490,7 @@ describe("unrecognised events", () => {
       } as never),
     ).resolves.toBeUndefined();
 
-    expect(mockedTransactions.updateStatus).not.toHaveBeenCalled();
+    expect(mockedTransactions.recordGatewayOutcome).not.toHaveBeenCalled();
     expect(mockedOrderService.cancelOrder).not.toHaveBeenCalled();
   });
 });

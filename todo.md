@@ -58,10 +58,16 @@ first attempt and only showed it under that check.
   payment, real webhooks, plus the replay and expiry paths and two forged-call
   rejections. Thirteen checks, all passing — see "What the live run proved" in
   `docs/PAYMENTS.md`.
-- **Refunds do not reach the gateway.** Cancelling a paid card order writes a
-  `REFUND` row to our ledger but never calls Stripe's refund API, so the money
-  is not actually returned. **This must be built before the card path touches
-  real money.** Cash is unaffected.
+- ~~**Refunds do not reach the gateway.**~~ — done (2026-08-09). Cancelling a
+  paid card order now refunds through Stripe. The `REFUND` row starts PENDING
+  and is settled by the gateway's answer, so the ledger never claims money moved
+  before it did. Verified live: 91.00 EGP refunded and confirmed against
+  Stripe's own record, plus the PaymentIntent-fallback and failed-refund paths.
+- **A `FAILED` REFUND row is money still owed, and nothing chases it.** There is
+  no retry and no admin endpoint — it needs a human and the Stripe dashboard.
+  Worth watching with
+  `select * from "Transaction" where type='REFUND' and status in ('FAILED','PENDING')`.
+- **Partial refunds** are not supported; a cancellation always refunds in full.
 - **Abandoned card orders depend on `checkout.session.expired`.** Stock is
   reserved at checkout, and that 24-hour event is what releases it. If the
   webhook endpoint is ever unreachable for a long stretch, abandoned checkouts

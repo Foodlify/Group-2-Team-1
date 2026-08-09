@@ -28,6 +28,17 @@ export interface PaymentInitiation {
   metadata?: Prisma.InputJsonValue;
 }
 
+/**
+ * What returning the money produced. `status` is the REFUND transaction's new
+ * state — gateways may settle a refund asynchronously, so PENDING is a real
+ * outcome here and not a failure.
+ */
+export interface RefundOutcome {
+  status: TransactionStatus;
+  externalRef?: string;
+  metadata?: Prisma.InputJsonValue;
+}
+
 export interface PaymentStrategy {
   readonly method: PaymentMethod;
 
@@ -54,4 +65,20 @@ export interface PaymentStrategy {
     amount: number,
     context: PaymentContextData,
   ): Promise<PaymentInitiation>;
+
+  /**
+   * Returns money the gateway is holding. Like `initiate`, this runs AFTER the
+   * cancelling transaction has committed — for the same reason, and with the
+   * same consequence: the ledger's REFUND row is written first as PENDING and
+   * only becomes SUCCESS once the gateway confirms.
+   *
+   * Strategies without a gateway omit it. Cash never reaches here anyway: an
+   * order can only be cancelled while PENDING, and a cash payment is not
+   * settled until DELIVERED, so there is never collected cash to return.
+   */
+  refund?(
+    refundTransaction: TransactionModel,
+    originalPayment: TransactionModel,
+    amount: number,
+  ): Promise<RefundOutcome>;
 }
