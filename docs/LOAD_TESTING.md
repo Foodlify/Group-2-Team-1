@@ -10,19 +10,20 @@ plans, the seed and the analyser are in [`perf/`](../perf) and re-runnable.
 
 ## Summary
 
-|                                        | Result                                          |
-| -------------------------------------- | ----------------------------------------------- |
-| Order flow, 500 concurrent             | **1000/1000 succeeded**, p95 249 ms, ~102 req/s |
-| Stock contention, 500 racing for 50    | **exactly 50 sold**, 450 clean 409s, 0 × 5xx    |
-| Reproduced on a second fresh database  | identical correctness, same order of magnitude  |
-| **Login, 500 concurrent** (before fix) | **collapsed — 23.6% success, p50 35.5 s**       |
+|                                       | Result                                          |
+| ------------------------------------- | ----------------------------------------------- |
+| Order flow, 500 concurrent            | **1000/1000 succeeded**, p95 249 ms, ~102 req/s |
+| Stock contention, 500 racing for 50   | **exactly 50 sold**, 450 clean 409s, 0 × 5xx    |
+| Reproduced on a second fresh database | identical correctness, same order of magnitude  |
+| Login, 500 concurrent — **before**    | collapsed — 23.6% success, p50 35.5 s           |
+| Login, 500 concurrent — **after**     | **500/500 succeeded**, p50 786 ms, ~46 logins/s |
 
-The headline is the last row: the order path was comfortably fast while **login
-was the system's ceiling**, by roughly two orders of magnitude. Diagnosing it is
-Finding 1 below, and it led to a fix — hashing moved off the event loop, cutting
-the stall it caused from 1000 ms to 6 ms. The 23.6% figure is kept here as the
-measurement that found the problem, not as current behaviour; the login plan has
-not been re-run since.
+Login used to be the system's ceiling by roughly two orders of magnitude, and
+the last two rows are the same test either side of the fix. Diagnosing it is
+Finding 1; the short version is that hashing ran on the event loop, so every
+other request queued behind it. The 23.6% row is kept because it is the
+measurement that found the problem — deleting it would hide the only evidence
+that any of this mattered.
 
 ---
 
@@ -118,6 +119,39 @@ on the same machine, cost 12:
 The last row is the point. A single login still costs the same CPU; it no longer
 takes the process down with it while it spends it.
 
+### Re-measured under JMeter — the same 500 concurrent logins
+
+`perf/plans/03-login.jmx`, 500 threads, same machine, same seed. The plan is new:
+the original login-included plan was replaced when the order plans were
+redesigned, so login had no re-runnable plan of its own until now.
+
+| Run                                  | ok %      | p50        | max       | req/s    |
+| ------------------------------------ | --------- | ---------- | --------- | -------- |
+| **Before** (`bcryptjs`, on the loop) | **23.6%** | 35 556 ms  | 46 329 ms | —        |
+| After (`bcrypt`, default 4 threads)  | **100%**  | 9 106 ms   | 17 907 ms | 18.1     |
+| Reproduced                           | 100%      | 9 025 ms   | 17 730 ms | 18.2     |
+| After, `UV_THREADPOOL_SIZE=12`       | **100%**  | **786 ms** | 1 131 ms  | **46.0** |
+| Same, 1-second ramp-up               | 100%      | 5 289 ms   | 10 039 ms | 46.5     |
+
+And in the server's own log, across 2000 logins: **0 pool timeouts, 0 transaction
+failures, 0 errors.** The earlier run logged 499 pool timeouts and had 181
+requests refused at the socket before they reached the application at all.
+
+**`UV_THREADPOOL_SIZE` is the second half of the fix and costs nothing.** libuv
+defaults its thread pool to 4 threads regardless of the machine, so on the
+12-core host used here the native binding was hashing on a third of the
+available cores. Raising it to the core count took throughput from 18 to 46
+logins/second and the p50 from 9 seconds to under one.
+
+That 46/s is the real ceiling, not the test's arrival rate: a 1-second ramp-up
+delivers all 500 at once and produces the same 46.5 req/s, with the p50 rising
+to 5.3 s purely because everything queues at the start. It also lands almost
+exactly where the arithmetic predicts — ~4 logins/second/core × 12 cores.
+
+Set it as a real environment variable on the container or service, alongside
+`NODE_ENV`; libuv reads it as the process starts, which is earlier than any
+`.env` file is loaded.
+
 **No password migration was needed.** Both libraries emit `$2b$` hashes and each
 verifies the other's — checked in both directions, and pinned by a committed
 `bcryptjs` hash in `tests/auth/password.helper.unit.test.ts` so a future upgrade
@@ -150,8 +184,17 @@ different 20-character tail.
 This is a property of the algorithm, not of either library — the native binding
 truncates identically — so the move above did not fix it. It is now capped at
 the validation layer, in **bytes rather than characters**: 40 Arabic letters are
-under any character limit and over 72 bytes. Login is deliberately left uncapped
-so accounts created before the cap are not locked out.
+under any character limit and over 72 bytes, which is exactly the case a
+`.max(72)` on string length would wave through.
+
+The cap covers **every** path, login included. Leaving login open is the usual
+choice, because rejecting a long password there would lock out an account
+created before the rule existed. That trade-off does not apply here: there is no
+production data, the accounts were rebuilt under the new rules, and every path
+that sets a password now enforces the limit — so a stored password longer than
+72 bytes cannot exist, and refusing one at the door costs nobody an account.
+Login keeps a minimum of 1 character rather than 8: restating the registration
+policy there would tell an attacker which candidates are not worth trying.
 
 ### Why the plans were then redesigned
 

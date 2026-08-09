@@ -24,14 +24,29 @@ export const ROLES = ["CUSTOMER", "ADMIN"] as const;
  * characters is already over 72 bytes, so it never rejects anything the byte
  * check would accept.
  */
-const newPasswordSchema = () =>
+const passwordSchema = (minLength: number) =>
   z
     .string()
-    .min(8)
+    .min(minLength)
     .max(MAX_PASSWORD_BYTES)
     .refine((value) => Buffer.byteLength(value, "utf8") <= MAX_PASSWORD_BYTES, {
       message: `Password must be at most ${MAX_PASSWORD_BYTES} bytes`,
     });
+
+/** For every endpoint that *sets* a password. */
+const newPasswordSchema = () => passwordSchema(8);
+
+/**
+ * For the two login endpoints.
+ *
+ * The cap applies here too. Every path that sets a password now enforces it, so
+ * a stored password longer than 72 bytes cannot exist — which makes rejecting
+ * one at the door free, and closes the case where such a password is submitted
+ * and quietly matched on its prefix. The minimum stays at 1: login must not
+ * restate the registration policy, or it tells an attacker which passwords are
+ * worth trying.
+ */
+const loginPasswordSchema = () => passwordSchema(1);
 
 // ═══════════════════════════════════════════════════════════════
 // Request Schemas (inputs)
@@ -60,22 +75,17 @@ export const RegisterRequestSchema = z
     description: "Customer registration payload",
   });
 
-// Login deliberately does NOT apply the 72-byte cap. Accounts created before it
-// may hold a longer password, and rejecting it here would lock them out of an
-// account they can still sign into perfectly well — bcrypt compares the same 72
-// bytes either way. The cap belongs where a password is *set*, not where it is
-// checked.
 export const LoginRequestSchema = z
   .object({
     email: z.email().meta({ example: "jane@example.com" }),
-    password: z.string().min(1).meta({ example: "Password123!" }),
+    password: loginPasswordSchema().meta({ example: "Password123!" }),
   })
   .meta({ id: "LoginRequest", description: "Customer login payload" });
 
 export const AdminLoginRequestSchema = z
   .object({
     email: z.email().meta({ example: "admin@example.com" }),
-    password: z.string().min(1).meta({ example: "Admin123!" }),
+    password: loginPasswordSchema().meta({ example: "Admin123!" }),
   })
   .meta({
     id: "AdminLoginRequest",
