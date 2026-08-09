@@ -4,9 +4,34 @@ import {
   PaginationMetaSchema,
   PaginationQuerySchema,
 } from "../../shared/schemas/pagination.schema";
+import { MAX_PASSWORD_BYTES } from "../../shared/auth/password.helper";
 
 // Role values kept as a tuple for z.enum (mirrors the Prisma `Role` enum).
 export const ROLES = ["CUSTOMER", "ADMIN"] as const;
+
+/**
+ * A password the hasher will actually read in full.
+ *
+ * bcrypt reads at most 72 **bytes** and discards the rest without error, so a
+ * longer password silently authenticates on its prefix alone — the tail is
+ * decoration. The cap has to live here because nothing downstream can report
+ * the problem.
+ *
+ * Bytes, not characters: an Arabic letter costs two bytes and an emoji four, so
+ * a `.max(72)` on string length would wave through a 72-character password
+ * weighing 144 bytes and hand back the same silent truncation. The `.max()`
+ * below is documentation for the OpenAPI schema — every string over 72
+ * characters is already over 72 bytes, so it never rejects anything the byte
+ * check would accept.
+ */
+const newPasswordSchema = () =>
+  z
+    .string()
+    .min(8)
+    .max(MAX_PASSWORD_BYTES)
+    .refine((value) => Buffer.byteLength(value, "utf8") <= MAX_PASSWORD_BYTES, {
+      message: `Password must be at most ${MAX_PASSWORD_BYTES} bytes`,
+    });
 
 // ═══════════════════════════════════════════════════════════════
 // Request Schemas (inputs)
@@ -21,10 +46,10 @@ export const RegisterRequestSchema = z
     email: z
       .email()
       .meta({ description: "Unique email", example: "jane@example.com" }),
-    password: z
-      .string()
-      .min(8)
-      .meta({ description: "Min 8 characters", example: "Password123!" }),
+    password: newPasswordSchema().meta({
+      description: "8 characters minimum, 72 bytes maximum",
+      example: "Password123!",
+    }),
     phone: z
       .string()
       .min(6)
@@ -35,6 +60,11 @@ export const RegisterRequestSchema = z
     description: "Customer registration payload",
   });
 
+// Login deliberately does NOT apply the 72-byte cap. Accounts created before it
+// may hold a longer password, and rejecting it here would lock them out of an
+// account they can still sign into perfectly well — bcrypt compares the same 72
+// bytes either way. The cap belongs where a password is *set*, not where it is
+// checked.
 export const LoginRequestSchema = z
   .object({
     email: z.email().meta({ example: "jane@example.com" }),
@@ -56,7 +86,7 @@ export const CreateUserRequestSchema = z
   .object({
     name: z.string().min(2),
     email: z.email(),
-    password: z.string().min(8),
+    password: newPasswordSchema(),
     role: z.enum(ROLES).meta({ description: "Account role", example: "ADMIN" }),
     phone: z.string().min(6).optional().meta({
       description:
@@ -178,10 +208,10 @@ export const ResetPasswordRequestSchema = z
         description: "The 6-digit code from the email",
         example: "123456",
       }),
-    newPassword: z
-      .string()
-      .min(8)
-      .meta({ description: "Min 8 characters", example: "NewPassword123!" }),
+    newPassword: newPasswordSchema().meta({
+      description: "8 characters minimum, 72 bytes maximum",
+      example: "NewPassword123!",
+    }),
   })
   .meta({
     id: "ResetPasswordRequest",
