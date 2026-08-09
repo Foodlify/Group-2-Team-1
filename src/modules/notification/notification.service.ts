@@ -1,4 +1,5 @@
 import logger from "../../config/logger";
+import { describeError } from "../../shared/errors/describe";
 import { mailer } from "../../shared/mail/mailer";
 import { customerRepository } from "../customer/customer.repository";
 
@@ -57,7 +58,13 @@ class NotificationService {
     try {
       await send();
     } catch (error) {
-      logger.error("Order notification failed", { event, orderId, error });
+      // `{ error }` alone logs `{}` for a plain Error, and the transport's
+      // reason is the only thing that makes this line actionable.
+      logger.error("Order notification failed", {
+        event,
+        orderId,
+        ...describeError(error),
+      });
     }
   }
 }
