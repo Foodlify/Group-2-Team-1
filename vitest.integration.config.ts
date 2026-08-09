@@ -40,6 +40,13 @@ export default defineConfig({
       NODE_ENV: "test",
       DATABASE_URL: url,
       JWT_SECRET: "integration-secret",
+      // Blanked for the same reason the unit config blanks them: whether a
+      // developer happens to have Stripe or SMTP keys in `.env` must not
+      // change what the suite asserts. A test that passes only on the machine
+      // that configured a provider is worse than no test.
+      STRIPE_SECRET_KEY: "",
+      STRIPE_WEBHOOK_SECRET: "",
+      SMTP_HOST: "",
     },
   },
 });
