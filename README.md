@@ -30,6 +30,7 @@ featuring OpenAPI 3.1 documentation via Scalar and Swagger UI.
 - [Testing](#testing)
 - [Load Testing](#load-testing)
 - [Payments](#payments)
+- [Dashboard & Reports](#dashboard--reports)
 - [Adding a New Feature](#adding-a-new-feature)
 - [Continuous Integration](#continuous-integration)
 - [Available Scripts](#available-scripts)
@@ -636,6 +637,30 @@ row is money still owed and someone has to see it.
 > Checkout Sessions, real card payments, real refunds confirmed against Stripe's
 > own records, plus replayed events, an expired session releasing its stock, and
 > the failed-refund path. See `docs/PAYMENTS.md`.
+
+---
+
+## Dashboard & Reports
+
+The seventh official module — three ADMIN-only read endpoints, no new tables.
+Full write-up: **[docs/DASHBOARD.md](docs/DASHBOARD.md)**.
+
+| Endpoint                                 | Answers                                          |
+| ---------------------------------------- | ------------------------------------------------ |
+| `GET /api/v1/dashboard/overview`         | Restaurant / customer / order counters + revenue |
+| `GET /api/v1/dashboard/transactions`     | Daily or monthly money over a window             |
+| `GET /api/v1/dashboard/restaurants/{id}` | The same, scoped to one restaurant               |
+
+Four rules decide whether these numbers are true, each explained in the
+document: **refunds are subtracted, never added** (the ledger stores what moved,
+not which direction); **only `SUCCESS` counts** (a pending payment is a checkout
+page, not money); **money is summed in SQL as `Decimal`** (three payments of
+`19.99` less a `19.99` refund returns `39.98`, where floats give
+`39.980000000000004`); and **soft-deleted restaurants are excluded**.
+
+> Buckets and the "today"/"this month" counters are **UTC** — `createdAt` has no
+> stored time zone. The response says so explicitly. For Cairo that means a day
+> starts at 02:00/03:00 local; the trade-off is recorded in `todo.md`.
 
 ---
 
