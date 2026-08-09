@@ -4,6 +4,7 @@ import cors from "cors";
 import helmet from "helmet";
 import { StatusCodes } from "http-status-codes";
 import router from "./routes/index";
+import { paymentWebhookRouter } from "./modules/payment/payment.routes";
 import { errorMiddleware } from "./middlewares/error.middleware";
 import { apiLimiter } from "./middlewares/rateLimit.middleware";
 import logger from "./config/logger";
@@ -27,6 +28,11 @@ app.use(
     credentials: true,
   }),
 );
+// The Stripe webhook is mounted BEFORE the JSON parser and outside the
+// rate-limited `/api/v1` router — see the note in payment.routes.ts. Its
+// signature check needs the raw bytes, which `express.json()` would consume.
+app.use("/api/v1/payments/stripe/webhook", paymentWebhookRouter);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());

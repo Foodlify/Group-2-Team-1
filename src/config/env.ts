@@ -48,6 +48,31 @@ const EnvSchema = z
     SMTP_PASS: z.string().optional(),
     // Sender address for outgoing mail; falls back to SMTP_USER.
     MAIL_FROM: z.string().trim().optional(),
+    // ── Stripe (card payments) ── all optional: when STRIPE_SECRET_KEY is
+    // unset the card strategy is never registered, so `CREDIT_CARD` is absent
+    // from the advertised payment methods and the API stays honest about what
+    // it can actually process. Same "configure it or it doesn't exist" rule the
+    // mailer and the cache follow.
+    STRIPE_SECRET_KEY: z.string().trim().optional(),
+    // Signs the webhook payload. Without it we cannot tell a genuine Stripe
+    // callback from anyone on the internet POSTing to the endpoint, so the
+    // webhook refuses every request rather than trusting the body.
+    STRIPE_WEBHOOK_SECRET: z.string().trim().optional(),
+    // Where Stripe returns the customer after the hosted checkout page.
+    STRIPE_SUCCESS_URL: z.preprocess(
+      (value) =>
+        value === undefined || value === ""
+          ? "http://localhost:3000/payment/success"
+          : value,
+      z.url(),
+    ),
+    STRIPE_CANCEL_URL: z.preprocess(
+      (value) =>
+        value === undefined || value === ""
+          ? "http://localhost:3000/payment/cancel"
+          : value,
+      z.url(),
+    ),
     // ── Redis (cache) ── optional: unset means caching is simply disabled,
     // the app still serves everything from PostgreSQL.
     REDIS_URL: z.string().trim().optional(),
@@ -73,6 +98,18 @@ const EnvSchema = z
     ),
   })
   .superRefine((data, ctx) => {
+    // Not production-only: a card payment whose webhook can never be verified
+    // stays PENDING forever and the reserved stock is never released. Better to
+    // refuse to boot than to take money we cannot confirm.
+    if (data.STRIPE_SECRET_KEY && !data.STRIPE_WEBHOOK_SECRET) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["STRIPE_WEBHOOK_SECRET"],
+        message:
+          "STRIPE_WEBHOOK_SECRET is required when STRIPE_SECRET_KEY is set",
+      });
+    }
+
     if (data.NODE_ENV !== "production") return;
     // Fail fast at boot rather than silently shipping insecure defaults.
     if (!data.JWT_REFRESH_SECRET) {

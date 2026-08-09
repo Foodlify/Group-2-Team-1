@@ -1,5 +1,8 @@
 import { AppError } from "../../middlewares/error.middleware";
+import logger from "../../config/logger";
 import { orderErrors } from "../../shared/exceptions/order.errors";
+import { paymentErrors } from "../../shared/exceptions/payment.errors";
+import { describeError } from "../../shared/errors/describe";
 import { addressService } from "../address/address.service";
 import { menuItemService } from "../menuItem/menuItem.service";
 import { cartService } from "../cart/cart.service";
@@ -7,7 +10,10 @@ import { paymentService } from "../payment/payment.service";
 import { orderRepository } from "./order.repository";
 import { orderItemRepository } from "../orderItem/orderItem.repository";
 import { notificationService } from "../notification/notification.service";
-import { transactionService } from "../transaction/transaction.service";
+import {
+  transactionService,
+  type PendingGatewayRefund,
+} from "../transaction/transaction.service";
 import { VALID_TRANSITIONS, type OrderStatusValue } from "./order.status";
 import {
   parseTimeline,
@@ -19,6 +25,7 @@ import { Prisma } from "../../generated/prisma/client";
 import type {
   OrderModel,
   OrderItemsModel,
+  TransactionModel,
 } from "../../generated/prisma/models";
 import type {
   PlaceOrderInput,
@@ -121,7 +128,7 @@ class OrderService {
         tx,
       );
 
-      await paymentService.processPayment(
+      const transaction = await paymentService.processPayment(
         input.paymentMethod,
         totalAmount.toNumber(),
         { orderId: order.id, customerId, currency: "EGP" },
@@ -130,11 +137,22 @@ class OrderService {
 
       await cartService.clearCart({ customerId }, tx);
 
-      return { order, createdItems };
+      return { order, createdItems, transaction, totalAmount };
     });
 
     // Build response directly from in-memory objects — no extra DB roundtrip
     const response = this.buildOrderResponse(result.order, result.createdItems);
+
+    // Gateway hand-off happens HERE, outside the transaction. Doing it inside
+    // would hold the cart's row lock and a pooled connection for the whole
+    // HTTPS round-trip to the provider. Cash payments no-op through this.
+    const paymentUrl = await this.initiatePaymentOrCancel(
+      customerId,
+      input.paymentMethod,
+      result,
+    );
+    if (paymentUrl) response.paymentUrl = paymentUrl;
+
     // After the commit: the customer is only told about state that persisted.
     await notificationService.notifyOrderPlaced(customerId, {
       id: response.id,
@@ -146,6 +164,57 @@ class OrderService {
       })),
     });
     return response;
+  }
+
+  /**
+   * Runs the gateway hand-off for a just-committed order and returns the URL
+   * the customer must visit, if the method needs one.
+   *
+   * If the hand-off fails there is a committed order holding reserved stock
+   * that can never be paid for, so it is cancelled — which releases the stock
+   * and marks the pending payment FAILED through the existing side-effect
+   * path — and the customer gets a 402 rather than an order they cannot
+   * complete.
+   */
+  private async initiatePaymentOrCancel(
+    customerId: string,
+    method: PlaceOrderInput["paymentMethod"],
+    result: {
+      order: { id: string };
+      transaction: TransactionModel;
+      totalAmount: Prisma.Decimal;
+    },
+  ): Promise<string | undefined> {
+    try {
+      const initiation = await paymentService.initiatePayment(
+        method,
+        result.transaction,
+        result.totalAmount.toNumber(),
+        { orderId: result.order.id, customerId, currency: "EGP" },
+      );
+      return initiation.redirectUrl;
+    } catch (error) {
+      logger.error("Payment initiation failed — cancelling the order", {
+        orderId: result.order.id,
+        method,
+        ...describeError(error),
+      });
+      try {
+        await this.cancelOrder(customerId, result.order.id);
+      } catch (cancelError) {
+        // Logged, not thrown: the customer still needs the payment error, and
+        // an order stuck PENDING with no gateway session is recoverable by the
+        // cancel endpoint. Losing the 402 behind a cleanup failure is not.
+        logger.error("Failed to cancel the order after a payment failure", {
+          orderId: result.order.id,
+          ...describeError(cancelError),
+        });
+      }
+      throw new AppError(
+        paymentErrors.PAYMENT_FAILED.message,
+        paymentErrors.PAYMENT_FAILED.statusCode,
+      );
+    }
   }
 
   // ─── Get My Orders (paginated) ────────────────────────────────
@@ -228,7 +297,7 @@ class OrderService {
     customerId: string,
     orderId: string,
   ): Promise<OrderResponse> {
-    const response = await orderRepository.transaction(async (tx) => {
+    const result = await orderRepository.transaction(async (tx) => {
       const order = await orderRepository.findById(orderId, tx);
       if (!order) {
         throw new AppError(
@@ -260,22 +329,34 @@ class OrderService {
         );
       }
 
-      await this.applyStatusSideEffects(orderId, "CANCELLED", tx);
+      const pendingRefunds = await this.applyStatusSideEffects(
+        orderId,
+        "CANCELLED",
+        tx,
+      );
 
       const items = await orderItemRepository.findManyByOrderIdWithTx(
         orderId,
         tx,
       );
 
-      return this.composeOrderResponse(order, updated, items);
+      return {
+        response: this.composeOrderResponse(order, updated, items),
+        pendingRefunds,
+      };
     });
+
+    // Gateway refunds run here, outside the transaction — an HTTPS call to the
+    // provider must not hold the order's row lock, and the refund's outcome is
+    // recorded on its own PENDING ledger row either way.
+    await paymentService.refundPayments(result.pendingRefunds);
 
     await notificationService.notifyOrderStatusChanged(
       customerId,
       orderId,
       "CANCELLED",
     );
-    return response;
+    return result.response;
   }
 
   // ─── Update Order Status (admin) ─────────────────────────────
@@ -283,7 +364,7 @@ class OrderService {
     orderId: string,
     input: UpdateStatusInput,
   ): Promise<OrderResponse> {
-    const response = await orderRepository.transaction(async (tx) => {
+    const result = await orderRepository.transaction(async (tx) => {
       const order = await orderRepository.findById(orderId, tx);
       if (!order) {
         throw new AppError(
@@ -318,22 +399,33 @@ class OrderService {
         );
       }
 
-      await this.applyStatusSideEffects(orderId, input.status, tx);
+      const pendingRefunds = await this.applyStatusSideEffects(
+        orderId,
+        input.status,
+        tx,
+      );
 
       const items = await orderItemRepository.findManyByOrderIdWithTx(
         orderId,
         tx,
       );
 
-      return this.composeOrderResponse(order, updated, items);
+      return {
+        response: this.composeOrderResponse(order, updated, items),
+        pendingRefunds,
+      };
     });
 
+    // Same rule as `cancelOrder`: the gateway call happens after the commit.
+    // An admin cancelling an order owes the customer their money just as much.
+    await paymentService.refundPayments(result.pendingRefunds);
+
     await notificationService.notifyOrderStatusChanged(
-      response.customerId,
+      result.response.customerId,
       orderId,
       input.status,
     );
-    return response;
+    return result.response;
   }
 
   // ─── Add Order Status Tracking ────────────────────────────────
@@ -371,13 +463,21 @@ class OrderService {
    * mapping so every path that changes status (cancel, admin update) stays
    * consistent. Statuses with no monetary effect are a no-op.
    */
+  /**
+   * Returns any REFUND rows that still have to be executed against a gateway;
+   * the caller must pass them to `paymentService.refundPayments` once the
+   * transaction has committed.
+   */
   private async applyStatusSideEffects(
     orderId: string,
     status: OrderStatusValue,
     tx: Prisma.TransactionClient,
-  ): Promise<void> {
+  ): Promise<PendingGatewayRefund[]> {
     if (status === "CANCELLED") {
-      await transactionService.refundOrderTransactions(orderId, tx);
+      const pendingRefunds = await transactionService.refundOrderTransactions(
+        orderId,
+        tx,
+      );
       // Units reserved at checkout go back on the shelf.
       const items = await orderItemRepository.findManyByOrderIdWithTx(
         orderId,
@@ -386,9 +486,13 @@ class OrderService {
       for (const item of items) {
         await menuItemService.releaseStock(item.menuItemId, item.quantity, tx);
       }
-    } else if (status === "DELIVERED") {
+      return pendingRefunds;
+    }
+
+    if (status === "DELIVERED") {
       await transactionService.settleOrderTransactions(orderId, tx);
     }
+    return [];
   }
 
   private async applyTimelineChange(

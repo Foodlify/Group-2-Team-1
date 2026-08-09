@@ -15,6 +15,13 @@ export default defineConfig({
       NODE_ENV: "test",
       DATABASE_URL: "postgresql://test:test@localhost:5432/test",
       JWT_SECRET: "vitest-secret",
+      // Blanked deliberately. `config/env` runs `dotenv.config()`, so without
+      // these a developer who has real Stripe keys in `.env` gets a different
+      // `SUPPORTED_PAYMENT_METHODS` — and a different test result — from one
+      // who does not. Tests that need the configured branch stub it themselves
+      // and re-import the module (see payment.service.unit.test.ts).
+      STRIPE_SECRET_KEY: "",
+      STRIPE_WEBHOOK_SECRET: "",
     },
     coverage: {
       provider: "v8",

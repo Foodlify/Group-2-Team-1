@@ -47,7 +47,11 @@ vi.mock("../../src/modules/address/address.service", () => ({
 }));
 
 vi.mock("../../src/modules/payment/payment.service", () => ({
-  paymentService: { processPayment: vi.fn() },
+  paymentService: {
+    processPayment: vi.fn(),
+    initiatePayment: vi.fn(),
+    refundPayments: vi.fn(),
+  },
 }));
 
 vi.mock("../../src/modules/transaction/transaction.service", () => ({
@@ -141,7 +145,9 @@ beforeEach(() => {
   // Re-armed every test on purpose: `clearAllMocks` resets recorded calls but
   // NOT implementations, so the `mockRejectedValue` used by the payment-failure
   // test below would otherwise leak into every test that follows it.
-  mockedPayment.processPayment.mockResolvedValue(undefined as never);
+  mockedPayment.processPayment.mockResolvedValue({ id: "txn_1" } as never);
+  // Cash has no gateway hand-off, so the post-commit phase returns nothing.
+  mockedPayment.initiatePayment.mockResolvedValue({});
 });
 
 describe("the cart is locked before anything is read from it", () => {
@@ -324,5 +330,21 @@ describe("after the commit", () => {
 
     expect(result.id).toBe("order_1");
     expect(mockedOrders.findByIdWithDetails).not.toHaveBeenCalled();
+  });
+
+  it("hands off to the gateway only after the transaction has closed", async () => {
+    await orderService.placeOrder("cust_1", input);
+
+    // The whole point of the two-phase split: an external HTTPS call inside
+    // the transaction would hold the cart's row lock for its full duration.
+    const clear = mockedCart.clearCart.mock.invocationCallOrder[0]!;
+    const initiate = mockedPayment.initiatePayment.mock.invocationCallOrder[0]!;
+    expect(clear).toBeLessThan(initiate);
+  });
+
+  it("omits paymentUrl when the method has no gateway hand-off", async () => {
+    const result = await orderService.placeOrder("cust_1", input);
+
+    expect(result.paymentUrl).toBeUndefined();
   });
 });
