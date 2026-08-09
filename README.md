@@ -29,6 +29,8 @@ featuring OpenAPI 3.1 documentation via Scalar and Swagger UI.
 - [Soft Delete & Auditing](#soft-delete--auditing)
 - [Testing](#testing)
 - [Load Testing](#load-testing)
+- [Payments](#payments)
+- [Dashboard & Reports](#dashboard--reports)
 - [Adding a New Feature](#adding-a-new-feature)
 - [Continuous Integration](#continuous-integration)
 - [Available Scripts](#available-scripts)
@@ -595,6 +597,70 @@ Two things the plans depend on, both explained there: they run with
 `NODE_ENV=test` so the rate limiter doesn't turn 480 of 500 customers into
 `429`s, and virtual users arrive pre-authenticated so the plans measure the
 order path instead of bcrypt.
+
+---
+
+## Payments
+
+Two methods behind one strategy interface. Full write-up:
+**[docs/PAYMENTS.md](docs/PAYMENTS.md)**.
+
+| Method        | Gateway | Settles when                          | Available                      |
+| ------------- | ------- | ------------------------------------- | ------------------------------ |
+| `CASH`        | none    | order reaches `DELIVERED`             | always                         |
+| `CREDIT_CARD` | Stripe  | Stripe's webhook confirms the payment | only when Stripe is configured |
+
+Placing a card order returns a `paymentUrl` — Stripe's hosted checkout page, so
+no card data ever reaches this server. The order stays `PENDING` until
+`POST /api/v1/payments/stripe/webhook` receives `checkout.session.completed`;
+the customer's browser reaching the success page confirms nothing. An unpaid
+session expiring cancels the order and releases the stock it was holding.
+
+```bash
+STRIPE_SECRET_KEY=sk_test_...      # unset ⇒ CREDIT_CARD is not offered at all
+STRIPE_WEBHOOK_SECRET=whsec_...    # required alongside it, or the app won't boot
+```
+
+Three things worth knowing before touching this code, each explained in the
+document: the gateway call runs **after** the checkout transaction commits (an
+HTTPS round-trip inside it would hold the cart's row lock and a pooled
+connection); stock is reserved at checkout rather than at payment; and every
+webhook handler is idempotent, because Stripe redelivers events for three days.
+
+Cancelling a paid card order **refunds it through Stripe**. The `REFUND` ledger
+row starts `PENDING` and only becomes `SUCCESS` when the gateway confirms, so
+the ledger never claims money moved before it did. A refund that fails does not
+fail the cancellation — it is recorded as `FAILED` with its reason, because that
+row is money still owed and someone has to see it.
+
+> Verified end-to-end against a live Stripe test account on 2026-08-09 — real
+> Checkout Sessions, real card payments, real refunds confirmed against Stripe's
+> own records, plus replayed events, an expired session releasing its stock, and
+> the failed-refund path. See `docs/PAYMENTS.md`.
+
+---
+
+## Dashboard & Reports
+
+The seventh official module — three ADMIN-only read endpoints, no new tables.
+Full write-up: **[docs/DASHBOARD.md](docs/DASHBOARD.md)**.
+
+| Endpoint                                 | Answers                                          |
+| ---------------------------------------- | ------------------------------------------------ |
+| `GET /api/v1/dashboard/overview`         | Restaurant / customer / order counters + revenue |
+| `GET /api/v1/dashboard/transactions`     | Daily or monthly money over a window             |
+| `GET /api/v1/dashboard/restaurants/{id}` | The same, scoped to one restaurant               |
+
+Four rules decide whether these numbers are true, each explained in the
+document: **refunds are subtracted, never added** (the ledger stores what moved,
+not which direction); **only `SUCCESS` counts** (a pending payment is a checkout
+page, not money); **money is summed in SQL as `Decimal`** (three payments of
+`19.99` less a `19.99` refund returns `39.98`, where floats give
+`39.980000000000004`); and **soft-deleted restaurants are excluded**.
+
+> Buckets and the "today"/"this month" counters are **UTC** — `createdAt` has no
+> stored time zone. The response says so explicitly. For Cairo that means a day
+> starts at 02:00/03:00 local; the trade-off is recorded in `todo.md`.
 
 ---
 

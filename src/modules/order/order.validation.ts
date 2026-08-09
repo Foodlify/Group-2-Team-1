@@ -18,7 +18,10 @@ export const PlaceOrderRequestSchema = z
       example: "clxyz...",
     }),
     paymentMethod: z.enum(SUPPORTED_PAYMENT_METHODS).meta({
-      description: "Payment method (only CASH is currently supported)",
+      description:
+        "Payment method. CASH is always available; CREDIT_CARD appears only " +
+        "when the Stripe gateway is configured on this deployment, and " +
+        "returns a `paymentUrl` the customer must visit to complete payment.",
       example: "CASH",
     }),
   })
@@ -135,6 +138,17 @@ export const OrderResponseSchema = z
       description: "Sum of (price × quantity) for all items",
       example: 45.5,
     }),
+    paymentUrl: z
+      .url()
+      .optional()
+      .meta({
+        description:
+          "Hosted checkout URL the customer must visit to pay. Present only on " +
+          "the response to placing an order with a gateway-backed method " +
+          "(CREDIT_CARD); the order stays PENDING until the gateway confirms " +
+          "payment via webhook. Absent for cash on delivery.",
+        example: "https://checkout.stripe.com/c/pay/cs_test_...",
+      }),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
   })

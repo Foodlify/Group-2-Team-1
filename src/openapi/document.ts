@@ -15,6 +15,7 @@ import "../modules/menu/menu.validation";
 import "../modules/restaurant/restaurant.validation";
 import "../modules/cart/cart.validation";
 import "../modules/order/order.validation";
+import "../modules/dashboard/dashboard.validation";
 
 // Ensure every route's OpenAPI path is registered too. Routes push into
 // `routeRegistry` as a side effect of being imported; importing them here (not
@@ -31,6 +32,10 @@ import "../modules/menu/menu.routes";
 import "../modules/menuItem/menuItem.routes";
 import "../modules/cart/cart.routes";
 import "../modules/order/order.routes";
+import "../modules/dashboard/dashboard.routes";
+// Mounted straight onto the app rather than the `/api/v1` router (it needs the
+// raw body), so it would otherwise be missing from the spec entirely.
+import "../modules/payment/payment.routes";
 
 /**
  * Build the OpenAPI 3.1 document by combining:

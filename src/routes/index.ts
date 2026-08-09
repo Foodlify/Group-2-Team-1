@@ -15,6 +15,7 @@ import {
   mySupportRouter,
 } from "../modules/support/support.routes";
 import restaurantRouter from "../modules/restaurant/restaurant.routes";
+import dashboardRouter from "../modules/dashboard/dashboard.routes";
 import menuRouter from "../modules/menu/menu.routes";
 import menuItemRouter from "../modules/menuItem/menuItem.routes";
 
@@ -39,5 +40,6 @@ router.use("/menus", menuRouter);
 router.use("/menu-items", menuItemRouter);
 router.use("/carts", cartRouter);
 router.use("/orders", orderRouter);
+router.use("/dashboard", dashboardRouter);
 
 export default router;

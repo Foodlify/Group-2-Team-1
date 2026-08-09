@@ -67,6 +67,51 @@ export class TransactionRepository extends BaseRepository<
       data: { status },
     });
   }
+
+  /**
+   * Status and gateway reference in one write — used when the provider has
+   * actually answered, so both facts become true at the same instant. A
+   * separate status update would leave a window where the ledger says a refund
+   * succeeded but cannot say which refund.
+   */
+  async recordGatewayOutcome(
+    id: string,
+    status: TransactionStatus,
+    data: { externalRef?: string; metadata?: Prisma.InputJsonValue },
+    tx?: Prisma.TransactionClient,
+  ) {
+    return (tx ?? prisma).transaction.update({
+      where: { id },
+      data: {
+        status,
+        ...(data.externalRef !== undefined
+          ? { externalRef: data.externalRef }
+          : {}),
+        ...(data.metadata !== undefined ? { metadata: data.metadata } : {}),
+      },
+    });
+  }
+
+  /**
+   * Records the gateway's own identifiers on an existing payment. Separate
+   * from `updateStatus` on purpose: attaching a reference says only "the
+   * hand-off happened", never that money moved.
+   */
+  async attachGatewayReference(
+    id: string,
+    data: { externalRef?: string; metadata?: Prisma.InputJsonValue },
+    tx?: Prisma.TransactionClient,
+  ) {
+    return (tx ?? prisma).transaction.update({
+      where: { id },
+      data: {
+        ...(data.externalRef !== undefined
+          ? { externalRef: data.externalRef }
+          : {}),
+        ...(data.metadata !== undefined ? { metadata: data.metadata } : {}),
+      },
+    });
+  }
 }
 
 export const transactionRepository = new TransactionRepository();
