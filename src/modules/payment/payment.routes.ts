@@ -1,6 +1,12 @@
 import express, { Router } from "express";
 import { routeRegistry } from "../../openapi/registry";
+import { validate } from "../../middlewares/validate.middleware";
+import { authenticate, authorize } from "../../middlewares/auth.middleware";
 import * as controller from "./payment.controller";
+import {
+  OutstandingRefundsQuerySchema,
+  TransactionIdParamsSchema,
+} from "./payment.validation";
 
 /**
  * The Stripe webhook, on its own router because of where it must be mounted.
@@ -24,7 +30,118 @@ paymentWebhookRouter.post(
   controller.stripeWebhook,
 );
 
+/**
+ * Admin refund management, mounted normally under `/api/v1/payments`.
+ *
+ * Separate router from the webhook above because this one *wants* everything
+ * the webhook must avoid: JSON parsing, the rate limiter, and real
+ * authentication. The webhook is matched first in `app.ts` (its path is more
+ * specific and mounted earlier), so the two never collide.
+ */
+export const paymentAdminRouter: Router = Router();
+
+paymentAdminRouter.use(authenticate, authorize("ADMIN"));
+
+paymentAdminRouter.get(
+  "/refunds/outstanding",
+  validate({ query: OutstandingRefundsQuerySchema }),
+  controller.listOutstandingRefunds,
+);
+
+paymentAdminRouter.post(
+  "/refunds/:transactionId/retry",
+  validate({ params: TransactionIdParamsSchema }),
+  controller.retryRefund,
+);
+
 // ─── OpenAPI Documentation ───────────────────────────────
+
+const adminSecurity: Record<string, string[]>[] = [
+  { cookieAuth: [] },
+  { BearerAuth: [] },
+];
+const errorRef = { $ref: "#/components/schemas/ErrorResponse" };
+
+routeRegistry.push({
+  path: "/api/v1/payments/refunds/outstanding",
+  pathItem: {
+    get: {
+      tags: ["Payments"],
+      security: adminSecurity,
+      summary: "Refunds that have not reached the customer (ADMIN)",
+      description:
+        "FAILED and PENDING refunds, oldest first. Every row is money still owed — a FAILED one the gateway rejected, or a PENDING one we never heard back about.",
+      parameters: [
+        {
+          name: "limit",
+          in: "query",
+          schema: { type: "integer", default: 100, maximum: 200 },
+        },
+      ],
+      responses: {
+        "200": {
+          description: "Outstanding refunds",
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/OutstandingRefundsResponse",
+              },
+            },
+          },
+        },
+        "403": {
+          description: "Not an admin",
+          content: { "application/json": { schema: errorRef } },
+        },
+      },
+    },
+  },
+});
+
+routeRegistry.push({
+  path: "/api/v1/payments/refunds/{transactionId}/retry",
+  pathItem: {
+    post: {
+      tags: ["Payments"],
+      security: adminSecurity,
+      summary: "Retry one unsettled refund (ADMIN)",
+      description:
+        "Sends the refund to the gateway again. Safe to repeat: the gateway is first asked whether it already holds a refund for this ledger row, so a retry reconciles rather than paying twice. Deliberately manual — nothing retries refunds on a timer.",
+      parameters: [
+        {
+          name: "transactionId",
+          in: "path",
+          required: true,
+          schema: { type: "string" as const },
+        },
+      ],
+      responses: {
+        "200": {
+          description: "The refund's state after the attempt",
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/TransactionSuccessResponse",
+              },
+            },
+          },
+        },
+        "404": {
+          description: "No such refund",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "409": {
+          description: "Already settled, or no payment to refund against",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "403": {
+          description: "Not an admin",
+          content: { "application/json": { schema: errorRef } },
+        },
+      },
+    },
+  },
+});
 
 routeRegistry.push({
   path: "/api/v1/payments/stripe/webhook",

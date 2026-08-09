@@ -633,6 +633,13 @@ the ledger never claims money moved before it did. A refund that fails does not
 fail the cancellation — it is recorded as `FAILED` with its reason, because that
 row is money still owed and someone has to see it.
 
+Two ADMIN endpoints chase those: `GET /api/v1/payments/refunds/outstanding`
+lists what has not reached the customer, and
+`POST /api/v1/payments/refunds/{id}/retry` sends one again. **Retrying cannot
+double-refund** — the gateway is asked what it already holds for that ledger row
+before anything is created, because Stripe's idempotency keys expire after 24
+hours and a retry is always later than that.
+
 > Verified end-to-end against a live Stripe test account on 2026-08-09 — real
 > Checkout Sessions, real card payments, real refunds confirmed against Stripe's
 > own records, plus replayed events, an expired session releasing its stock, and

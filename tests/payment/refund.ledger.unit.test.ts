@@ -18,6 +18,7 @@ vi.mock("../../src/modules/transaction/transaction.repository", async () => {
       findByOrderId: vi.fn(),
       createTransaction: vi.fn(),
       updateStatus: vi.fn(),
+      findMany: vi.fn(),
     },
     // The class is kept real: `generateRefundTxNumber` is a pure static used
     // by the code under test.
@@ -131,6 +132,92 @@ describe("a payment that never succeeded is failed, not refunded", () => {
     expect(mockedRepo.updateStatus).toHaveBeenCalledWith("txn_1", "FAILED", tx);
     expect(mockedRepo.createTransaction).not.toHaveBeenCalled();
     expect(pending).toEqual([]);
+  });
+});
+
+describe("finding refunds that are still owed", () => {
+  beforeEach(() => {
+    mockedRepo.findMany.mockResolvedValue([] as never);
+  });
+
+  it("looks for FAILED *and* PENDING refunds", async () => {
+    await transactionService.findOutstandingRefunds();
+
+    // A refund stuck PENDING for days is an unpaid obligation just as much as
+    // a failed one. Listing only failures hides it from whoever is chasing
+    // money the business owes.
+    expect(mockedRepo.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { type: "REFUND", status: { in: ["FAILED", "PENDING"] } },
+      }),
+    );
+  });
+
+  it("returns the oldest first", async () => {
+    await transactionService.findOutstandingRefunds();
+
+    // Whatever has been owed longest is what needs chasing first.
+    expect(mockedRepo.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { createdAt: "asc" } }),
+    );
+  });
+
+  it("caps the result set", async () => {
+    await transactionService.findOutstandingRefunds(25);
+
+    expect(mockedRepo.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 25 }),
+    );
+  });
+});
+
+describe("finding the payment a refund draws on", () => {
+  it("picks the successful order payment", async () => {
+    mockedRepo.findByOrderId.mockResolvedValue([
+      paymentRow({ id: "failed_attempt", status: "FAILED" }),
+      paymentRow({ id: "the_real_one", status: "SUCCESS" }),
+    ] as never);
+
+    const payment = await transactionService.findPaymentForRefund({
+      orderId: "order_1",
+    } as never);
+
+    // Refunding against a failed payment would try to return money that never
+    // arrived.
+    expect(payment?.id).toBe("the_real_one");
+  });
+
+  it("returns null when nothing on the order ever succeeded", async () => {
+    mockedRepo.findByOrderId.mockResolvedValue([
+      paymentRow({ status: "PENDING" }),
+    ] as never);
+
+    const payment = await transactionService.findPaymentForRefund({
+      orderId: "order_1",
+    } as never);
+
+    expect(payment).toBeNull();
+  });
+
+  it("does not mistake another refund for the payment", async () => {
+    mockedRepo.findByOrderId.mockResolvedValue([
+      paymentRow({ id: "old_refund", type: "REFUND", status: "SUCCESS" }),
+    ] as never);
+
+    const payment = await transactionService.findPaymentForRefund({
+      orderId: "order_1",
+    } as never);
+
+    expect(payment).toBeNull();
+  });
+
+  it("returns null for a refund with no order", async () => {
+    const payment = await transactionService.findPaymentForRefund({
+      orderId: null,
+    } as never);
+
+    expect(payment).toBeNull();
+    expect(mockedRepo.findByOrderId).not.toHaveBeenCalled();
   });
 });
 
