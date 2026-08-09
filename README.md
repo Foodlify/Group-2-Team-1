@@ -626,9 +626,10 @@ HTTPS round-trip inside it would hold the cart's row lock and a pooled
 connection); stock is reserved at checkout rather than at payment; and every
 webhook handler is idempotent, because Stripe redelivers events for three days.
 
-> The Stripe path is unit-tested — including signature verification against real
-> HMAC — but has **not been run against a live Stripe account** yet. The
-> step-by-step account setup and the checks to run are at the end of
+> Verified end-to-end against a live Stripe test account on 2026-08-09 — real
+> Checkout Session, real card payment, real webhooks, including replayed events
+> and an expired session releasing its stock. **Gateway refunds are still not
+> implemented**, so a cancelled card order does not return the money. See
 > `docs/PAYMENTS.md`.
 
 ---

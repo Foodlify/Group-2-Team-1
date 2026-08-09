@@ -7,11 +7,13 @@ Two payment methods, one strategy interface.
 | `CASH`        | none    | order reaches `DELIVERED`             | always                         |
 | `CREDIT_CARD` | Stripe  | Stripe's webhook confirms the payment | only when Stripe is configured |
 
-> **Status of the Stripe path:** implemented and unit-tested against a mocked
-> SDK, with signature verification exercised using real HMAC. It has **not yet
-> been run end-to-end against a live Stripe account** — see
-> [Verifying against real Stripe](#verifying-against-real-stripe). Treat the
-> card flow as unproven in production until that has been done.
+> **Status of the Stripe path:** unit-tested against a mocked SDK, and **verified
+> end-to-end against a live Stripe test account on 2026-08-09** — real Checkout
+> Session, real card payment, real webhook deliveries, including the replay and
+> expiry paths. See [What the live run proved](#what-the-live-run-proved).
+>
+> Still missing before this handles real money: **gateway refunds** (see
+> [What is not built](#what-is-not-built)).
 
 ---
 
@@ -158,8 +160,11 @@ than taking money we cannot confirm.
 
 ## Verifying against real Stripe
 
-Everything below still needs doing — it is the one part of this feature that
-cannot be covered by tests on a machine with no Stripe account.
+**Done — 2026-08-09.** The whole flow was exercised against a live Stripe test
+account: a real Checkout Session, a real card payment, and real webhook
+deliveries. Results are in [What the live run proved](#what-the-live-run-proved)
+below. The steps are kept because they are what you repeat on a new machine, a
+new account, or after the CLI's signing secret changes.
 
 **1. Create a Stripe account.** <https://dashboard.stripe.com/register>. No
 company details or bank account are needed to use test mode.
@@ -174,12 +179,17 @@ money and must never appear in this repo or in a `.env` that gets shared.
 
 ```bash
 stripe login
-stripe listen --forward-to localhost:3000/api/v1/payments/stripe/webhook
+# Use YOUR PORT — the one in .env. It is 4444 in this repo's setup, not 3000.
+stripe listen --forward-to localhost:4444/api/v1/payments/stripe/webhook
 ```
 
-`stripe listen` prints a signing secret (`whsec_...`) — that is
-`STRIPE_WEBHOOK_SECRET`. It is **specific to this CLI session** and differs from
-the secret shown for a dashboard-registered endpoint in production.
+`stripe listen` must **keep running** in its own terminal for the whole session:
+it is the tunnel, and Stripe cannot otherwise reach a server on `localhost`.
+
+It prints a signing secret (`whsec_...`) — that is `STRIPE_WEBHOOK_SECRET`. It
+belongs to the CLI and differs from the secret shown for a dashboard-registered
+endpoint in production. Read it from the command's output each time rather than
+assuming it is unchanged.
 
 **5. Put both in `.env`**, restart the server, and confirm the log line
 `Stripe card payments enabled`.
@@ -197,20 +207,74 @@ the secret shown for a dashboard-registered endpoint in production.
 | Stock                         | decremented at checkout, **not** at payment                |
 | Abandon the page, wait 24h    | `checkout.session.expired` → order `CANCELLED`, stock back |
 
-**8. Force the failure paths** without waiting a day:
+**8. Force the failure path** without waiting a day. Expire the order's **own**
+session, taking the id from its `Transaction.externalRef`:
 
 ```bash
-stripe trigger checkout.session.expired
-stripe events resend <event_id>     # must be a no-op — proves idempotency
+stripe post /v1/checkout/sessions/cs_test_.../expire
 ```
 
-**9. Confirm the signature check is live.** A plain `curl` with no
-`Stripe-Signature` header must return `400`:
+> Do **not** use `stripe trigger checkout.session.expired` for this. It invents
+> a session of its own with no `orderId` in the metadata, so the handler
+> correctly drops it and nothing happens — it looks like a pass while testing
+> nothing. Expiring the real session is what delivers an event carrying our ids.
+
+> On Git Bash, prefix the command with `MSYS_NO_PATHCONV=1`. Otherwise the shell
+> rewrites the leading `/` into a Windows path and Stripe answers
+> "Unrecognized request URL".
+
+**9. Prove the handlers are idempotent** by redelivering both events:
 
 ```bash
-curl -X POST localhost:3000/api/v1/payments/stripe/webhook \
+stripe events resend <completed_event_id>   # must not re-settle the payment
+stripe events resend <expired_event_id>     # must not cancel or release twice
+```
+
+**10. Confirm the signature check is live.** A `curl` with no
+`Stripe-Signature` header, and one with a made-up signature, must both return
+`400`:
+
+```bash
+curl -X POST localhost:4444/api/v1/payments/stripe/webhook \
   -H 'Content-Type: application/json' -d '{"type":"checkout.session.completed"}'
 ```
+
+---
+
+## What the live run proved
+
+Run on 2026-08-09 against a live Stripe test account, with the API on a
+throwaway PostgreSQL and `stripe listen` tunnelling the callbacks. Payment was
+made through the real hosted page with card `4242 4242 4242 4242`.
+
+| #   | Check                                                                                     | Result                                                                                              |
+| --- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| 1   | Checkout session created, `paymentUrl` returned                                           | `201`, page live, showed `EGP 60.00` for the right order                                            |
+| 2   | Before payment                                                                            | order `PENDING`, payment `PENDING`, `externalRef` = real `cs_test_...`                              |
+| 3   | **Stock at checkout**                                                                     | `1000000 → 999998` — decremented **before** any money moved                                         |
+| 4   | Cart                                                                                      | cleared                                                                                             |
+| 5   | After paying                                                                              | order `CONFIRMED`, payment `SUCCESS`, `60.00 EGP`, timeline `PENDING → CONFIRMED`                   |
+| 6   | Events we don't handle (`payment_intent.succeeded`, `charge.succeeded`, `charge.updated`) | acknowledged `200`, ignored                                                                         |
+| 7   | **Replayed `completed`**                                                                  | logged "replayed for a settled payment; ignoring" — timeline, payment count and stock all unchanged |
+| 8   | Unpaid order held stock                                                                   | scarce item `5 → 2` while `PENDING`                                                                 |
+| 9   | **Session expired**                                                                       | order `CANCELLED`, payment `FAILED`, **stock `2 → 5`**                                              |
+| 10  | **Replayed `expired`**                                                                    | logged "already resolved" — stock stayed `5`, not `8`; no second cancellation                       |
+| 11  | Paid order during all of the above                                                        | untouched, still `CONFIRMED`                                                                        |
+| 12  | Forged webhook, no signature                                                              | `400`                                                                                               |
+| 13  | Forged webhook, invalid signature                                                         | `400`                                                                                               |
+
+Final ledger:
+
+```
+ order_status | payment |   method    | amount |     stripe_session
+--------------+---------+-------------+--------+------------------------
+ CONFIRMED    | SUCCESS | CREDIT_CARD |  60.00 | cs_test_a16a9Jzt9Li8fg
+ CANCELLED    | FAILED  | CREDIT_CARD | 136.50 | cs_test_a1dYBC37ZUWLF6
+```
+
+Checks 7, 9 and 10 are the ones worth repeating after any change to the webhook:
+they are the difference between a payment system and a payment system that
+double-charges or leaks stock.
 
 ---
 

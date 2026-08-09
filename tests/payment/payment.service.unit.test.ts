@@ -6,7 +6,7 @@
  * and the registered strategies (what actually runs) are derived from the same
  * condition, and a drift between them is a 500 in a customer's checkout.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/modules/transaction/transaction.service", () => ({
   transactionService: {
@@ -32,26 +32,62 @@ beforeEach(() => {
 });
 
 describe("the advertised methods match the registered strategies", () => {
-  it("accepts exactly the methods that have a strategy behind them", () => {
-    // This is the invariant, not the specific list: whatever the environment
-    // enables, validation and execution must agree. Asserting the two sets are
-    // equal catches a strategy registered without opening the schema, and a
-    // schema opened without a strategy — which would 500 mid-checkout.
-    expect([...SUPPORTED_PAYMENT_METHODS].sort()).toEqual(
-      paymentService.supportedMethods().sort(),
-    );
+  /**
+   * Loads both modules fresh under a given Stripe configuration.
+   *
+   * They read `env` once at import time, so the branch under test has to be
+   * chosen before the import — and the environment must be stubbed rather than
+   * inherited, or this suite would pass or fail depending on whether the
+   * developer running it happens to have Stripe keys in their own `.env`.
+   */
+  const loadWith = async (stripeConfigured: boolean) => {
+    vi.stubEnv("STRIPE_SECRET_KEY", stripeConfigured ? "sk_test_unit" : "");
+    vi.stubEnv("STRIPE_WEBHOOK_SECRET", stripeConfigured ? "whsec_unit" : "");
+    vi.resetModules();
+    const [{ paymentService: svc }, { SUPPORTED_PAYMENT_METHODS: methods }] =
+      await Promise.all([
+        import("../../src/modules/payment/payment.service"),
+        import("../../src/modules/transaction/transaction.model"),
+      ]);
+    return { svc, methods };
+  };
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
   });
 
-  it("always supports cash on delivery", () => {
-    // Cash needs no configuration, so it can never be switched off by a
-    // missing key.
-    expect(paymentService.supportedMethods()).toContain("CASH");
+  // The invariant, checked in BOTH configurations: whatever the environment
+  // enables, request validation and execution must agree. A mismatch is a
+  // method the API advertises with no strategy behind it — a 500 in the middle
+  // of a customer's checkout — or a strategy nobody can reach.
+  it.each([
+    ["without Stripe", false],
+    ["with Stripe configured", true],
+  ])("accepts exactly the methods that have a strategy (%s)", async (_, on) => {
+    const { svc, methods } = await loadWith(on as boolean);
+
+    expect([...methods].sort()).toEqual(svc.supportedMethods().sort());
   });
 
-  it("does not offer card payments without Stripe configured", () => {
-    // The unit test environment has no STRIPE_SECRET_KEY.
-    expect(paymentService.supportedMethods()).not.toContain("CREDIT_CARD");
-    expect(SUPPORTED_PAYMENT_METHODS).not.toContain("CREDIT_CARD");
+  it("hides CREDIT_CARD when Stripe is not configured", async () => {
+    const { svc, methods } = await loadWith(false);
+
+    expect(methods).toEqual(["CASH"]);
+    expect(svc.supportedMethods()).not.toContain("CREDIT_CARD");
+  });
+
+  it("offers CREDIT_CARD once Stripe is configured", async () => {
+    const { svc, methods } = await loadWith(true);
+
+    expect(methods).toContain("CREDIT_CARD");
+    expect(svc.supportedMethods()).toContain("CREDIT_CARD");
+  });
+
+  it("always supports cash on delivery, in either configuration", async () => {
+    // Cash needs no configuration, so no missing key can switch it off.
+    expect((await loadWith(false)).svc.supportedMethods()).toContain("CASH");
+    expect((await loadWith(true)).svc.supportedMethods()).toContain("CASH");
   });
 
   it("rejects a method with no strategy as a 400, not a crash", async () => {

@@ -53,10 +53,11 @@ first attempt and only showed it under that check.
 
 **Open items it produced:**
 
-- **Never run against a live Stripe account.** No account existed at the time.
-  The full setup walkthrough and the checks to run are at the end of
-  `docs/PAYMENTS.md`. Until that is done the card path is unproven end to end —
-  mocks confirm what we send, not that Stripe accepts it.
+- ~~**Never run against a live Stripe account.**~~ — done (2026-08-09). Verified
+  end to end against a live test account: real Checkout Session, real card
+  payment, real webhooks, plus the replay and expiry paths and two forged-call
+  rejections. Thirteen checks, all passing — see "What the live run proved" in
+  `docs/PAYMENTS.md`.
 - **Refunds do not reach the gateway.** Cancelling a paid card order writes a
   `REFUND` row to our ledger but never calls Stripe's refund API, so the money
   is not actually returned. **This must be built before the card path touches
