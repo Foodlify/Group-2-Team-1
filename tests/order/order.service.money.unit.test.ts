@@ -42,7 +42,11 @@ vi.mock("../../src/modules/address/address.service", () => ({
 }));
 
 vi.mock("../../src/modules/payment/payment.service", () => ({
-  paymentService: { processPayment: vi.fn() },
+  paymentService: {
+    processPayment: vi.fn(),
+    // Cash has no gateway phase; armed in `beforeEach` to return nothing.
+    initiatePayment: vi.fn(),
+  },
 }));
 
 vi.mock("../../src/modules/transaction/transaction.service", () => ({
@@ -134,6 +138,8 @@ const echoCreatedOrder = () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Cash never reaches a gateway, so the post-commit phase returns nothing.
+  mockedPayment.initiatePayment.mockResolvedValue({});
   mockedOrders.transaction.mockImplementation(
     async (cb: (client: never) => Promise<unknown>) => cb(tx),
   );

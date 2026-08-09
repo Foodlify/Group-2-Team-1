@@ -47,6 +47,37 @@ class TransactionService {
     return transactionRepository.updateStatus(id, status, tx);
   }
 
+  async attachGatewayReference(
+    id: string,
+    data: { externalRef?: string; metadata?: Prisma.InputJsonValue },
+    tx?: Prisma.TransactionClient,
+  ) {
+    return transactionRepository.attachGatewayReference(id, data, tx);
+  }
+
+  /**
+   * The one still-open gateway payment for an order, or null.
+   *
+   * `CASH` is excluded because it has no gateway to hear back from — its
+   * PENDING row is settled by delivery, not by a callback. Returning null when
+   * nothing is pending is what makes webhook handling idempotent: a redelivered
+   * event finds the payment already settled and stops.
+   */
+  async findPendingGatewayPayment(
+    orderId: string,
+    tx?: Prisma.TransactionClient,
+  ) {
+    const txs = await transactionRepository.findByOrderId(orderId, tx);
+    return (
+      txs.find(
+        (t) =>
+          t.type === "ORDER_PAYMENT" &&
+          t.status === "PENDING" &&
+          t.paymentMethod !== "CASH",
+      ) ?? null
+    );
+  }
+
   /**
    * Settles cash-on-delivery payments for a delivered order — marks their
    * PENDING transaction SUCCESS once the courier has collected the money.

@@ -31,6 +31,9 @@ import "../modules/menu/menu.routes";
 import "../modules/menuItem/menuItem.routes";
 import "../modules/cart/cart.routes";
 import "../modules/order/order.routes";
+// Mounted straight onto the app rather than the `/api/v1` router (it needs the
+// raw body), so it would otherwise be missing from the spec entirely.
+import "../modules/payment/payment.routes";
 
 /**
  * Build the OpenAPI 3.1 document by combining:

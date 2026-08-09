@@ -51,7 +51,11 @@ vi.mock("../../src/modules/address/address.service", () => ({
 }));
 
 vi.mock("../../src/modules/payment/payment.service", () => ({
-  paymentService: { processPayment: vi.fn() },
+  paymentService: {
+    processPayment: vi.fn(),
+    // Cash has no gateway phase; armed in `beforeEach` to return nothing.
+    initiatePayment: vi.fn(),
+  },
 }));
 
 import { orderService } from "../../src/modules/order/order.service";
@@ -59,6 +63,7 @@ import { orderRepository } from "../../src/modules/order/order.repository";
 import { orderItemRepository } from "../../src/modules/orderItem/orderItem.repository";
 import { menuItemService } from "../../src/modules/menuItem/menuItem.service";
 import { transactionService } from "../../src/modules/transaction/transaction.service";
+import { paymentService } from "../../src/modules/payment/payment.service";
 import { notificationService } from "../../src/modules/notification/notification.service";
 import {
   ORDER_STATUSES,
@@ -93,6 +98,8 @@ const orderAt = (status: OrderStatusValue) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Cash never reaches a gateway, so the post-commit phase returns nothing.
+  vi.mocked(paymentService).initiatePayment.mockResolvedValue({});
   mockedOrders.transaction.mockImplementation(
     async (cb: (client: never) => Promise<unknown>) => cb(tx),
   );

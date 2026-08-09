@@ -40,12 +40,33 @@ first attempt and only showed it under that check.
 
 ## Deferred
 
-### Payment gateway (Stripe / Paymob) + webhook
+### ~~Payment gateway (Stripe) + webhook~~ — built 2026-08-09, **not yet run live**
 
-- Only the CASH strategy is wired (`SUPPORTED_PAYMENT_METHODS`). The
-  Transaction table already carries `externalRef` / `metadata` for a real
-  gateway, and `PreferredPaymentSetting` stores the customer's chosen method.
-  Missing: the gateway strategy itself and webhook verification.
+- Stripe Checkout behind the existing strategy interface, plus the webhook at
+  `POST /api/v1/payments/stripe/webhook`. See
+  [docs/PAYMENTS.md](docs/PAYMENTS.md). Paymob was rejected: it needs an
+  Egyptian merchant account with real paperwork, where Stripe issues test keys
+  immediately — and `Group-1-Team-2` used Stripe too.
+- Unit-tested (signature verification against real HMAC, idempotency, minor-unit
+  conversion, the cancel-on-failure path), every assertion checked against
+  deliberately broken source.
+
+**Open items it produced:**
+
+- **Never run against a live Stripe account.** No account existed at the time.
+  The full setup walkthrough and the checks to run are at the end of
+  `docs/PAYMENTS.md`. Until that is done the card path is unproven end to end —
+  mocks confirm what we send, not that Stripe accepts it.
+- **Refunds do not reach the gateway.** Cancelling a paid card order writes a
+  `REFUND` row to our ledger but never calls Stripe's refund API, so the money
+  is not actually returned. **This must be built before the card path touches
+  real money.** Cash is unaffected.
+- **Abandoned card orders depend on `checkout.session.expired`.** Stock is
+  reserved at checkout, and that 24-hour event is what releases it. If the
+  webhook endpoint is ever unreachable for a long stretch, abandoned checkouts
+  quietly hold stock until it is redelivered.
+- **`WALLET` and `PAYPAL`** remain in the Prisma enum with no strategy behind
+  them, and are correctly absent from `SUPPORTED_PAYMENT_METHODS`.
 
 ### Official rules not yet applied
 

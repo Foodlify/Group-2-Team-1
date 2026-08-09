@@ -67,6 +67,27 @@ export class TransactionRepository extends BaseRepository<
       data: { status },
     });
   }
+
+  /**
+   * Records the gateway's own identifiers on an existing payment. Separate
+   * from `updateStatus` on purpose: attaching a reference says only "the
+   * hand-off happened", never that money moved.
+   */
+  async attachGatewayReference(
+    id: string,
+    data: { externalRef?: string; metadata?: Prisma.InputJsonValue },
+    tx?: Prisma.TransactionClient,
+  ) {
+    return (tx ?? prisma).transaction.update({
+      where: { id },
+      data: {
+        ...(data.externalRef !== undefined
+          ? { externalRef: data.externalRef }
+          : {}),
+        ...(data.metadata !== undefined ? { metadata: data.metadata } : {}),
+      },
+    });
+  }
 }
 
 export const transactionRepository = new TransactionRepository();

@@ -29,6 +29,7 @@ featuring OpenAPI 3.1 documentation via Scalar and Swagger UI.
 - [Soft Delete & Auditing](#soft-delete--auditing)
 - [Testing](#testing)
 - [Load Testing](#load-testing)
+- [Payments](#payments)
 - [Adding a New Feature](#adding-a-new-feature)
 - [Continuous Integration](#continuous-integration)
 - [Available Scripts](#available-scripts)
@@ -595,6 +596,40 @@ Two things the plans depend on, both explained there: they run with
 `NODE_ENV=test` so the rate limiter doesn't turn 480 of 500 customers into
 `429`s, and virtual users arrive pre-authenticated so the plans measure the
 order path instead of bcrypt.
+
+---
+
+## Payments
+
+Two methods behind one strategy interface. Full write-up:
+**[docs/PAYMENTS.md](docs/PAYMENTS.md)**.
+
+| Method        | Gateway | Settles when                          | Available                      |
+| ------------- | ------- | ------------------------------------- | ------------------------------ |
+| `CASH`        | none    | order reaches `DELIVERED`             | always                         |
+| `CREDIT_CARD` | Stripe  | Stripe's webhook confirms the payment | only when Stripe is configured |
+
+Placing a card order returns a `paymentUrl` — Stripe's hosted checkout page, so
+no card data ever reaches this server. The order stays `PENDING` until
+`POST /api/v1/payments/stripe/webhook` receives `checkout.session.completed`;
+the customer's browser reaching the success page confirms nothing. An unpaid
+session expiring cancels the order and releases the stock it was holding.
+
+```bash
+STRIPE_SECRET_KEY=sk_test_...      # unset ⇒ CREDIT_CARD is not offered at all
+STRIPE_WEBHOOK_SECRET=whsec_...    # required alongside it, or the app won't boot
+```
+
+Three things worth knowing before touching this code, each explained in the
+document: the gateway call runs **after** the checkout transaction commits (an
+HTTPS round-trip inside it would hold the cart's row lock and a pooled
+connection); stock is reserved at checkout rather than at payment; and every
+webhook handler is idempotent, because Stripe redelivers events for three days.
+
+> The Stripe path is unit-tested — including signature verification against real
+> HMAC — but has **not been run against a live Stripe account** yet. The
+> step-by-step account setup and the checks to run are at the end of
+> `docs/PAYMENTS.md`.
 
 ---
 

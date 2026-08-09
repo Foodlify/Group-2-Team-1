@@ -47,6 +47,8 @@ vi.mock("../../src/modules/address/address.service", () => ({
 vi.mock("../../src/modules/payment/payment.service", () => ({
   paymentService: {
     processPayment: vi.fn(),
+    // Cash has no gateway phase; armed in `beforeEach` to return nothing.
+    initiatePayment: vi.fn(),
   },
 }));
 
@@ -71,6 +73,7 @@ import { orderRepository } from "../../src/modules/order/order.repository";
 import { orderItemRepository } from "../../src/modules/orderItem/orderItem.repository";
 import { cartService } from "../../src/modules/cart/cart.service";
 import { menuItemService } from "../../src/modules/menuItem/menuItem.service";
+import { paymentService } from "../../src/modules/payment/payment.service";
 import { addressService } from "../../src/modules/address/address.service";
 import { orderErrors } from "../../src/shared/exceptions/order.errors";
 import { Prisma } from "../../src/generated/prisma/client";
@@ -136,6 +139,8 @@ const placeOrderInput = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Cash never reaches a gateway, so the post-commit phase returns nothing.
+  vi.mocked(paymentService).initiatePayment.mockResolvedValue({});
   mockedOrders.transaction.mockImplementation(
     async (cb: (client: never) => Promise<unknown>) => cb(tx),
   );

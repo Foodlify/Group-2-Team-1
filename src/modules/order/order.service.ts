@@ -1,5 +1,7 @@
 import { AppError } from "../../middlewares/error.middleware";
+import logger from "../../config/logger";
 import { orderErrors } from "../../shared/exceptions/order.errors";
+import { paymentErrors } from "../../shared/exceptions/payment.errors";
 import { addressService } from "../address/address.service";
 import { menuItemService } from "../menuItem/menuItem.service";
 import { cartService } from "../cart/cart.service";
@@ -19,6 +21,7 @@ import { Prisma } from "../../generated/prisma/client";
 import type {
   OrderModel,
   OrderItemsModel,
+  TransactionModel,
 } from "../../generated/prisma/models";
 import type {
   PlaceOrderInput,
@@ -121,7 +124,7 @@ class OrderService {
         tx,
       );
 
-      await paymentService.processPayment(
+      const transaction = await paymentService.processPayment(
         input.paymentMethod,
         totalAmount.toNumber(),
         { orderId: order.id, customerId, currency: "EGP" },
@@ -130,11 +133,22 @@ class OrderService {
 
       await cartService.clearCart({ customerId }, tx);
 
-      return { order, createdItems };
+      return { order, createdItems, transaction, totalAmount };
     });
 
     // Build response directly from in-memory objects — no extra DB roundtrip
     const response = this.buildOrderResponse(result.order, result.createdItems);
+
+    // Gateway hand-off happens HERE, outside the transaction. Doing it inside
+    // would hold the cart's row lock and a pooled connection for the whole
+    // HTTPS round-trip to the provider. Cash payments no-op through this.
+    const paymentUrl = await this.initiatePaymentOrCancel(
+      customerId,
+      input.paymentMethod,
+      result,
+    );
+    if (paymentUrl) response.paymentUrl = paymentUrl;
+
     // After the commit: the customer is only told about state that persisted.
     await notificationService.notifyOrderPlaced(customerId, {
       id: response.id,
@@ -146,6 +160,57 @@ class OrderService {
       })),
     });
     return response;
+  }
+
+  /**
+   * Runs the gateway hand-off for a just-committed order and returns the URL
+   * the customer must visit, if the method needs one.
+   *
+   * If the hand-off fails there is a committed order holding reserved stock
+   * that can never be paid for, so it is cancelled — which releases the stock
+   * and marks the pending payment FAILED through the existing side-effect
+   * path — and the customer gets a 402 rather than an order they cannot
+   * complete.
+   */
+  private async initiatePaymentOrCancel(
+    customerId: string,
+    method: PlaceOrderInput["paymentMethod"],
+    result: {
+      order: { id: string };
+      transaction: TransactionModel;
+      totalAmount: Prisma.Decimal;
+    },
+  ): Promise<string | undefined> {
+    try {
+      const initiation = await paymentService.initiatePayment(
+        method,
+        result.transaction,
+        result.totalAmount.toNumber(),
+        { orderId: result.order.id, customerId, currency: "EGP" },
+      );
+      return initiation.redirectUrl;
+    } catch (error) {
+      logger.error("Payment initiation failed — cancelling the order", {
+        orderId: result.order.id,
+        method,
+        error,
+      });
+      try {
+        await this.cancelOrder(customerId, result.order.id);
+      } catch (cancelError) {
+        // Logged, not thrown: the customer still needs the payment error, and
+        // an order stuck PENDING with no gateway session is recoverable by the
+        // cancel endpoint. Losing the 402 behind a cleanup failure is not.
+        logger.error("Failed to cancel the order after a payment failure", {
+          orderId: result.order.id,
+          error: cancelError,
+        });
+      }
+      throw new AppError(
+        paymentErrors.PAYMENT_FAILED.message,
+        paymentErrors.PAYMENT_FAILED.statusCode,
+      );
+    }
   }
 
   // ─── Get My Orders (paginated) ────────────────────────────────
