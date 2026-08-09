@@ -592,11 +592,22 @@ npm run perf:plan2
 ```
 
 Two findings came out of it. The pool in `config/prisma.ts` was capped at 10
-connections and is now `DATABASE_POOL_MAX` (default 20). And **login is the
-system's ceiling**: `bcryptjs` is pure JavaScript, so a cost-12 hash spends
-~250 ms _blocking the event loop_, which puts one instance at roughly 4 logins
-per second per core. That is a capacity limit rather than a bug — the reasoning,
-the measurement and the options are in the document.
+connections and is now `DATABASE_POOL_MAX` (default 20). And **login was the
+system's ceiling**: at 500 concurrent logins the success rate was 23.6% with a
+35-second p50, because `bcryptjs` is pure JavaScript and hashes _on the event
+loop_ — while it worked, the process served nobody.
+
+Fixed by moving to the native `bcrypt` binding, which hashes in libuv's thread
+pool. Ten concurrent compares went from 2443 ms to 657 ms, and the **event-loop
+stall from 1000 ms to 6 ms**. A login still costs the same ~250 ms of CPU —
+roughly 4 logins per second per core is still the capacity number, and scaling
+that is horizontal — but it no longer freezes every other request. Stored
+passwords were unaffected: both libraries emit `$2b$` hashes and read each
+other's, which a committed fixture now pins.
+
+The same investigation found that bcrypt silently ignores everything past
+**72 bytes** of a password, so registration now caps there — in bytes, not
+characters. Details of both in the document.
 
 Two things the plans depend on, both explained there: they run with
 `NODE_ENV=test` so the rate limiter doesn't turn 480 of 500 customers into

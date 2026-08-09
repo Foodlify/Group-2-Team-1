@@ -69,11 +69,15 @@ async function main(): Promise<void> {
 
   // Tokens are minted here rather than obtained by logging in from JMeter.
   // That is a deliberate test-design decision, not a shortcut: bcrypt at cost
-  // 12 costs ~250ms of *blocking* CPU per login in `bcryptjs` (pure JS, no
-  // thread pool), so 500 simultaneous logins demand ~125 seconds of
-  // single-threaded CPU. A plan that logs in first measures bcrypt and tells
-  // you nothing about the cart or the order path. Login capacity is measured
+  // 12 costs ~250ms of CPU per login, so 500 simultaneous logins demand ~125
+  // seconds of it. A plan that logs in first measures bcrypt and tells you
+  // nothing about the cart or the order path. Login capacity is measured
   // separately — see docs/LOAD_TESTING.md.
+  //
+  // The hashing now runs in libuv's thread pool rather than on the event loop
+  // (the move from `bcryptjs` to `bcrypt`), so those logins no longer freeze
+  // everything else — but they still cost the same CPU, and this plan still
+  // exists to measure the endpoints rather than the hash.
   const rows: string[] = ["email,password,addressId,token"];
   const BATCH = 50;
   for (let start = 0; start < USER_COUNT; start += BATCH) {

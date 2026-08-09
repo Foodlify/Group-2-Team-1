@@ -10,16 +10,19 @@ plans, the seed and the analyser are in [`perf/`](../perf) and re-runnable.
 
 ## Summary
 
-|                                       | Result                                          |
-| ------------------------------------- | ----------------------------------------------- |
-| Order flow, 500 concurrent            | **1000/1000 succeeded**, p95 249 ms, ~102 req/s |
-| Stock contention, 500 racing for 50   | **exactly 50 sold**, 450 clean 409s, 0 × 5xx    |
-| Reproduced on a second fresh database | identical correctness, same order of magnitude  |
-| **Login, 500 concurrent**             | **collapsed — 23.6% success, p50 35.5 s**       |
+|                                        | Result                                          |
+| -------------------------------------- | ----------------------------------------------- |
+| Order flow, 500 concurrent             | **1000/1000 succeeded**, p95 249 ms, ~102 req/s |
+| Stock contention, 500 racing for 50    | **exactly 50 sold**, 450 clean 409s, 0 × 5xx    |
+| Reproduced on a second fresh database  | identical correctness, same order of magnitude  |
+| **Login, 500 concurrent** (before fix) | **collapsed — 23.6% success, p50 35.5 s**       |
 
-The headline is the last row: the order path is comfortably fast, and **login
-is the system's ceiling**, by roughly two orders of magnitude. The cause is
-measured below.
+The headline is the last row: the order path was comfortably fast while **login
+was the system's ceiling**, by roughly two orders of magnitude. Diagnosing it is
+Finding 1 below, and it led to a fix — hashing moved off the event loop, cutting
+the stall it caused from 1000 ms to 6 ms. The 23.6% figure is kept here as the
+measurement that found the problem, not as current behaviour; the login plan has
+not been re-run since.
 
 ---
 
@@ -93,17 +96,62 @@ that looks like.
 
 This is a capacity limit, not a bug. Login is **CPU-bound by design**, so the
 honest conclusion is a number rather than a fix: **one instance sustains roughly
-4 logins per second per core.** Options, in order of preference:
+4 logins per second per core.**
 
-1. **Scale horizontally.** Login cost is CPU, and CPU is what more instances
-   buy. This is the standard answer and needs no code change.
-2. **Move hashing off the event loop** — the native `bcrypt` binding runs in
-   libuv's thread pool and produces hashes compatible with the existing ones,
-   so stored passwords keep working. It adds a native build step, which is why
-   it is a recommendation here and not a change made in passing.
-3. **Do not lower the cost factor** to make a graph look better. 12 is a
+But there were two problems tangled together, and only one of them is capacity:
+
+- **Login costs CPU.** Unavoidable — that is what a password hash is for.
+- **Login froze everything else.** Avoidable, and the real damage. The 35-second
+  p50 was not slow hashing; it was every other request queueing behind it.
+
+### The fix applied — `bcryptjs` → `bcrypt` (2026-08-09)
+
+Hashing now runs in libuv's thread pool instead of on the event loop. Measured
+on the same machine, cost 12:
+
+|                          | `bcryptjs`  | `bcrypt` (native) |
+| ------------------------ | ----------- | ----------------- |
+| One compare              | 246 ms      | 217 ms            |
+| Ten concurrent compares  | 2443 ms     | **657 ms**        |
+| **Max event-loop stall** | **1000 ms** | **6 ms**          |
+
+The last row is the point. A single login still costs the same CPU; it no longer
+takes the process down with it while it spends it.
+
+**No password migration was needed.** Both libraries emit `$2b$` hashes and each
+verifies the other's — checked in both directions, and pinned by a committed
+`bcryptjs` hash in `tests/auth/password.helper.unit.test.ts` so a future upgrade
+cannot break it silently.
+
+**It needs no build step**, contrary to the caution in the earlier version of
+this document. `bcrypt@6` ships N-API prebuilds inside its own npm tarball,
+including a musl build for the Alpine image. Verified here: it installs in about
+a second with no compiler, resolves the binary at `require` time even under
+`npm ci --ignore-scripts` (which the Dockerfile's production stage uses), and
+being N-API it does not need rebuilding across Node versions.
+
+### Still true
+
+1. **Scale horizontally** for capacity. CPU is what more instances buy, and
+   ~4 logins/second/core is still the number per core.
+2. **Do not lower the cost factor** to make a graph look better. 12 is a
    security decision; trading it for throughput should be a deliberate,
-   separate conversation.
+   separate conversation. For reference, both sibling teams hash at cost 10 —
+   a quarter of the work per attempt.
+
+### A separate problem the same investigation found
+
+bcrypt reads at most **72 bytes** of a password and discards the rest without
+error. Registration had no maximum, so a longer password was accepted and then
+authenticated on its first 72 bytes alone — verified against this codebase: a
+92-character password matched both its own 72-byte prefix and a completely
+different 20-character tail.
+
+This is a property of the algorithm, not of either library — the native binding
+truncates identically — so the move above did not fix it. It is now capped at
+the validation layer, in **bytes rather than characters**: 40 Arabic letters are
+under any character limit and over 72 bytes. Login is deliberately left uncapped
+so accounts created before the cap are not locked out.
 
 ### Why the plans were then redesigned
 

@@ -184,11 +184,24 @@ Still open in this area:
 
 **Open items it produced:**
 
-- **Login capacity.** `bcryptjs` is pure JS and blocks the event loop for
-  ~250 ms per cost-12 hash → ~4 logins/s/core. Needs a team decision:
-  scale horizontally (no code change), or move hashing off the loop with the
-  native `bcrypt` binding (hash-compatible, but adds a native build step).
+- ~~**Login blocks the event loop.**~~ — done (2026-08-09). Moved from
+  `bcryptjs` to the native `bcrypt` binding, so hashing runs in libuv's thread
+  pool. Ten concurrent compares: 2443 ms → 657 ms; **event-loop stall: 1000 ms →
+  6 ms**. No password migration — both emit `$2b$` hashes and verify each
+  other's, pinned by a committed `bcryptjs` fixture. No build step either: the
+  package ships N-API prebuilds (including musl for the Alpine image) and works
+  under the Dockerfile's `npm ci --ignore-scripts`.
+- ~~**bcrypt silently truncates at 72 bytes.**~~ — done (2026-08-09). Flagged in
+  the mentor's S18 material and confirmed against this codebase: a 92-character
+  password matched both its own 72-byte prefix and a different tail. Registration,
+  admin-created accounts and the reset flow now cap at 72 **bytes** (40 Arabic
+  letters are under any character limit and over the byte one). Login is
+  deliberately uncapped so older accounts are not locked out.
+- **Login capacity is still ~4 logins/s/core** — that part is CPU and cannot be
+  optimised away, only scaled horizontally. Needs no code change; it is a
+  deployment decision about instance count.
   **Do not lower the cost factor** without treating it as a security decision.
+  Both sibling teams hash at cost 10 — a quarter of the work per attempt.
 - **`DATABASE_POOL_MAX` is untuned.** Default raised 10 → 20 on reasoning, not
   evidence: bcrypt saturated the process before the pool mattered, so these
   runs could not isolate its effect. Re-measure once login is off the critical
