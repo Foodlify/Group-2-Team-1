@@ -2,11 +2,19 @@ import type { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import { asyncHandler } from "../../utils/asyncHandler";
 import { sendSuccess } from "../../utils/response";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import {
+  OAUTH_STATE_COOKIE,
   REFRESH_COOKIE,
   clearAuthCookies,
+  clearOAuthStateCookie,
   setAuthCookies,
+  setOAuthStateCookie,
 } from "../../shared/auth/cookie.helper";
+import { AppError } from "../../middlewares/error.middleware";
+import { userErrors } from "../../shared/exceptions/user.errors";
+import { googleAuthClient } from "../../shared/auth/google.client";
+import env from "../../config/env";
 import { userService } from "./user.service";
 import type { UserIdParams, UserQuery } from "./user.validation";
 
@@ -46,6 +54,83 @@ export const adminLogin = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const { user, tokens } = await userService.adminLogin(req.body);
     setAuthCookies(res, tokens);
+    sendSuccess(res, { user }, "Logged in successfully");
+  },
+);
+
+// ─── Social Media Authentication (Google) ─────────────────
+
+/**
+ * Compares the state Google handed back with the one we set on the way out.
+ *
+ * Constant-time, and length-checked first because `timingSafeEqual` throws on
+ * a length mismatch. A plain `===` would leak the value a character at a time
+ * to anyone able to measure — a small risk for a short-lived nonce, but this
+ * is the one comparison standing between a user and being signed into somebody
+ * else's account, so it is not the place to save three lines.
+ */
+const stateMatches = (sent: unknown, received: unknown): boolean => {
+  if (typeof sent !== "string" || typeof received !== "string") return false;
+  const a = Buffer.from(sent);
+  const b = Buffer.from(received);
+  if (a.length !== b.length || a.length === 0) return false;
+  return timingSafeEqual(a, b);
+};
+
+export const googleRedirect = asyncHandler(
+  async (_req: Request, res: Response): Promise<void> => {
+    // 256 bits of randomness: this is the only thing an attacker would have to
+    // guess to make a forged callback look like ours.
+    const state = randomBytes(32).toString("base64url");
+    // The URL is built first: an unconfigured deployment throws here, and a
+    // 404 with no cookie set is tidier than a cookie for a flow that cannot
+    // start.
+    const url = googleAuthClient.authorizationUrl(state);
+    setOAuthStateCookie(res, state);
+    res.redirect(url);
+  },
+);
+
+export const googleCallback = asyncHandler(
+  async (req: Request, res: Response): Promise<void> => {
+    const { code, state, error } = req.query;
+
+    // The state cookie is single-use whatever happens next — a value that
+    // survives one failed attempt is a value an attacker gets to retry.
+    const expectedState = req.cookies?.[OAUTH_STATE_COOKIE] as unknown;
+    clearOAuthStateCookie(res);
+
+    // Google reports a declined consent screen this way rather than by failing.
+    if (typeof error === "string" && error) {
+      throw new AppError(
+        userErrors.GOOGLE_EXCHANGE_FAILED.message,
+        userErrors.GOOGLE_EXCHANGE_FAILED.statusCode,
+      );
+    }
+    if (!stateMatches(expectedState, state)) {
+      throw new AppError(
+        userErrors.GOOGLE_STATE_MISMATCH.message,
+        userErrors.GOOGLE_STATE_MISMATCH.statusCode,
+      );
+    }
+    if (typeof code !== "string" || !code) {
+      throw new AppError(
+        userErrors.GOOGLE_EXCHANGE_FAILED.message,
+        userErrors.GOOGLE_EXCHANGE_FAILED.statusCode,
+      );
+    }
+
+    const profile = await googleAuthClient.exchangeCode(code);
+    const { user, tokens } = await userService.loginWithGoogle(profile);
+    setAuthCookies(res, tokens);
+
+    // With a frontend configured, hand the browser back to it — the session is
+    // in the cookies, so nothing sensitive rides in the URL. Without one, the
+    // JSON is what makes this flow demonstrable against a bare backend.
+    if (env.GOOGLE_POST_LOGIN_REDIRECT) {
+      res.redirect(env.GOOGLE_POST_LOGIN_REDIRECT);
+      return;
+    }
     sendSuccess(res, { user }, "Logged in successfully");
   },
 );

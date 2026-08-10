@@ -33,6 +33,36 @@ export const setAuthCookies = (
   });
 };
 
+export const OAUTH_STATE_COOKIE = "oauthState";
+/**
+ * The `state` value only has to survive one redirect to Google and back.
+ * Anything longer is a window in which a stale value is still accepted.
+ */
+const OAUTH_STATE_MAX_AGE = 10 * 60 * 1000;
+
+/**
+ * Holds the OAuth `state` between the redirect out and the callback in.
+ *
+ * A cookie rather than a database row: the value is meaningful only to the
+ * browser that started the flow, which is precisely what makes it work as a
+ * CSRF defence — an attacker can put their own code in a callback URL, but
+ * cannot put their own state in the victim's cookie jar.
+ *
+ * `sameSite: "lax"` deliberately, not "strict": Google's callback is a
+ * cross-site top-level navigation, and a strict cookie would not be sent with
+ * it — the flow would fail every time.
+ */
+export const setOAuthStateCookie = (res: Response, state: string): void => {
+  res.cookie(OAUTH_STATE_COOKIE, state, {
+    ...baseOptions(),
+    maxAge: OAUTH_STATE_MAX_AGE,
+  });
+};
+
+export const clearOAuthStateCookie = (res: Response): void => {
+  res.clearCookie(OAUTH_STATE_COOKIE, baseOptions());
+};
+
 /** Clears the auth cookies (used on logout). */
 export const clearAuthCookies = (res: Response): void => {
   res.clearCookie(ACCESS_COOKIE, baseOptions());

@@ -81,7 +81,10 @@ export const ReceiptResponseSchema = z
     customer: z.object({
       name: z.string(),
       email: z.email(),
-      phone: z.string(),
+      // Null rather than an empty string for a customer who has not added one:
+      // a receipt is a record, and a blank field that reads as "no phone" is
+      // more honest than one that reads as a phone number of no characters.
+      phone: z.string().nullable(),
     }),
     deliveryAddress: z.string(),
     items: z.array(

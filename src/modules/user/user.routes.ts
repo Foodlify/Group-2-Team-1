@@ -36,6 +36,12 @@ authRouter.post(
   validate({ body: VerifyEmailRequestSchema }),
   controller.verifyEmail,
 );
+// ─── Social Media Authentication (Google) ────────────────
+// GET, not POST: these are browser navigations — one out to the consent
+// screen, one back from it — not API calls a client makes.
+authRouter.get("/google", controller.googleRedirect);
+authRouter.get("/google/callback", controller.googleCallback);
+
 authRouter.post("/refresh-token", controller.refresh);
 // Logout revokes via the refresh cookie — no valid access token required.
 authRouter.post("/logout", controller.logout);
@@ -162,6 +168,68 @@ routeRegistry.push({
         },
         "403": {
           description: "Email not verified / account disabled",
+          content: { "application/json": { schema: errorRef } },
+        },
+      },
+    },
+  },
+});
+
+routeRegistry.push({
+  path: "/api/v1/auth/google",
+  pathItem: {
+    get: {
+      tags: [authTag],
+      summary: "Start Google sign-in (redirects to the consent screen)",
+      description:
+        "A browser navigation, not an API call — open it, do not fetch it. Sets a short-lived `oauthState` cookie and redirects to Google. Scopes requested are identity only (openid, email, profile); no refresh token is asked for, because we have no reason to act on anyone's Google account later. 404 when this deployment has no Google credentials configured.",
+      responses: {
+        "302": { description: "Redirect to Google's consent screen" },
+        "404": {
+          description: "Google sign-in is not configured on this deployment",
+          content: { "application/json": { schema: errorRef } },
+        },
+      },
+    },
+  },
+});
+
+routeRegistry.push({
+  path: "/api/v1/auth/google/callback",
+  pathItem: {
+    get: {
+      tags: [authTag],
+      summary: "Google sign-in callback (sets auth cookies)",
+      description:
+        "Where Google returns the browser. Verifies the `state` round-trip, exchanges the code, and signs the account in — matching an existing one on Google's `sub` claim, then linking by email if that address is already registered, otherwise creating a customer with no password and no phone. Answers with JSON unless `GOOGLE_POST_LOGIN_REDIRECT` is set, in which case it redirects there with the session already in the cookies.",
+      parameters: [
+        {
+          name: "code",
+          in: "query",
+          schema: { type: "string" },
+          description: "Authorization code issued by Google",
+        },
+        {
+          name: "state",
+          in: "query",
+          schema: { type: "string" },
+          description: "Must match the `oauthState` cookie set on the way out",
+        },
+      ],
+      responses: {
+        "200": { description: "Logged in", content: jsonAuth },
+        "302": { description: "Redirect to GOOGLE_POST_LOGIN_REDIRECT" },
+        "400": {
+          description: "State missing or mismatched — start again",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "401": {
+          description: "The code could not be exchanged or verified",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "403": {
+          description:
+            "The Google account's email is unverified, or the linked account is disabled",
           content: { "application/json": { schema: errorRef } },
         },
       },
