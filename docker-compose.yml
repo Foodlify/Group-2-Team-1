@@ -1,21 +1,10 @@
-services:
-  # One-shot job: applies pending Prisma migrations before the API boots.
-  # Uses the `build` stage (which still has the Prisma CLI + full deps) since
-  # the lean runtime image omits devDependencies. Runs to completion and exits.
-  migrate:
-    build:
-      context: .
-      target: build
-    env_file:
-      - .env
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-    command: ["npx", "prisma", "migrate", "deploy"]
-    restart: "no"
-    depends_on:
-      postgres:
-        condition: service_healthy
+# Local development only.
+#
+# The deployed instance does not use this file: Coolify builds the Dockerfile
+# and runs PostgreSQL and Redis as its own managed resources. See
+# docs/DEPLOYMENT.md.
 
+services:
   api:
     build:
       context: .
@@ -32,8 +21,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
+    # No separate migrate service any more: the image applies pending
+    # migrations from its own entrypoint before starting, so there is one
+    # answer to "when do migrations run" rather than one per environment.
 
   postgres:
     image: postgres:17-alpine
@@ -44,7 +34,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "${POSTGRES_PORT}:5432"
+      # Bound to the loopback interface deliberately. `"5433:5432"` publishes
+      # on 0.0.0.0 — every interface the machine has — which on anything with a
+      # public address is an open database port, whatever the firewall was
+      # meant to be doing. Prisma Studio and psql reach it the same as before.
+      - "127.0.0.1:${POSTGRES_PORT}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -61,7 +55,7 @@ services:
     restart: unless-stopped
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
