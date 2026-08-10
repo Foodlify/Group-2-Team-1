@@ -187,6 +187,25 @@ describe("changing an order's status", () => {
     expect(mockedRestaurants.isOwnedBy).not.toHaveBeenCalled();
   });
 
+  it("refuses an owner who has been demoted, even though the row still names them", async () => {
+    // Demoting an account does not clear `Restaurant.ownerId`, so the lookup
+    // would happily say "yes". Discovered by a mutation: widening the route
+    // guard to admit CUSTOMER changed no test, because the ownership check
+    // alone could not tell a demoted ex-owner from a current one.
+    mockedRestaurants.isOwnedBy.mockResolvedValue(true);
+
+    await expect(
+      orderService.updateOrderStatus(
+        "order_1",
+        { status: "CONFIRMED" },
+        { userId: "user_owner", role: "CUSTOMER" },
+      ),
+    ).rejects.toMatchObject({
+      statusCode: orderErrors.ORDER_FORBIDDEN.statusCode,
+    });
+    expect(mockedRestaurants.isOwnedBy).not.toHaveBeenCalled();
+  });
+
   it("gives a restaurant the same 403 message a customer gets", async () => {
     mockedRestaurants.isOwnedBy.mockResolvedValue(false);
 

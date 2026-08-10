@@ -192,18 +192,43 @@ describe("Restaurants Order History", () => {
     expect(JSON.stringify(res.body)).not.toContain(theirOrder.id);
   });
 
-  it("routes /me/orders to the owner, not to the restaurant-by-id read", async () => {
-    const { ownerToken } = await twoRestaurants();
+  it("owns the /restaurants/{x}/orders namespace — nothing else answers there", async () => {
+    const { ownerToken, mine } = await twoRestaurants();
 
-    // `me` sits in the same position as `:restaurantId`. It is a cuid2 today,
-    // so the wrong order would 400 rather than mis-route — but that is
-    // validation covering for route order, which is not a guarantee.
-    const res = await api()
+    const byId = await api()
+      .get(`/api/v1/restaurants/${mine.restaurant.id}/orders`)
+      .set("Cookie", asCookie(adminToken));
+    const byMe = await api()
       .get("/api/v1/restaurants/me/orders")
       .set("Cookie", asCookie(ownerToken));
 
-    expect(res.status).toBe(200);
-    expect(Array.isArray(res.body.data)).toBe(true);
+    // An earlier version of this test claimed to prove route ordering; moving
+    // the route proved otherwise, because "/:restaurantId" is one segment and
+    // this is two. What is actually true — and what the ordering protects — is
+    // that this namespace has exactly one occupant. The day a
+    // "/:restaurantId/orders" route appears, this assertion is the one that
+    // will notice.
+    expect(byId.status).toBe(404);
+    expect(byMe.status).toBe(200);
+  });
+
+  it("refuses a demoted ex-owner whose ownership row still stands", async () => {
+    const { owner, ownerToken, myOrder } = await twoRestaurants();
+
+    // Straight to the row: demotion through the API needs a customer profile,
+    // and the state under test is simply "the account's role no longer says
+    // RESTAURANT while `Restaurant.ownerId` still names it".
+    await prisma.user.update({
+      where: { id: owner.id },
+      data: { role: "CUSTOMER" },
+    });
+
+    const res = await api()
+      .patch(`/api/v1/orders/${myOrder.id}/status`)
+      .set("Cookie", asCookie(ownerToken))
+      .send({ status: "CANCELLED" });
+
+    expect(res.status).toBe(403);
   });
 
   it("gives an owner who runs no restaurant an empty page, not the platform", async () => {

@@ -23,10 +23,12 @@ import {
 const router: Router = Router();
 
 // ─── Restaurant owner (RESTAURANT only) ──────────────────
-// Declared before "/:restaurantId" so "me" is never read as a restaurant id.
-// The id param is a cuid2, so today "me" would 400 rather than mis-route — but
-// that is validation covering for route order, and the day the param loosens
-// this would silently become a 404 on a working endpoint.
+// Declared first. Nothing collides with these today — "/:restaurantId" is one
+// segment and these are two, and no "/:restaurantId/orders" route exists — so
+// moving them below changes nothing, which a mutation confirmed. The order is
+// insurance against the route that would collide: an admin-facing
+// "/:restaurantId/orders" is an obvious next endpoint, and declared above these
+// it would swallow "/me/orders" and turn it into a 400 on an invalid cuid2.
 router.get(
   "/me/orders",
   authenticate,

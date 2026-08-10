@@ -561,6 +561,18 @@ class OrderService {
     actor: OrderActor,
   ): Promise<void> {
     if (actor.role === "ADMIN") return;
+    // The role is checked here as well as on the route, and not for symmetry:
+    // demoting an account does NOT clear the `Restaurant.ownerId` rows pointing
+    // at it. Without this line an ex-owner demoted to CUSTOMER would still
+    // satisfy the ownership lookup, and the only thing standing between them
+    // and the order would be the route guard — which is one edit away from
+    // being widened by someone who reads the check below as sufficient.
+    if (actor.role !== "RESTAURANT") {
+      throw new AppError(
+        orderErrors.ORDER_FORBIDDEN.message,
+        orderErrors.ORDER_FORBIDDEN.statusCode,
+      );
+    }
     const owns = await restaurantRepository.isOwnedBy(
       restaurantId,
       actor.userId,
