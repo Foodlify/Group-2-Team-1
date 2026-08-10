@@ -154,6 +154,29 @@ describe("the state round-trip", () => {
     expect(res.status).toBe(400);
   });
 
+  it("refuses a wrong state of exactly the right length", async () => {
+    const exchange = vi.spyOn(googleAuthClient, "exchangeCode");
+
+    // Every other case here differs in length, and the length check alone
+    // rejects those — so a comparison that always returned true would have
+    // passed them all. Found by mutation: this is the only case that reaches
+    // the value comparison at all.
+    const res = await api()
+      .get(`/api/v1/auth/google/callback?code=abc&state=${"b".repeat(43)}`)
+      .set("Cookie", `oauthState=${"a".repeat(43)}`);
+
+    expect(res.status).toBe(400);
+    expect(exchange).not.toHaveBeenCalled();
+  });
+
+  it("accepts a state that matches exactly", async () => {
+    // The other side of the same coin: a check that rejected everything would
+    // pass every test above and break every real sign-in.
+    const { callback } = await completeFlow();
+
+    expect(callback.status).toBe(200);
+  });
+
   it("clears the state cookie so a failed attempt cannot be retried", async () => {
     const res = await api()
       .get("/api/v1/auth/google/callback?code=abc&state=wrong")
