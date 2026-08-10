@@ -7,6 +7,15 @@ import type {
   TransactionStatus,
   PaymentMethod,
 } from "./transaction.model";
+import {
+  auditingRepository,
+  type AuditableEvent,
+} from "../auditing/auditing.repository";
+import {
+  auditCreated,
+  auditGatewayReference,
+  auditStatusChange,
+} from "./transaction.audit";
 
 export class TransactionRepository extends BaseRepository<
   PrismaClient["transaction"]
@@ -82,6 +91,50 @@ export class TransactionRepository extends BaseRepository<
     });
   }
 
+  /**
+   * Every write below goes through here, which is the point: auditing sits at
+   * the repository, not the service, so there is no path that can move a
+   * transaction's state without leaving an entry — not a future service method,
+   * not a script that reaches for the repository directly.
+   *
+   * The entry is written with the SAME client as the change, so the two commit
+   * or roll back together. When the caller has no transaction of its own we
+   * open one rather than writing the pair separately: "record it afterwards,
+   * best effort" leaves precisely the gap the trail exists to close, and the
+   * case where the audit write fails is exactly the case where you most want
+   * the change undone.
+   */
+  private async audited<T>(
+    tx: Prisma.TransactionClient | undefined,
+    run: (
+      client: Prisma.TransactionClient,
+    ) => Promise<{ result: T; event: AuditableEvent }>,
+  ): Promise<T> {
+    const perform = async (client: Prisma.TransactionClient): Promise<T> => {
+      const { result, event } = await run(client);
+      await auditingRepository.record(event, client);
+      return result;
+    };
+    return tx ? perform(tx) : prisma.$transaction(perform);
+  }
+
+  /**
+   * Reads a transaction's audited fields while holding a row lock.
+   *
+   * The lock is what makes the recorded `from` value true. Without it two
+   * concurrent updates — a redelivered webhook racing a refund, which does
+   * happen — both read the same pre-change snapshot under MVCC, and the second
+   * entry claims a previous state that was already gone. A trail that
+   * misreports the transition is worse than no trail, because it is believed.
+   */
+  private async lockForAudit(id: string, client: Prisma.TransactionClient) {
+    await client.$queryRaw`SELECT id FROM "Transaction" WHERE id = ${id} FOR UPDATE`;
+    return client.transaction.findUnique({
+      where: { id },
+      select: { status: true, externalRef: true },
+    });
+  }
+
   async createTransaction(
     data: {
       type: TransactionType;
@@ -96,11 +149,22 @@ export class TransactionRepository extends BaseRepository<
     },
     tx?: Prisma.TransactionClient,
   ) {
-    return (tx ?? prisma).transaction.create({
-      data: {
-        ...data,
-        internalTxNumber: data.internalTxNumber ?? randomUUID(),
-      },
+    return this.audited(tx, async (client) => {
+      const created = await client.transaction.create({
+        data: {
+          ...data,
+          internalTxNumber: data.internalTxNumber ?? randomUUID(),
+        },
+      });
+      return {
+        result: created,
+        event: {
+          entity: "Transaction" as const,
+          entityId: created.id,
+          action: "CREATED" as const,
+          changes: auditCreated(created),
+        },
+      };
     });
   }
 
@@ -114,9 +178,21 @@ export class TransactionRepository extends BaseRepository<
     status: TransactionStatus,
     tx?: Prisma.TransactionClient,
   ) {
-    return (tx ?? prisma).transaction.update({
-      where: { id },
-      data: { status },
+    return this.audited(tx, async (client) => {
+      const before = await this.lockForAudit(id, client);
+      const updated = await client.transaction.update({
+        where: { id },
+        data: { status },
+      });
+      return {
+        result: updated,
+        event: {
+          entity: "Transaction" as const,
+          entityId: id,
+          action: "STATUS_CHANGED" as const,
+          changes: auditStatusChange(before?.status ?? null, status),
+        },
+      };
     });
   }
 
@@ -132,15 +208,35 @@ export class TransactionRepository extends BaseRepository<
     data: { externalRef?: string; metadata?: Prisma.InputJsonValue },
     tx?: Prisma.TransactionClient,
   ) {
-    return (tx ?? prisma).transaction.update({
-      where: { id },
-      data: {
-        status,
-        ...(data.externalRef !== undefined
-          ? { externalRef: data.externalRef }
-          : {}),
-        ...(data.metadata !== undefined ? { metadata: data.metadata } : {}),
-      },
+    return this.audited(tx, async (client) => {
+      const before = await this.lockForAudit(id, client);
+      const updated = await client.transaction.update({
+        where: { id },
+        data: {
+          status,
+          ...(data.externalRef !== undefined
+            ? { externalRef: data.externalRef }
+            : {}),
+          ...(data.metadata !== undefined ? { metadata: data.metadata } : {}),
+        },
+      });
+      return {
+        result: updated,
+        // STATUS_CHANGED rather than UPDATED: the reference moving is
+        // incidental, the settlement is the event. Both facts go in `changes`.
+        event: {
+          entity: "Transaction" as const,
+          entityId: id,
+          action: "STATUS_CHANGED" as const,
+          changes: {
+            ...(auditStatusChange(before?.status ?? null, status) as object),
+            ...(auditGatewayReference(
+              before?.externalRef ?? null,
+              data,
+            ) as object),
+          },
+        },
+      };
     });
   }
 
@@ -154,14 +250,29 @@ export class TransactionRepository extends BaseRepository<
     data: { externalRef?: string; metadata?: Prisma.InputJsonValue },
     tx?: Prisma.TransactionClient,
   ) {
-    return (tx ?? prisma).transaction.update({
-      where: { id },
-      data: {
-        ...(data.externalRef !== undefined
-          ? { externalRef: data.externalRef }
-          : {}),
-        ...(data.metadata !== undefined ? { metadata: data.metadata } : {}),
-      },
+    return this.audited(tx, async (client) => {
+      const before = await this.lockForAudit(id, client);
+      const updated = await client.transaction.update({
+        where: { id },
+        data: {
+          ...(data.externalRef !== undefined
+            ? { externalRef: data.externalRef }
+            : {}),
+          ...(data.metadata !== undefined ? { metadata: data.metadata } : {}),
+        },
+      });
+      return {
+        result: updated,
+        // UPDATED, not STATUS_CHANGED — attaching a reference says the hand-off
+        // to the gateway happened, never that money moved. The distinction is
+        // the same one this method's own docblock draws.
+        event: {
+          entity: "Transaction" as const,
+          entityId: id,
+          action: "UPDATED" as const,
+          changes: auditGatewayReference(before?.externalRef ?? null, data),
+        },
+      };
     });
   }
 }

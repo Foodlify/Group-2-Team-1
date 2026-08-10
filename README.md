@@ -508,9 +508,52 @@ A soft delete writes `updatedBy`, so "who deleted this" is answerable without a 
 `deletedBy` column.
 
 `createdBy` / `updatedBy` are **not** returned by the API: the catalog endpoints are
-public and the columns hold internal admin ids. The audit trail is read through
-`GET /api/v1/menus/{menuId}/history` (ADMIN), which reports `changedBy` per entry and
-covers `CREATED` / `UPDATED` / `DELETED` / `RESTORED`.
+public and the columns hold internal admin ids. The menu's own change history is read
+through `GET /api/v1/menus/{menuId}/history` (ADMIN), which reports `changedBy` per entry
+and covers `CREATED` / `UPDATED` / `DELETED` / `RESTORED`.
+
+### The Auditing table
+
+`AuditingEvent` is the official ERD's generic `auditingEvent`, and it answers a different
+question from the columns above. They say **who last touched a row**; the table says
+**what happened to it, in what order, and from where**. The columns keep one answer, the
+table keeps every one. It currently covers `Transaction` — every payment and refund write.
+
+```
+GET /api/v1/audit-events                       (ADMIN)
+GET /api/v1/audit-events?entityId={id}         one transaction's trail
+GET /api/v1/audit-events?action=STATUS_CHANGED when money moved
+GET /api/v1/audit-events?actorId={userId}      everything one account did
+```
+
+Four properties are worth knowing, because each one is a decision that could have gone
+the easy way:
+
+**The entry and the change commit together.** Recording lives in
+`TransactionRepository`, not the service, so no code path — not a future service method,
+not a script — can move a transaction's state without leaving an entry. The entry is
+written with the same client as the change, inside the same database transaction. Writing
+it afterwards on a best-effort basis would leave exactly the gap an audit exists to close:
+money that moved with no record.
+
+**The actor is ambient, not a parameter.** It rides in an `AsyncLocalStorage` opened by
+middleware and filled in by `authenticate`. The alternative is an `actorId` argument on
+every method between the controller and the write, and a trail whose completeness depends
+on remembering an argument is not a trail. A null actor stays null: a Stripe webhook has
+no user, and a placeholder would be a lie in the one table that must not lie.
+
+**`changes` is curated, never a dump of the write payload.** Spreading the payload is how
+a gateway's arbitrary metadata ends up in an append-only table nothing prunes. The blob is
+already on the transaction row for anyone who needs it. Money is recorded as a **string**,
+so JSON cannot round it.
+
+**Status reads take a row lock.** Without it, a redelivered webhook racing a refund makes
+both writes read the same MVCC snapshot, and the second entry claims a previous state that
+was already gone. A trail that misreports a transition is worse than no trail, because it
+is believed.
+
+The table is append-only and there is deliberately no way to write to it over HTTP — the
+repository exposes no update or delete, and neither does the API.
 
 ---
 

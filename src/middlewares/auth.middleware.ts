@@ -5,6 +5,7 @@ import { asyncHandler } from "../utils/asyncHandler";
 import { verifyAccessToken } from "../shared/auth/jwt.helper";
 import { userErrors } from "../shared/exceptions/user.errors";
 import { userRepository } from "../modules/user/user.repository";
+import { setContextActor } from "../shared/context/request.context";
 
 export interface JwtPayload {
   id: string;
@@ -72,6 +73,10 @@ export const authenticate = asyncHandler(
     // trusting the claim would leave someone admin for the rest of the
     // token's fifteen minutes.
     req.user = { ...payload, role: user.role };
+    // The audit trail's "who". Set from the same resolved row as `req.user`, so
+    // a demoted account is attributed by its real role rather than by a stale
+    // token claim.
+    setContextActor(user.id, user.role);
     next();
   },
 );
