@@ -2,7 +2,6 @@ import { apiReference } from "@scalar/express-api-reference";
 import type { Application } from "express";
 import swaggerUi from "swagger-ui-express";
 import { buildOpenApiDocument } from "./document";
-import logger from "../config/logger";
 
 export const serveOpenApi = (app: Application): void => {
   const document = buildOpenApiDocument();
@@ -32,9 +31,8 @@ export const serveOpenApi = (app: Application): void => {
     }),
   );
 
-  logger.info("OpenAPI documentation available at:", {
-    scalar: "/api-docs",
-    swagger: "/api-docs/swagger",
-    json: "/openapi.json",
-  });
+  // Deliberately not logged here. This runs at mount time, before `listen`, so
+  // the only addresses it could print are relative ones — and the startup
+  // banner in `server.ts` prints them absolute, once the port is actually
+  // bound. Two lists of the same paths is one list too many.
 };
