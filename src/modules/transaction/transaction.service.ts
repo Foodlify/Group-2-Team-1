@@ -16,9 +16,66 @@ export interface PendingGatewayRefund {
   payment: TransactionModel;
 }
 
+/** Filters shared by the customer and admin listings. */
+export interface TransactionListQuery {
+  page: number;
+  limit: number;
+  type?: TransactionType;
+  status?: TransactionStatus;
+  orderId?: string;
+}
+
 class TransactionService {
   async findById(id: string) {
     return transactionRepository.findById(id);
+  }
+
+  /**
+   * A customer's own transactions.
+   *
+   * Ownership runs through the order — a transaction has no customer of its
+   * own — so this filters on `order.customerId` rather than trusting anything
+   * from the request. A row with no order (the schema allows it, for future
+   * wallet top-ups) belongs to nobody and is correctly invisible here.
+   */
+  async listForCustomer(customerId: string, query: TransactionListQuery) {
+    return this.list({ ...query, customerId });
+  }
+
+  /** Every transaction, for the admin view. */
+  async listAll(query: TransactionListQuery) {
+    return this.list(query);
+  }
+
+  private async list(
+    query: TransactionListQuery & { customerId?: string },
+  ): Promise<{ rows: TransactionModel[]; total: number }> {
+    const where: Prisma.TransactionWhereInput = {
+      ...(query.customerId ? { order: { customerId: query.customerId } } : {}),
+      ...(query.type ? { type: query.type } : {}),
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.orderId ? { orderId: query.orderId } : {}),
+    };
+    return transactionRepository.findPage(
+      where,
+      (query.page - 1) * query.limit,
+      query.limit,
+    );
+  }
+
+  /**
+   * The row a receipt is built from, or null if this customer may not see it.
+   *
+   * `customerId` is undefined for an admin. For anyone else a mismatch returns
+   * null rather than a distinct error: telling an unauthorised caller that the
+   * id exists is itself a leak, and "not found" is the honest answer to
+   * "show me a transaction that is not yours".
+   */
+  async findReceiptSource(id: string, customerId?: string) {
+    const transaction = await transactionRepository.findForReceipt(id);
+    if (!transaction) return null;
+    if (customerId && transaction.order?.customerId !== customerId) return null;
+    return transaction;
   }
 
   async findByOrderId(orderId: string) {

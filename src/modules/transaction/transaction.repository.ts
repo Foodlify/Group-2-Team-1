@@ -30,6 +30,58 @@ export class TransactionRepository extends BaseRepository<
     return prisma.transaction.findFirst({ where: { externalRef } });
   }
 
+  /**
+   * One page of transactions, newest first, plus the total for the page meta.
+   *
+   * Both in a single `$transaction` so the count cannot describe a different
+   * set than the rows — without it a payment landing between the two queries
+   * gives a total that does not match what was returned.
+   */
+  async findPage(
+    where: Prisma.TransactionWhereInput,
+    skip: number,
+    take: number,
+  ) {
+    const [rows, total] = await prisma.$transaction([
+      prisma.transaction.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take,
+      }),
+      prisma.transaction.count({ where }),
+    ]);
+    return { rows, total };
+  }
+
+  /**
+   * A transaction with everything a receipt has to state: what was bought, at
+   * what price, by whom, and to where. All of it read from the order's own
+   * snapshots rather than from the live catalog — the receipt has to say what
+   * the customer actually paid, not what the item costs today.
+   */
+  async findForReceipt(id: string) {
+    return prisma.transaction.findUnique({
+      where: { id },
+      include: {
+        order: {
+          include: {
+            orderItems: true,
+            restaurant: { select: { id: true, name: true } },
+            address: true,
+            customer: {
+              select: {
+                id: true,
+                phone: true,
+                user: { select: { name: true, email: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
   async createTransaction(
     data: {
       type: TransactionType;

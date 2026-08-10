@@ -687,6 +687,23 @@ hours and a retry is always later than that.
 > own records, plus replayed events, an expired session releasing its stock, and
 > the failed-refund path. See `docs/PAYMENTS.md`.
 
+Customers can read their own ledger and print a receipt from it:
+
+| Endpoint                                             | Who      |
+| ---------------------------------------------------- | -------- |
+| `GET /api/v1/customers/me/transactions`              | customer |
+| `GET /api/v1/customers/me/transactions/{id}/receipt` | customer |
+| `GET /api/v1/transactions`                           | ADMIN    |
+| `GET /api/v1/transactions/{id}/receipt`              | ADMIN    |
+
+A transaction has no customer of its own, so ownership runs through its order —
+the customer listing filters on `order.customerId`, and a receipt belonging to
+someone else is a `404` rather than a `403`, because a `403` confirms the id is
+real. Receipts are rendered on demand from the order's snapshots, so they keep
+saying what the customer actually paid even after the restaurant renames or
+reprices the dish. Only settled transactions have one; `PENDING` and `FAILED`
+give `409`.
+
 ---
 
 ## Email

@@ -19,6 +19,14 @@ export const api = () => request(app);
 
 export const TEST_PASSWORD = "Passw0rd!23";
 
+/** Seven stable digits from a suffix, so each account gets its own phone. */
+const hashSuffix = (suffix: string): string => {
+  let hash = 0;
+  for (const char of suffix)
+    hash = (hash * 31 + char.charCodeAt(0)) % 10_000_000;
+  return String(hash).padStart(7, "0");
+};
+
 /** A real account with a real bcrypt hash, so `/auth/login` genuinely works. */
 export async function createAccount(
   role: "CUSTOMER" | "ADMIN" = "CUSTOMER",
@@ -38,7 +46,9 @@ export async function createAccount(
   const customer =
     role === "CUSTOMER"
       ? await prisma.customer.create({
-          data: { userId: user.id, phone: `0100${Date.now() % 10_000_000}` },
+          // Derived from the suffix, not the clock: `phone` is unique, and two
+          // accounts created in the same millisecond collided on it.
+          data: { userId: user.id, phone: `0100${hashSuffix(suffix)}` },
         })
       : null;
   return { user, customer, token: accessTokenFor(user) };
