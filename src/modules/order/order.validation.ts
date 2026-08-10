@@ -68,7 +68,8 @@ export const OrderIdParamsSchema = z
   })
   .meta({ id: "OrderIdParams" });
 
-export const OrderQuerySchema = PaginationQuerySchema.extend({
+/** Shared by every order listing, whoever is asking. */
+const orderFilterShape = {
   from: z.iso.datetime().optional().meta({
     description: "Filter orders created on or after this date (ISO 8601)",
     example: "2026-04-01T00:00:00.000Z",
@@ -81,15 +82,48 @@ export const OrderQuerySchema = PaginationQuerySchema.extend({
     description: "Filter by order status (e.g. DELIVERED for order history)",
     example: "DELIVERED",
   }),
-})
-  .refine(
-    (data) =>
-      !data.from || !data.to || new Date(data.from) <= new Date(data.to),
-    { message: "'from' must be earlier than or equal to 'to'", path: ["from"] },
-  )
+};
+
+/** A range that runs backwards returns nothing; say so instead of returning it. */
+const orderedDateRange = (data: { from?: string; to?: string }): boolean =>
+  !data.from || !data.to || new Date(data.from) <= new Date(data.to);
+const orderedDateRangeError = {
+  message: "'from' must be earlier than or equal to 'to'",
+  path: ["from"],
+};
+
+export const OrderQuerySchema = PaginationQuerySchema.extend(orderFilterShape)
+  .refine(orderedDateRange, orderedDateRangeError)
   .meta({
     id: "OrderQuery",
     description: "Pagination + optional date range filter for orders",
+  });
+
+/**
+ * The same filters plus a restaurant, for the two listings that span more than
+ * one customer: the admin's platform-wide list and the owner's order history.
+ *
+ * A separate schema rather than one more optional field on `OrderQuery`,
+ * because a customer's own listing has no use for it — documenting a parameter
+ * on `GET /orders` that the handler ignores is worse than not having it.
+ */
+export const ScopedOrderQuerySchema = PaginationQuerySchema.extend({
+  ...orderFilterShape,
+  restaurantId: z
+    .cuid2()
+    .optional()
+    .meta({
+      description:
+        "Limit to one restaurant. For an owner, a restaurant they do not own " +
+        "yields an empty page rather than an error — the same answer someone " +
+        "who guessed an id that does not exist would get.",
+      example: "clxyz...",
+    }),
+})
+  .refine(orderedDateRange, orderedDateRangeError)
+  .meta({
+    id: "ScopedOrderQuery",
+    description: "Order filters, narrowed to a restaurant",
   });
 
 // ═══════════════════════════════════════════════════════════════
@@ -197,6 +231,7 @@ schemaRegistry.register("UpdateStatusRequest", UpdateStatusRequestSchema);
 schemaRegistry.register("AddTrackingRequest", AddTrackingRequestSchema);
 schemaRegistry.register("OrderIdParams", OrderIdParamsSchema);
 schemaRegistry.register("OrderQuery", OrderQuerySchema);
+schemaRegistry.register("ScopedOrderQuery", ScopedOrderQuerySchema);
 schemaRegistry.register("OrderItemResponse", OrderItemResponseSchema);
 schemaRegistry.register("TimelineEntry", TimelineEntrySchema);
 schemaRegistry.register("OrderResponse", OrderResponseSchema);
@@ -216,5 +251,6 @@ export type UpdateStatusInput = z.infer<typeof UpdateStatusRequestSchema>;
 export type AddTrackingInput = z.infer<typeof AddTrackingRequestSchema>;
 export type OrderIdParams = z.infer<typeof OrderIdParamsSchema>;
 export type OrderQuery = z.infer<typeof OrderQuerySchema>;
+export type ScopedOrderQuery = z.infer<typeof ScopedOrderQuerySchema>;
 export type OrderResponse = z.infer<typeof OrderResponseSchema>;
 export type OrderListItemResponse = z.infer<typeof OrderListItemResponseSchema>;

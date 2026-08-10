@@ -19,6 +19,11 @@ import {
   resetDatabase,
 } from "./helpers/db";
 
+// These tests drive orders through their lifecycle to reach the money; the
+// actor is incidental, so they act as an admin, whose reach is not scoped to
+// any restaurant. Scoped access is covered in the owner integration suite.
+const ADMIN = { userId: "user_admin", role: "ADMIN" };
+
 beforeEach(async () => {
   await resetDatabase();
 });
@@ -193,10 +198,18 @@ describe("order lifecycle against a real database", () => {
   it("appends to the jsonb timeline with the raw UPDATE, preserving history", async () => {
     const { order } = await place();
 
-    await orderService.updateOrderStatus(order.id, { status: "CONFIRMED" });
-    const after = await orderService.updateOrderStatus(order.id, {
-      status: "PREPARING",
-    });
+    await orderService.updateOrderStatus(
+      order.id,
+      { status: "CONFIRMED" },
+      ADMIN,
+    );
+    const after = await orderService.updateOrderStatus(
+      order.id,
+      {
+        status: "PREPARING",
+      },
+      ADMIN,
+    );
 
     // `appendTimelineEntry` is raw SQL (`timeline || ...::jsonb`) — this path
     // has no unit coverage at all, and it has to both append and mirror the
@@ -212,7 +225,11 @@ describe("order lifecycle against a real database", () => {
 
   it("enforces the status precondition in SQL, not just in the service", async () => {
     const { order } = await place();
-    await orderService.updateOrderStatus(order.id, { status: "CONFIRMED" });
+    await orderService.updateOrderStatus(
+      order.id,
+      { status: "CONFIRMED" },
+      ADMIN,
+    );
 
     // The service check would pass for PENDING -> CONFIRMED, but the row is
     // already CONFIRMED, so the UPDATE's `AND status = 'PENDING'` matches
@@ -232,9 +249,13 @@ describe("order lifecycle against a real database", () => {
       "PREPARING",
       "OUT_FOR_DELIVERY",
     ] as const) {
-      await orderService.updateOrderStatus(order.id, { status });
+      await orderService.updateOrderStatus(order.id, { status }, ADMIN);
     }
-    await orderService.updateOrderStatus(order.id, { status: "DELIVERED" });
+    await orderService.updateOrderStatus(
+      order.id,
+      { status: "DELIVERED" },
+      ADMIN,
+    );
 
     const transactions = await prisma.transaction.findMany({
       where: { orderId: order.id },

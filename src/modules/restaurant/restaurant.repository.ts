@@ -61,6 +61,44 @@ export class RestaurantRepository extends BaseRepository<
     });
   }
 
+  // ─── Ownership ────────────────────────────────────────
+  /**
+   * The restaurants an account runs. Ids only — every caller wants them to
+   * scope a query somewhere else, not to render a restaurant.
+   *
+   * Soft-deleted ones are excluded, so an owner's order history stops covering
+   * a restaurant the moment an admin deletes it. Its past orders are still
+   * reachable by the customers who placed them and by an admin; what ends is
+   * the owner's standing to act on them.
+   */
+  async findIdsByOwnerId(ownerId: string): Promise<string[]> {
+    const rows = await prisma.restaurant.findMany({
+      where: { ownerId, ...notDeleted },
+      select: { id: true },
+    });
+    return rows.map((r) => r.id);
+  }
+
+  /**
+   * The authorization question, asked of the database rather than of a list
+   * held in memory: a `count` cannot be fooled by a stale owned-ids array that
+   * an admin reassigned in between.
+   */
+  async isOwnedBy(id: string, ownerId: string): Promise<boolean> {
+    const count = await prisma.restaurant.count({
+      where: { id, ownerId, ...notDeleted },
+    });
+    return count > 0;
+  }
+
+  /** `null` unassigns — the restaurant goes back to being admin-run. */
+  async setOwner(id: string, ownerId: string | null, actorId: string) {
+    return prisma.restaurant.update({
+      where: { id },
+      data: { ownerId, updatedBy: actorId },
+    });
+  }
+
   /**
    * Paginated list with optional case-insensitive name search.
    * `includeDeleted` is honoured for admins only — see `restaurant.service`.
