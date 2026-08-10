@@ -16,6 +16,9 @@ const PLANS = {
   2: { file: "02-stock-contention.jmx", item: "scarceItemId", rampup: 5 },
   // Login needs no menu item — it never reaches the catalog.
   3: { file: "03-login.jmx", item: null, rampup: 10 },
+  // Reports read across the catalog; the restaurant id comes from
+  // dashboard.csv, written by the dashboard seed.
+  4: { file: "04-dashboard.jmx", item: null, rampup: 5 },
 };
 
 const which = process.argv[2];
@@ -64,7 +67,8 @@ const args = [
   out,
   `-Jhost=${arg("host", "localhost")}`,
   `-Jport=${arg("port", "4444")}`,
-  `-Jusers=${arg("users", "500")}`,
+  `-Jusers=${arg("users", which === "4" ? "20" : "500")}`,
+  `-Jloops=${arg("loops", "5")}`,
   `-Jrampup=${arg("rampup", String(plan.rampup))}`,
   `-JitemId=${itemId}`,
   `-JdataDir=${posix(path.join(perfDir, "data"))}`,

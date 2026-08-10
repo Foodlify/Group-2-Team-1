@@ -224,9 +224,24 @@ Still open in this area:
   Law says only ~2.3 connections are needed on average, so the cliff is burst
   behaviour rather than capacity; the mechanism is a hypothesis, the cliff is
   measured.
-- **The pool sweep covers checkout only.** The dashboard reports hold a
-  connection far longer than the 22 ms average that sweep measured, and nothing
-  exercises them under load. Re-measure before assuming the range transfers.
+- ~~**The pool sweep covers checkout only.**~~ — done (2026-08-10).
+  `perf/plans/04-dashboard.jmx` (`npm run perf:dashboard`) against 50 000
+  seeded orders/transactions over 90 days. **The 12–20 range transfers** — a
+  pool of 5 costs 27% of throughput, above 20 gives nothing — but there is **no
+  cliff**: the same pool of 5 that took checkout to a 31% success rate serves
+  every report, only slower. The difference is connection hold time: checkout
+  holds one connection for a whole interactive transaction, the reports hold
+  none across await points. Short queries degrade, held transactions collapse.
+  Also disproved the worry that prompted it: `overview` fans out to 11 parallel
+  queries, but each holds its connection for a millisecond or two, so they queue
+  through the pool rather than exhausting it — 100 concurrent admins, 0 pool
+  timeouts, ~160 req/s.
+- **Reports have not been measured against years of data.** 50 000 transactions
+  is comfortable; the `date_trunc` series has no index helping it, and that is
+  where growth would show first.
+- **First report after a restart costs 307 ms against a warm 17 ms.** Cold
+  PostgreSQL planning and cache, paid once per deployment — worth knowing before
+  quoting a number from a fresh process.
 - **500 truly simultaneous checkouts fail at every pool size tested.** With a
   1-second ramp-up instead of 10, place-order collapses to ~0% at 10, 20, 40 and
   80 — a mix of pool timeouts and Prisma's 2-second transaction `maxWait`, plus

@@ -586,9 +586,12 @@ through 1000 requests each. Full write-up with all measurements:
 | `02-stock-contention`    | 500 customers racing for 50 units | exactly 50 sold, 450 × 409, 0 × 5xx  |
 
 ```bash
-npm run perf:seed     # 500 customers + their access tokens
-npm run perf:plan1
-npm run perf:plan2
+npm run perf:seed            # 500 customers + their access tokens
+npm run perf:plan1           # order flow
+npm run perf:plan2           # stock contention
+npm run perf:login           # login capacity
+npm run perf:seed-dashboard  # 50k orders/transactions over 90 days
+npm run perf:dashboard       # admin reports
 ```
 
 Two findings came out of it. The pool in `config/prisma.ts` was capped at 10

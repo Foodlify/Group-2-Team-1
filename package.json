@@ -35,7 +35,9 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset",
-    "db:format": "prisma format"
+    "db:format": "prisma format",
+    "perf:seed-dashboard": "ts-node perf/seed-dashboard.ts",
+    "perf:dashboard": "node perf/run-plan.js 4"
   },
   "keywords": [],
   "author": "",
