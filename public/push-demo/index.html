@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Foodlify — Web Push demo</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 40rem;
+        margin: 3rem auto;
+        padding: 0 1rem;
+        line-height: 1.6;
+      }
+      button {
+        font: inherit;
+        padding: 0.5rem 1rem;
+        margin-right: 0.5rem;
+      }
+      #log {
+        background: #f4f4f5;
+        padding: 1rem;
+        white-space: pre-wrap;
+        word-break: break-all;
+        border-radius: 0.5rem;
+        min-height: 6rem;
+      }
+      code {
+        background: #f4f4f5;
+        padding: 0.1rem 0.3rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Web Push demo</h1>
+    <p>
+      A development tool, not part of the product — push cannot be demonstrated
+      from a backend alone, because something has to subscribe and receive.
+      Served only when <code>NODE_ENV</code> is not <code>production</code>.
+    </p>
+    <ol>
+      <li>Log in as a customer first, so the session cookie is set.</li>
+      <li>Subscribe below.</li>
+      <li>
+        Change one of that customer's orders to a new status, and the
+        notification arrives — even with this tab closed.
+      </li>
+    </ol>
+
+    <p>
+      <button id="subscribe">Subscribe</button>
+      <button id="unsubscribe">Unsubscribe</button>
+    </p>
+
+    <div id="log">Ready.</div>
+
+    <script>
+      const API = "/api/v1";
+      const logEl = document.getElementById("log");
+      const log = (message) => {
+        logEl.textContent = `${message}\n\n${logEl.textContent}`;
+      };
+
+      /** The VAPID public key arrives base64url; the browser wants bytes. */
+      const toUint8Array = (base64url) => {
+        const padded = (
+          base64url + "=".repeat((4 - (base64url.length % 4)) % 4)
+        )
+          .replace(/-/g, "+")
+          .replace(/_/g, "/");
+        const raw = atob(padded);
+        return Uint8Array.from([...raw].map((char) => char.charCodeAt(0)));
+      };
+
+      document
+        .getElementById("subscribe")
+        .addEventListener("click", async () => {
+          try {
+            if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+              log("This browser has no Web Push support.");
+              return;
+            }
+
+            const permission = await Notification.requestPermission();
+            if (permission !== "granted") {
+              log(`Notification permission: ${permission}. Nothing to do.`);
+              return;
+            }
+
+            const registration = await navigator.serviceWorker.register(
+              "/push-demo/sw.js",
+              { scope: "/push-demo/" },
+            );
+            await navigator.serviceWorker.ready;
+
+            const keyResponse = await fetch(`${API}/push/public-key`);
+            if (!keyResponse.ok) {
+              log("No VAPID key — push is not configured on this deployment.");
+              return;
+            }
+            const { data } = await keyResponse.json();
+
+            const subscription = await registration.pushManager.subscribe({
+              // Required by every browser: a push must be tied to a visible
+              // notification, not used as a background wake-up channel.
+              userVisibleOnly: true,
+              applicationServerKey: toUint8Array(data.publicKey),
+            });
+
+            const saved = await fetch(`${API}/push/subscriptions`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              // Sends the session cookie — the endpoint is customer-only.
+              credentials: "include",
+              body: JSON.stringify(subscription),
+            });
+            log(
+              saved.ok
+                ? `Subscribed.\n${subscription.endpoint}`
+                : `Server refused the subscription: ${saved.status}. Logged in as a customer?`,
+            );
+          } catch (error) {
+            log(`Failed: ${error.message}`);
+          }
+        });
+
+      document
+        .getElementById("unsubscribe")
+        .addEventListener("click", async () => {
+          try {
+            const registration =
+              await navigator.serviceWorker.getRegistration("/push-demo/");
+            const subscription =
+              await registration?.pushManager.getSubscription();
+            if (!subscription) {
+              log("This browser has no subscription.");
+              return;
+            }
+            await fetch(`${API}/push/subscriptions`, {
+              method: "DELETE",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({ endpoint: subscription.endpoint }),
+            });
+            await subscription.unsubscribe();
+            log("Unsubscribed.");
+          } catch (error) {
+            log(`Failed: ${error.message}`);
+          }
+        });
+    </script>
+  </body>
+</html>

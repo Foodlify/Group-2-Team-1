@@ -330,3 +330,28 @@ Still open, and deliberately so: **demoting an account does not clear the
 actor regardless, so this is not a hole — but an admin who demotes an owner and
 later re-promotes them silently restores their old restaurants. Clearing the
 rows on demotion is a product decision nobody has made.
+
+### ~~Push Notification~~ — done (2026-08-11)
+
+The official `Notify Customer With Order Status` → `Push Notification`, over
+the W3C Web Push standard. See [docs/PUSH.md](docs/PUSH.md).
+
+**No provider and no account.** The VAPID pair is generated locally and the
+push goes straight to the endpoint the browser issued. FCM would also have been
+free — unlimited on the Spark plan, no card — but it needs a Google Cloud
+project and a client SDK to demonstrate, and a single page plus a service
+worker proves Web Push end to end.
+
+**Open items it produced:**
+
+- **No delivery record.** A push that succeeded is not written down anywhere,
+  so "did the customer get told" can only be answered for email. The auditing
+  table exists and could carry it; nobody has asked for it, and doing it would
+  mean a row per device per status change.
+- **The demo page is a dev tool**, served only outside production. It is not a
+  client, and nothing in the product depends on it.
+- **SMS is still not done**, and remains the last notification gap. There is no
+  genuinely free provider: Twilio's trial stamps
+  "Sent from your Twilio trial account" on every message and reaches at most 5
+  pre-verified numbers, and Vonage's sandbox is the same shape. The scope map
+  says `Email / SMS` in both places it appears and the email side works.

@@ -22,6 +22,7 @@ import {
   myTransactionsRouter,
 } from "../modules/transaction/transaction.routes";
 import auditRouter from "../modules/auditing/auditing.routes";
+import pushRouter from "../modules/push/push.routes";
 import menuRouter from "../modules/menu/menu.routes";
 import menuItemRouter from "../modules/menuItem/menuItem.routes";
 
@@ -50,6 +51,7 @@ router.use("/menu-items", menuItemRouter);
 router.use("/carts", cartRouter);
 router.use("/orders", orderRouter);
 router.use("/dashboard", dashboardRouter);
+router.use("/push", pushRouter);
 // The Stripe webhook lives at /payments/stripe/webhook and is mounted directly
 // on the app, ahead of this router — see app.ts.
 router.use("/payments", paymentAdminRouter);
