@@ -355,3 +355,23 @@ worker proves Web Push end to end.
   "Sent from your Twilio trial account" on every message and reaches at most 5
   pre-verified numbers, and Vonage's sandbox is the same shape. The scope map
   says `Email / SMS` in both places it appears and the email side works.
+
+### ~~Social Media Authentication~~ — done (2026-08-11)
+
+Google, over the OAuth 2.0 authorization-code flow. Free to set up: an OAuth
+Client ID needs no billing account. See [docs/SOCIAL_AUTH.md](docs/SOCIAL_AUTH.md).
+
+**Open items it produced:**
+
+- **`User.password` and `Customer.phone` are now nullable.** Password
+  registration still requires a phone, and `comparePassword` treats a null hash
+  as "no" in one place — but any new code reading either column has a case to
+  handle that did not exist before.
+- **No unlink endpoint.** An account that linked Google cannot unlink it. For a
+  Google-only account that would lock the owner out entirely (no password to
+  fall back on), so the endpoint has to check for one first. Nobody has asked
+  for it.
+- **Google is the only provider.** The map says "Social Media Authentication"
+  without naming one. Adding a second means generalising `googleId` into a
+  provider/subject pair — a table, most likely — which is not worth doing for a
+  provider nobody has asked for.
