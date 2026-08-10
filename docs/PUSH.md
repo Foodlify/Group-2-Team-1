@@ -134,7 +134,7 @@ Service workers need a secure origin, and `localhost` counts, which is why the
 page is served by the API itself rather than opened from disk.
 
 1. Set the VAPID keys and start the server.
-2. Open `http://localhost:3000/demo/` and sign in (the subscribe endpoint is
+2. Open `http://localhost:$PORT/demo/` and sign in (the subscribe endpoint is
    customer-only).
 3. Press **Enable notifications**.
 4. Change one of that customer's orders to a new status.

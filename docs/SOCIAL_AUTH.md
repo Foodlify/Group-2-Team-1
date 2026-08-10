@@ -13,8 +13,8 @@ Two values, both from Google. The other two have working defaults:
 GOOGLE_CLIENT_ID=1234567890-abcdefg.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxxxxxx
 
-# Optional — this is already the default:
-# GOOGLE_CALLBACK_URL=http://localhost:3000/api/v1/auth/google/callback
+# Must match your PORT and the URI registered on the OAuth client:
+GOOGLE_CALLBACK_URL=http://localhost:3000/api/v1/auth/google/callback
 
 # Optional — leave unset and the callback answers with JSON, which is what
 # makes the flow demonstrable with no frontend:
@@ -59,15 +59,21 @@ no verification.
 OAuth client ID**.
 
 - Application type: **Web application**.
-- Under **Authorized redirect URIs**, add this, exactly:
+- Under **Authorized redirect URIs**, add the callback exactly:
 
   ```
-  http://localhost:3000/api/v1/auth/google/callback
+  http://localhost:<PORT>/api/v1/auth/google/callback
   ```
+
+  **`<PORT>` is whatever `PORT` says in your `.env`** — 3000 in
+  `.env.example`, but check yours. It has to match in three places at once:
+  the port the server listens on, `GOOGLE_CALLBACK_URL`, and the URI
+  registered here. Two out of three is a `redirect_uri_mismatch`, or a browser
+  sent back to a port with nothing on it.
 
   Google compares the **string**, not the resolved URL. A trailing slash, a
   different port, or the loopback IP written out instead of `localhost` all
-  count as a different URI and fail with `redirect_uri_mismatch`.
+  count as a different URI.
 
   Plain `http` is fine here: Google requires HTTPS for redirect URIs generally,
   but exempts loopback addresses — `localhost`, `127.0.0.1`, `[::1]` — for
@@ -86,14 +92,14 @@ no library to enable and nothing to add to the project.
 ### Checking it worked
 
 ```
-curl -i http://localhost:3000/api/v1/auth/google
+curl -i http://localhost:$PORT/api/v1/auth/google
 ```
 
 - **302**, with a `Location` on `accounts.google.com` and an `oauthState`
   cookie set — configured correctly.
 - **404** — the server has no credentials; check `.env` and that it restarted.
 
-Then open `http://localhost:3000/demo/` **in a browser** and press **Sign in
+Then open `http://localhost:$PORT/demo/` **in a browser** and press **Sign in
 with Google** (not curl — the flow is a navigation). After the consent screen
 you land back with the session cookies set, and the page asks
 `GET /customers/me` who they belong to.
