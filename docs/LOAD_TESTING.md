@@ -17,6 +17,7 @@ plans, the seed and the analyser are in [`perf/`](../perf) and re-runnable.
 | Reproduced on a second fresh database | identical correctness, same order of magnitude  |
 | Login, 500 concurrent — **before**    | collapsed — 23.6% success, p50 35.5 s           |
 | Login, 500 concurrent — **after**     | **500/500 succeeded**, p50 786 ms, ~46 logins/s |
+| Dashboard reports, 100 admins         | **100% ok**, ~160 req/s, no pool exhaustion     |
 
 Login used to be the system's ceiling by roughly two orders of magnitude, and
 the last two rows are the same test either side of the fix. Diagnosing it is
@@ -288,12 +289,68 @@ This also closes Finding 1 from the other direction. The original run blamed
 flow with zero. The pool was never the problem — the blocked event loop was, and
 it could not run the callbacks that hand connections back.
 
-### What this sweep does not cover
+---
 
-Only the cart and checkout paths. The dashboard reports run raw aggregate
-queries that hold a connection far longer than 22 ms, and nothing here exercises
-them under load. A deployment serving heavy concurrent reports should re-measure
-rather than assume this range transfers.
+## Finding 3 — The dashboard reports, and why they have no cliff
+
+The sweep above covers cart and checkout only, so the range it produced was not
+safe to assume for the reports: `dashboard/overview` fans out to **11 queries in
+parallel**, and on paper two concurrent admins would ask for 22 connections
+against a pool of 20. `perf/plans/04-dashboard.jmx` (`npm run perf:dashboard`)
+exists to settle that. It needs history to be meaningful, so
+`npm run perf:seed-dashboard` bulk-loads **50 000 orders and transactions across
+90 days** on top of the usual seed.
+
+**The worry was unfounded, and the reason is worth keeping.** Eleven queries in
+parallel is not eleven connections held: each acquires a connection, runs for a
+millisecond or two, and releases it. They queue _through_ the pool rather than
+occupying it. Measured at 50 concurrent admins:
+
+| `DATABASE_POOL_MAX` | req/s     | overview p50 | restaurant p50 | ok % | pool timeouts |
+| ------------------- | --------- | ------------ | -------------- | ---- | ------------- |
+| 5                   | 114.2     | 327 ms       | 540 ms         | 100% | 0             |
+| 10                  | 152.3     | 244 ms       | 371 ms         | 100% | 0             |
+| **12**              | **156.9** | 244 ms       | 356 ms         | 100% | 0             |
+| 20                  | 156.4     | 237 ms       | 367 ms         | 100% | 0             |
+| 40                  | 151.5     | 252 ms       | 377 ms         | 100% | 0             |
+
+**The 12–20 range transfers.** Below it costs throughput — a pool of 5 gives up
+27% — and above it gives nothing back, the same shape as the checkout sweep.
+
+**But there is no cliff here, and that is the interesting part.** A pool of 5
+took checkout down to a 31% success rate; the same pool serves every report
+successfully, just 27% slower. The difference is how long a connection is held.
+Checkout runs an _interactive transaction_ — one connection held for the whole
+request, with Prisma's own 2-second `maxWait` on top — so once demand outruns
+the pool, waiters pile up and the pool stops turning over. The reports hold
+nothing across await points, so they simply queue. **Short queries degrade;
+held transactions collapse.**
+
+### Scaling, and the cold-start trap
+
+| Concurrent admins | req/s | overview p50 | ok % |
+| ----------------- | ----- | ------------ | ---- |
+| 5                 | 70.6  | 17 ms        | 100% |
+| 20                | 144.6 | 75 ms        | 100% |
+| 50                | 156.7 | 240 ms       | 100% |
+| 100               | 160.9 | 500 ms       | 100% |
+
+Throughput plateaus around **160 req/s** and latency then grows linearly with
+concurrency — a saturated server queueing politely, with no errors at any point.
+For a back-office dashboard that is comfortable: 100 simultaneous admins is far
+beyond what this system will see.
+
+**Measure warm.** The first `overview` after a restart took **307 ms**; warm it
+is **17 ms**. That is PostgreSQL planning and cache, not the application, but it
+is a real cost paid once per deployment — and it is an easy way to publish a
+number that is 18× too pessimistic.
+
+### What is still not covered
+
+The reports are uncached and recomputed per request, which is fine at 160 req/s
+and 50 000 transactions. Neither this nor the sweep above says anything about
+the same reports over years of data, where the `date_trunc` scan grows without
+an index to help it.
 
 ---
 
