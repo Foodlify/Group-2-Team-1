@@ -123,12 +123,13 @@ first attempt and only showed it under that check.
 - ~~**Auditing columns**~~ — done (2026-08-07). `createdBy` / `updatedBy` on the
   three catalog tables, `changedBy` on `MenuChangeLog`.
 - ~~**CI/CD**~~ — done (2026-08-07). See `.github/workflows/ci.yml`.
+- ~~**`auditingEvent` entity**~~ — done (2026-08-10). `AuditingEvent`, covering
+  every write to `Transaction`, plus `GET /api/v1/audit-events` (ADMIN). Written
+  inside the same database transaction as the change it describes; actor carried
+  ambiently in an `AsyncLocalStorage`. See the README section.
 
 Still open in this area:
 
-- **`auditingEvent` entity** — the official ERD has a generic auditing table tied
-  to transactions. No team has built it; the per-table columns cover the mentor's
-  stated requirement, so this is a differentiator rather than a gap.
 - **Partial indexes** for the soft-delete filter (`WHERE "isDeleted" = false`).
   Prisma can't express them; worth adding by hand to a migration if the catalog
   ever grows enough for it to matter.

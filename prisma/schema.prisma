@@ -510,3 +510,70 @@ model Transaction {
   @@index([orderId])
   @@index([externalRef])
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Auditing
+// ═══════════════════════════════════════════════════════════════
+
+enum AuditAction {
+  CREATED
+  UPDATED
+  /// Split out from UPDATED on purpose. On a financial row the status is the
+  /// field that says whether money moved, so "PENDING → SUCCESS" is the entry
+  /// an auditor actually looks for; burying it among ordinary updates would
+  /// make it findable only by reading every `changes` payload.
+  STATUS_CHANGED
+}
+
+/// The official ERD's generic `auditingEvent`, tied to transactions.
+///
+/// Append-only: nothing in the codebase updates or deletes a row here, and the
+/// service exposes no method that could. A trail that can be rewritten is not
+/// evidence of anything.
+///
+/// The entry is written inside the SAME database transaction as the change it
+/// describes (see `TransactionRepository`), so the two commit or roll back
+/// together. Best-effort auditing — write the row, then log the audit — leaves
+/// exactly the gap an audit exists to close: money that moved with no record.
+///
+/// Distinct from the `createdBy` / `updatedBy` columns on the catalog tables.
+/// Those answer "who last touched this row"; this answers "what happened to it,
+/// in what order, and from where" — the columns keep one answer, this keeps
+/// every one.
+model AuditingEvent {
+  id String @id @default(cuid())
+  /// Model name, e.g. "Transaction". A plain string rather than an enum: the
+  /// table is generic by design, and a new audited entity should not require a
+  /// migration.
+  entity   String
+  /// Id of the audited row. Deliberately NOT a foreign key — an audit entry has
+  /// to outlive the row it describes, and a cascade would erase the trail at
+  /// precisely the moment it matters.
+  entityId String
+  action   AuditAction
+  /// What changed, as `{ field: { from, to } }` for updates, or the row's
+  /// meaningful fields for a create. Curated field by field, never a blind dump
+  /// of the write payload: gateway metadata is arbitrary provider JSON, and an
+  /// append-only table nobody ever prunes is the worst possible place for it.
+  /// Money is recorded as a string so JSON can't round it.
+  changes  Json?
+  /// Who. Null for anything with no human behind it — a gateway webhook, a
+  /// scheduled sweep. Not a foreign key for the same reason as `entityId`, and
+  /// consistent with the `createdBy` / `updatedBy` columns elsewhere: deleting
+  /// an account must not quietly delete what that account did.
+  actorId   String?
+  actorRole String?
+  /// Where from, and through which endpoint — the request context, captured
+  /// ambiently so no call site has to remember to pass it.
+  ip    String?
+  route String?
+
+  createdAt DateTime @default(now())
+
+  // The per-row trail: "everything that happened to this transaction, newest
+  // first" — the query the admin endpoint runs.
+  @@index([entity, entityId, createdAt(sort: Desc)])
+  // The unfiltered feed, and the same index the `entity`-only filter uses.
+  @@index([entity, createdAt(sort: Desc)])
+  @@index([actorId])
+}
