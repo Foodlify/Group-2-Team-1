@@ -18,6 +18,24 @@ export const DATE_TRUNC_UNIT: Record<ReportGranularity, string> = {
   month: "month",
 };
 
+/**
+ * What the official `Daily Orders not Delivered Count` counts.
+ *
+ * The obvious reading — "status is not DELIVERED" — would include cancelled
+ * orders, and the scope map lists `Daily Cancelled Orders` as its own bullet
+ * immediately next to this one. Two adjacent counters that overlap would make
+ * the pair useless: you could not add them, and neither would answer a
+ * question. Read as a partition instead, this one is the orders still owed to
+ * a customer — placed, not yet delivered, not called off.
+ *
+ * So both terminal statuses are excluded, and a restaurant reading it gets the
+ * number it actually wants: outstanding work.
+ */
+export const NOT_DELIVERED_STATUSES_EXCLUDED = [
+  "DELIVERED",
+  "CANCELLED",
+] as const;
+
 /** One row of the raw grouped-transaction query, before any money maths. */
 export interface TransactionBucketRow {
   bucket: Date;

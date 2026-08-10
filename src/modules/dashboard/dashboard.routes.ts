@@ -77,7 +77,7 @@ routeRegistry.push({
       security,
       summary: "System counters and revenue (ADMIN)",
       description:
-        "Restaurant, customer, order and transaction counters, plus revenue for all time, today and this month. Day and month boundaries are UTC.",
+        "Restaurant, customer, order and transaction counters, plus revenue for all time, today and this month. Day and month boundaries are UTC. Cancelled orders are reported three ways — all time, today and this month — because the scope map asks for the daily and monthly figures by name and an all-time total cannot be narrowed to either.",
       responses: {
         "200": {
           description: "Overview",
@@ -133,6 +133,8 @@ routeRegistry.push({
       tags: [tag],
       security,
       summary: "Counters and transaction report for one restaurant (ADMIN)",
+      description:
+        "Carries the counters the scope map names under Dashboard → Restaurants: orders and cancelled orders for the UTC day and month, and `notDeliveredToday` — today's orders still owed to a customer, which excludes cancelled ones as well as delivered ones. `ordersInRange` is the only counter that follows the `from`/`to` window; the rest are fixed to today and this month.",
       parameters: [
         {
           name: "restaurantId",
