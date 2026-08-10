@@ -294,17 +294,17 @@ it could not run the callbacks that hand connections back.
 ## Finding 3 — The dashboard reports, and why they have no cliff
 
 The sweep above covers cart and checkout only, so the range it produced was not
-safe to assume for the reports: `dashboard/overview` fans out to **11 queries in
-parallel**, and on paper two concurrent admins would ask for 22 connections
-against a pool of 20. `perf/plans/04-dashboard.jmx` (`npm run perf:dashboard`)
+safe to assume for the reports: `dashboard/overview` fans out to **13 queries in
+parallel** (11 when this was first measured), and on paper two concurrent admins
+would ask for 26 connections against a pool of 20. `perf/plans/04-dashboard.jmx` (`npm run perf:dashboard`)
 exists to settle that. It needs history to be meaningful, so
 `npm run perf:seed-dashboard` bulk-loads **50 000 orders and transactions across
 90 days** on top of the usual seed.
 
-**The worry was unfounded, and the reason is worth keeping.** Eleven queries in
-parallel is not eleven connections held: each acquires a connection, runs for a
-millisecond or two, and releases it. They queue _through_ the pool rather than
-occupying it. Measured at 50 concurrent admins:
+**The worry was unfounded, and the reason is worth keeping.** Thirteen queries
+in parallel is not thirteen connections held: each acquires a connection, runs
+for a millisecond or two, and releases it. They queue _through_ the pool rather
+than occupying it. Measured at 50 concurrent admins:
 
 | `DATABASE_POOL_MAX` | req/s     | overview p50 | restaurant p50 | ok % | pool timeouts |
 | ------------------- | --------- | ------------ | -------------- | ---- | ------------- |
@@ -344,6 +344,31 @@ beyond what this system will see.
 is **17 ms**. That is PostgreSQL planning and cache, not the application, but it
 is a real cost paid once per deployment — and it is an easy way to publish a
 number that is 18× too pessimistic.
+
+### Re-measured when the daily counters were added
+
+The official `Daily / Monthly Cancelled Orders` and
+`Daily Orders not Delivered Count` counters took `overview` from 11 parallel
+queries to 13, and the per-restaurant report from 5 to 10 — so the finding above
+was re-run rather than assumed to still hold. Same machine, same 50 000-order
+seed, same plan, 50 concurrent admins, pool 20, warmed first; only the commit
+differs:
+
+| Endpoint           | before p50 | after p50 | before p95 | after p95 |
+| ------------------ | ---------- | --------- | ---------- | --------- |
+| Overview           | 33 ms      | 32 ms     | 49 ms      | 49 ms     |
+| Transaction report | 21 ms      | 21 ms     | 33 ms      | 32 ms     |
+| Restaurant report  | 68 ms      | 67 ms     | 89 ms      | 90 ms     |
+
+100% ok on both runs, ~141 req/s. **Doubling the per-restaurant report's query
+count cost nothing measurable**, which is the same mechanism this finding
+started with: short queries queue through the pool instead of holding it.
+
+Two caveats on these numbers, so nobody reads them as a contradiction of the
+table above. They are **not** comparable to the 244 ms / 356 ms figures there —
+that run sustained 50 concurrent admins, while this one finishes in 5.3 s with a
+5 s ramp-up, so real concurrency never builds. They are only good for the
+before/after comparison they were run for.
 
 ### What is still not covered
 
