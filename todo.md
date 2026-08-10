@@ -141,6 +141,12 @@ Still open in this area:
   facts as typed columns instead of keys in `Transaction.metadata`. Written at
   the repository layer, merged across the successive writes of one payment, and
   exposed on the ADMIN listing only. 10 mutations, all caught.
+- ~~**`PaymentIntegrationType` / `PaymentIntegrationConfiguration`**~~ — done
+  (2026-08-10). Seeded by the migration, both enabled. No secret is stored: the
+  configuration names the env var holding each key, and `secretConfigured` says
+  whether it has a value. `isEnabled` is a runtime kill switch read when a
+  payment is taken. 9 mutations, all caught — two of them only after the tests
+  were strengthened, including a leak that a blanked env var had made invisible.
 - **Partial indexes** for the soft-delete filter (`WHERE "isDeleted" = false`).
   Prisma can't express them; worth adding by hand to a migration if the catalog
   ever grows enough for it to matter.

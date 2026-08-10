@@ -394,18 +394,20 @@ graph TD
 
 الجدول ده بيقارن **الـ 23 entity في الـ mindmap الرسمي** بالـ **18 جدول اللي إحنا بنيناهم فعلاً** — عشان الفرق يبقى مقصود وموثّق، مش مفاجأة:
 
-| المجموعة            | في الـ mindmap الرسمي                                                           | عندنا                                                                               |
-| ------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| 👤 **Users & Auth** | `user`, `userType`, `userRole`, `role`, `customer`                              | `User` (بعمود `role`), `Customer`, `RefreshToken`, `Otp`                            |
-| 🛒 **Cart**         | `cart`, `cartItem`                                                              | `Cart`, `CartItem` ✅                                                               |
-| 🍽️ **Restaurants**  | `restaurant`, `restaurantDetails`, `menu`, `menuItem`                           | `Restaurant`, `RestaurantDetails` ✅, `Menu`, `MenuItem`, `MenuChangeLog`           |
-| 📦 **Orders**       | `order`, `orderItem`, `orderStatus`, `orderTracking`                            | `Order` (الحالة enum والتتبّع في `timeline`), `OrderItems`                          |
-| 💳 **Payments**     | `paymentIntegrationType`, `paymentTypeConfiguration`, `preferredPaymentSetting` | `PreferredPaymentSetting` (الجدولين التانيين مع بوّابة الدفع المؤجّلة)              |
-| 💰 **Transactions** | `transaction`, `transactionDetails`, `transactionStatus`                        | `Transaction`, `TransactionDetails` ✅ (النوع والحالة enums)                        |
-| 📍 **Misc**         | `address`, `auditingEvent`                                                      | `Address`, `AuditingEvent` ✅ — وكمان أعمدة `createdBy/updatedBy` + `MenuChangeLog` |
-| ➕ **زيادة عندنا**  | —                                                                               | `RestaurantRate`, `SupportTicket`, `CustomerServiceEmployee`                        |
+| المجموعة            | في الـ mindmap الرسمي                                                           | عندنا                                                                                        |
+| ------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| 👤 **Users & Auth** | `user`, `userType`, `userRole`, `role`, `customer`                              | `User` (بعمود `role`), `Customer`, `RefreshToken`, `Otp`                                     |
+| 🛒 **Cart**         | `cart`, `cartItem`                                                              | `Cart`, `CartItem` ✅                                                                        |
+| 🍽️ **Restaurants**  | `restaurant`, `restaurantDetails`, `menu`, `menuItem`                           | `Restaurant`, `RestaurantDetails` ✅, `Menu`, `MenuItem`, `MenuChangeLog`                    |
+| 📦 **Orders**       | `order`, `orderItem`, `orderStatus`, `orderTracking`                            | `Order` (الحالة enum والتتبّع في `timeline`), `OrderItems`                                   |
+| 💳 **Payments**     | `paymentIntegrationType`, `paymentTypeConfiguration`, `preferredPaymentSetting` | `PreferredPaymentSetting`, `PaymentIntegrationType` ✅, `PaymentIntegrationConfiguration` ✅ |
+| 💰 **Transactions** | `transaction`, `transactionDetails`, `transactionStatus`                        | `Transaction`, `TransactionDetails` ✅ (النوع والحالة enums)                                 |
+| 📍 **Misc**         | `address`, `auditingEvent`                                                      | `Address`, `AuditingEvent` ✅ — وكمان أعمدة `createdBy/updatedBy` + `MenuChangeLog`          |
+| ➕ **زيادة عندنا**  | —                                                                               | `RestaurantRate`, `SupportTicket`, `CustomerServiceEmployee`                                 |
 
-**الخلاصة:** الجداول اللي "ناقصة" أغلبها lookup tables استبدلناها بـ enums في Postgres (أسرع وأأمن type-safety)، و`orderTracking` بقى `timeline` JSON. الناقص فعلاً جدولين بس، الاتنين تهيئة بوّابة الدفع: `paymentIntegrationType` و`paymentTypeConfiguration` — البوّابة متظبّطة من الـ env بدالهم، وسجلّ الاستراتيجيات هو اللي بيقرر وقت الإقلاع أنهي طرق دفع موجودة.
+**الخلاصة:** الجداول اللي "ناقصة" أغلبها lookup tables استبدلناها بـ enums في Postgres (أسرع وأأمن type-safety)، و`orderTracking` بقى `timeline` JSON. **كل جداول الخريطة الرسمية بقت مبنية** — اللي فاضل بس lookup tables اتحوّلت لـ enums بقرار موثّق.
+
+**عن جدولي تهيئة الدفع:** المفاتيح **مش** بتتخزن فيهم أبداً — الداتابيز بتتاخد منها dumps وbackups وreplicas، والمفتاح في جدول يبقى مفتاح في كل الأماكن دي. اللي بيتخزن هو **اسم** متغيّر البيئة اللي شايل المفتاح. وفايدتهم الحقيقية هي `isEnabled`: قفل بوّابة الدفع دلوقتي بيتطلب مسح `STRIPE_SECRET_KEY` وإعادة تشغيل، والفلاج ده بيتقرا **وقت أخذ الدفعة** فبيشتغل من الريكوست اللي بعده.
 
 **عن `TransactionDetails`:** ده **مش** تفصيل الأصناف — ده موجود في `OrderItems` واللي الإيصال بيتبني منه، ونسخة تانية منه هتبقى نسخة تانية من الحقيقة. اللي الجدول ده بيستبدله هو `Transaction.metadata` blob: الحقائق كانت حقيقية بس من غير أنواع، والتكلفة بانت — `resolvePaymentIntentId` كان بيحفر في JSON بـ `typeof` وبيدفع round-trip زيادة لسترايب لو المفتاح ناقص. العمود ما ينفعش يتكتب غلط. والـ blob فاضل مكانه كسجل خام لكلام المزوّد، والكود بيقرا من الأعمدة.
 

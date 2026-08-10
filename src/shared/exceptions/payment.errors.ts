@@ -28,4 +28,15 @@ export const paymentErrors = {
     message: "No successful payment found for this order to refund against",
     statusCode: 409,
   },
+  // Same 400 an unregistered method gets, and for the same reason: from the
+  // caller's side both mean "you cannot pay this way right now". Saying which
+  // of the two it is would report our operational state to whoever asked.
+  INTEGRATION_DISABLED: {
+    message: "Payment method is not supported",
+    statusCode: 400,
+  },
+  INTEGRATION_NOT_FOUND: {
+    message: "Payment integration not found",
+    statusCode: 404,
+  },
 } as const;

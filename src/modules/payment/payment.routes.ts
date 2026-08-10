@@ -7,6 +7,10 @@ import {
   OutstandingRefundsQuerySchema,
   TransactionIdParamsSchema,
 } from "./payment.validation";
+import {
+  IntegrationCodeParamsSchema,
+  UpdateIntegrationRequestSchema,
+} from "./integration.validation";
 
 /**
  * The Stripe webhook, on its own router because of where it must be mounted.
@@ -52,6 +56,22 @@ paymentAdminRouter.post(
   "/refunds/:transactionId/retry",
   validate({ params: TransactionIdParamsSchema }),
   controller.retryRefund,
+);
+
+// The official `Payment Integration Type` / `Payment Integration
+// Configuration` tables. Read-and-configure only: there is no create or delete,
+// because an integration exists when a strategy is written for it in code, not
+// when a row is inserted. A row for a gateway with no strategy behind it would
+// advertise a payment method that fails at the moment someone tries to pay.
+paymentAdminRouter.get("/integrations", controller.listIntegrations);
+
+paymentAdminRouter.patch(
+  "/integrations/:code",
+  validate({
+    params: IntegrationCodeParamsSchema,
+    body: UpdateIntegrationRequestSchema,
+  }),
+  controller.updateIntegration,
 );
 
 // ─── OpenAPI Documentation ───────────────────────────────
@@ -195,6 +215,92 @@ routeRegistry.push({
               schema: { $ref: "#/components/schemas/ErrorResponse" },
             },
           },
+        },
+      },
+    },
+  },
+});
+
+routeRegistry.push({
+  path: "/api/v1/payments/integrations",
+  pathItem: {
+    get: {
+      tags: ["Payments"],
+      security: adminSecurity,
+      summary: "How payments are wired up (ADMIN)",
+      description:
+        "The official Payment Integration Type and Payment Integration Configuration tables. No secret is ever returned — `secretKeyEnvVar` names the environment variable holding the key, and `secretConfigured` says whether that variable actually has a value on this deployment.",
+      responses: {
+        "200": {
+          description: "Every known payment integration",
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/PaymentIntegrationListSuccessResponse",
+              },
+            },
+          },
+        },
+        "403": {
+          description: "Not an admin",
+          content: { "application/json": { schema: errorRef } },
+        },
+      },
+    },
+  },
+});
+
+routeRegistry.push({
+  path: "/api/v1/payments/integrations/{code}",
+  pathItem: {
+    patch: {
+      tags: ["Payments"],
+      security: adminSecurity,
+      summary: "Enable, disable or reconfigure an integration (ADMIN)",
+      description:
+        "`isEnabled` is the kill switch: it is read when a payment is taken, so switching a gateway off applies on the next request rather than the next deploy. A payment through a disabled integration is refused with the same 400 an unsupported method gets — telling the caller which of the two it is would report our operational state to whoever asked. No secret is accepted here.",
+      parameters: [
+        {
+          name: "code",
+          in: "path" as const,
+          required: true,
+          schema: { type: "string" as const, example: "stripe" },
+        },
+      ],
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/UpdateIntegrationRequest" },
+          },
+        },
+      },
+      responses: {
+        "200": {
+          description: "The updated integration",
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/PaymentIntegrationSuccessResponse",
+              },
+            },
+          },
+        },
+        "400": {
+          description: "Empty or invalid payload",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ValidationErrorResponse" },
+            },
+          },
+        },
+        "403": {
+          description: "Not an admin",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "404": {
+          description: "No integration with that code",
+          content: { "application/json": { schema: errorRef } },
         },
       },
     },
