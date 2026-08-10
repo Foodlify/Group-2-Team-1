@@ -127,6 +127,29 @@ describe("successive writes about the same payment", () => {
 });
 
 // ═══════════════════════════════════════════════════════════
+describe("who pays for the join", () => {
+  it("leaves the details out unless they are asked for", async () => {
+    await cardPayment({ gateway: "stripe", paymentIntentId: "pi_1" });
+
+    const { rows } = await transactionRepository.findPage({}, 0, 20, false);
+
+    // Asserted on the repository, not on the response: the customer mapper
+    // drops `details` either way, so a listing that quietly loaded them would
+    // look identical from outside while paying for a join on every page.
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).not.toHaveProperty("details");
+  });
+
+  it("includes them when they are", async () => {
+    await cardPayment({ gateway: "stripe", paymentIntentId: "pi_1" });
+
+    const { rows } = await transactionRepository.findPage({}, 0, 20, true);
+
+    expect(rows[0]).toHaveProperty("details");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
 describe("the details and the transaction commit together", () => {
   it("leaves neither behind when the caller's transaction rolls back", async () => {
     await expect(
