@@ -71,8 +71,14 @@ typings/
 .yarn-integrity
 
 # dotenv environment variables file
-.env
-.env.test
+#
+# Ignore every .env variant, then re-admit the two examples. Listing `.env` and
+# `.env.test` alone was enough until an editor or a script left a `.env.bak`
+# next to them — a full copy of every secret, untracked and one `git add -A`
+# from being committed.
+.env*
+!.env.example
+!.env.test.example
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
