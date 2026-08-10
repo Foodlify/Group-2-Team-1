@@ -9,6 +9,7 @@ import {
   type PendingGatewayRefund,
 } from "../transaction/transaction.service";
 import type { PaymentMethod } from "../transaction/transaction.model";
+import { toTransactionResponse } from "../transaction/transaction.mapper";
 import type {
   PaymentContextData,
   PaymentInitiation,
@@ -237,28 +238,5 @@ class PaymentService {
     return strategy;
   }
 }
-
-/**
- * Ledger row → API shape. `error` is lifted out of the metadata blob because
- * "why is this refund still owed" is the whole reason an admin opens the list,
- * and making them dig through JSON for it helps nobody.
- */
-const toTransactionResponse = (t: TransactionModel): TransactionResponse => {
-  const metadata = t.metadata as { error?: unknown } | null;
-  return {
-    id: t.id,
-    type: t.type,
-    status: t.status,
-    amount: Number(t.amount),
-    currency: t.currency,
-    paymentMethod: t.paymentMethod,
-    internalTxNumber: t.internalTxNumber,
-    externalRef: t.externalRef,
-    orderId: t.orderId,
-    error: typeof metadata?.error === "string" ? metadata.error : null,
-    createdAt: t.createdAt.toISOString(),
-    updatedAt: t.updatedAt.toISOString(),
-  };
-};
 
 export const paymentService = new PaymentService();

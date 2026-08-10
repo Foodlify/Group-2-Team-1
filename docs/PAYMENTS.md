@@ -423,14 +423,60 @@ changes nothing.
 
 ---
 
+## Viewing transactions, and receipts
+
+Two of the three endpoints the official scope map names under Payment
+Integration (`View Payment Transactions` and `Generate Transaction Receipt`).
+The transaction module had a model, a repository and a service but no routes at
+all, so neither was reachable.
+
+| Endpoint                                             | Who      |
+| ---------------------------------------------------- | -------- |
+| `GET /api/v1/customers/me/transactions`              | customer |
+| `GET /api/v1/customers/me/transactions/{id}/receipt` | customer |
+| `GET /api/v1/transactions`                           | ADMIN    |
+| `GET /api/v1/transactions/{id}/receipt`              | ADMIN    |
+
+Both listings page and filter by `type`, `status` and `orderId`.
+
+**Ownership runs through the order.** A transaction has no customer of its own,
+so the customer listing filters on `order.customerId` — never on anything from
+the request. A row with no order (the schema permits them, for future wallet
+top-ups) belongs to nobody and is invisible to every customer.
+
+**A receipt not yours is a 404, not a 403.** A 403 confirms the id exists to
+somebody with no business knowing that, so the ownership check returns the same
+answer as a missing row.
+
+**Receipts are rendered, never stored.** Two requests for the same transaction
+differ only in `issuedAt`. Everything else is read from the order's own
+snapshots — `OrderItems` carries the name and price as they were at checkout —
+so a receipt does not change when a restaurant renames a dish or reprices it.
+There is a test that renames the item afterwards and asserts the receipt still
+says `Koshary` at `8.15`.
+
+**Only settled transactions have one.** `PENDING` or `FAILED` gives `409`: a
+receipt is evidence money moved, and issuing one for a payment that never
+completed hands the customer proof of something that did not happen.
+
+The line totals are computed in `Decimal` and converted once at the response
+boundary. `8.15 × 3` is the exact number this codebase has already served
+wrongly once, as `24.450000000000003`, in the order line subtotals.
+
 ## What is not built
 
-- **Partial refunds.** A cancellation always refunds the full payment. The
-  amount is a parameter throughout, so this is a small change when needed.
 - **Alerting.** Nothing tells anyone an outstanding refund exists; someone has
   to call the endpoint. A scheduled check that reports the count would close
   that without any automatic money movement.
 - **Wallet and PayPal.** Present in the `PaymentMethod` enum, no strategy
   behind either, absent from `SUPPORTED_PAYMENT_METHODS`.
-- **Partial refunds**, saved cards, and 3-D Secure step-up handling beyond what
-  Stripe Checkout does on its own.
+- **Saved cards** and 3-D Secure step-up handling beyond what Stripe Checkout
+  does on its own.
+- **Partial refunds** — and deliberately so. `PARTIAL_REFUND` exists in the
+  enum and the dashboard already subtracts it, but nothing writes one. It
+  appears nowhere in the official scope map, and the mentor's S15 decision was
+  that a refund is a **manual refund**: record it and change the status, with
+  no gateway integration at all. The Stripe refunds above already go beyond
+  that, so partial refunds would be an extra on top of an extra.
+- **PDF receipts.** The receipt is JSON. Rendering it as a document is a
+  presentation concern and needs a rendering dependency.
