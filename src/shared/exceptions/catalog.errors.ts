@@ -28,6 +28,15 @@ export const catalogErrors = {
     message: "Cannot restore: the parent menu is deleted — restore it first",
     statusCode: 409,
   },
+  // Ownership is a grant of authority over real orders and real money, so it
+  // is refused rather than quietly made meaningless: assigning it to a CUSTOMER
+  // account would store a row that grants nothing, and the admin who did it
+  // would have no way to tell.
+  OWNER_ROLE_REQUIRED: {
+    message:
+      "The owner must be an account with the RESTAURANT role; change the account's role first",
+    statusCode: 400,
+  },
   PARENT_RESTAURANT_DELETED: {
     message:
       "Cannot restore: the parent restaurant is deleted — restore it first",

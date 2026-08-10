@@ -29,7 +29,7 @@ const hashSuffix = (suffix: string): string => {
 
 /** A real account with a real bcrypt hash, so `/auth/login` genuinely works. */
 export async function createAccount(
-  role: "CUSTOMER" | "ADMIN" = "CUSTOMER",
+  role: "CUSTOMER" | "ADMIN" | "RESTAURANT" = "CUSTOMER",
   overrides: { isActive?: boolean; suffix?: string } = {},
 ) {
   const suffix = overrides.suffix ?? role.toLowerCase();

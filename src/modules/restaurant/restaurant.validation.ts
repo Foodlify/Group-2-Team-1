@@ -94,6 +94,51 @@ export const UpdateRestaurantRequestSchema = z
     description: "Fields to update on a restaurant",
   });
 
+/**
+ * Assigning (or clearing) the account that runs a restaurant.
+ *
+ * `nullable`, not `optional`: an explicit `null` is how ownership is taken
+ * back, and an absent key would be indistinguishable from it. Required, so
+ * `{}` is a validation error rather than a silent unassign.
+ */
+export const AssignOwnerRequestSchema = z
+  .object({
+    ownerId: z
+      .cuid2()
+      .nullable()
+      .meta({
+        description:
+          "User id of a RESTAURANT-role account, or null to leave the " +
+          "restaurant unowned and admin-run",
+        example: "clxyz...",
+      }),
+  })
+  .meta({
+    id: "AssignOwnerRequest",
+    description: "Assign or clear a restaurant's owner",
+  });
+
+/**
+ * Owner ids are deliberately absent from every other restaurant response —
+ * those endpoints are public, and this is an internal user id, the same reason
+ * `createdBy` / `updatedBy` never leave the server. It appears here only
+ * because this endpoint is ADMIN-only and its whole subject is the assignment.
+ */
+export const RestaurantOwnerResponseSchema = z
+  .object({
+    restaurantId: z.cuid2(),
+    ownerId: z.cuid2().nullable(),
+  })
+  .meta({ id: "RestaurantOwnerResponse" });
+
+export const RestaurantOwnerSuccessResponseSchema = z
+  .object({
+    success: z.literal(true),
+    message: z.string(),
+    data: RestaurantOwnerResponseSchema,
+  })
+  .meta({ id: "RestaurantOwnerSuccessResponse" });
+
 export const RestaurantDetailsResponseSchema = z
   .object({
     phone: z.string(),
@@ -167,6 +212,15 @@ schemaRegistry.register(
   "RestaurantDetailsRequest",
   RestaurantDetailsRequestSchema,
 );
+schemaRegistry.register("AssignOwnerRequest", AssignOwnerRequestSchema);
+schemaRegistry.register(
+  "RestaurantOwnerResponse",
+  RestaurantOwnerResponseSchema,
+);
+schemaRegistry.register(
+  "RestaurantOwnerSuccessResponse",
+  RestaurantOwnerSuccessResponseSchema,
+);
 schemaRegistry.register("RestaurantDetails", RestaurantDetailsResponseSchema);
 schemaRegistry.register("RestaurantResponse", RestaurantResponseSchema);
 schemaRegistry.register(
@@ -189,6 +243,10 @@ export type CreateRestaurantInput = z.infer<
 >;
 export type UpdateRestaurantInput = z.infer<
   typeof UpdateRestaurantRequestSchema
+>;
+export type AssignOwnerInput = z.infer<typeof AssignOwnerRequestSchema>;
+export type RestaurantOwnerResponse = z.infer<
+  typeof RestaurantOwnerResponseSchema
 >;
 export type RestaurantResponse = z.infer<typeof RestaurantResponseSchema>;
 export type RestaurantDetailsInput = z.infer<

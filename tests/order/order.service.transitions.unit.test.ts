@@ -83,6 +83,12 @@ const mockedNotifications = vi.mocked(notificationService);
 const tx = {} as never;
 const now = new Date("2026-08-06T10:00:00.000Z");
 
+// This file is about the transition table, so every call is made as an admin —
+// the one actor whose reach is not scoped to a restaurant, and the only one
+// that skips the ownership lookup entirely. Ownership itself is the subject of
+// order.service.ownership.unit.test.ts.
+const ADMIN = { userId: "user_admin", role: "ADMIN" };
+
 const orderAt = (status: OrderStatusValue) =>
   ({
     id: "order_1",
@@ -163,7 +169,11 @@ describe("updateOrderStatus honours the table for every pair", () => {
     async ({ from, to, allowed }) => {
       mockedOrders.findById.mockResolvedValue(orderAt(from));
 
-      const call = orderService.updateOrderStatus("order_1", { status: to });
+      const call = orderService.updateOrderStatus(
+        "order_1",
+        { status: to },
+        ADMIN,
+      );
 
       if (allowed) {
         await expect(call).resolves.toMatchObject({ status: to });
@@ -182,7 +192,11 @@ describe("the write itself is guarded", () => {
   it("passes the current status as a precondition, so a concurrent change loses", async () => {
     mockedOrders.findById.mockResolvedValue(orderAt("PENDING"));
 
-    await orderService.updateOrderStatus("order_1", { status: "CONFIRMED" });
+    await orderService.updateOrderStatus(
+      "order_1",
+      { status: "CONFIRMED" },
+      ADMIN,
+    );
 
     // The UPDATE only matches while the row is still PENDING — the check
     // above is advisory, this is what actually makes it safe.
@@ -200,7 +214,7 @@ describe("the write itself is guarded", () => {
     mockedOrders.appendTimelineEntry.mockResolvedValue(null);
 
     await expect(
-      orderService.updateOrderStatus("order_1", { status: "CONFIRMED" }),
+      orderService.updateOrderStatus("order_1", { status: "CONFIRMED" }, ADMIN),
     ).rejects.toMatchObject({
       statusCode: orderErrors.INVALID_STATUS_TRANSITION.statusCode,
     });
@@ -211,7 +225,7 @@ describe("the write itself is guarded", () => {
     mockedOrders.findById.mockResolvedValue(null);
 
     await expect(
-      orderService.updateOrderStatus("nope", { status: "CONFIRMED" }),
+      orderService.updateOrderStatus("nope", { status: "CONFIRMED" }, ADMIN),
     ).rejects.toMatchObject({
       statusCode: orderErrors.ORDER_NOT_FOUND.statusCode,
     });
@@ -238,7 +252,11 @@ describe("financial side effects follow the status", () => {
   it("refunds and returns stock on CANCELLED", async () => {
     mockedOrders.findById.mockResolvedValue(orderAt("PENDING"));
 
-    await orderService.updateOrderStatus("order_1", { status: "CANCELLED" });
+    await orderService.updateOrderStatus(
+      "order_1",
+      { status: "CANCELLED" },
+      ADMIN,
+    );
 
     expect(mockedTransactions.refundOrderTransactions).toHaveBeenCalledWith(
       "order_1",
@@ -251,7 +269,11 @@ describe("financial side effects follow the status", () => {
   it("settles payment on DELIVERED, and returns nothing to stock", async () => {
     mockedOrders.findById.mockResolvedValue(orderAt("OUT_FOR_DELIVERY"));
 
-    await orderService.updateOrderStatus("order_1", { status: "DELIVERED" });
+    await orderService.updateOrderStatus(
+      "order_1",
+      { status: "DELIVERED" },
+      ADMIN,
+    );
 
     expect(mockedTransactions.settleOrderTransactions).toHaveBeenCalledWith(
       "order_1",
@@ -264,7 +286,11 @@ describe("financial side effects follow the status", () => {
   it("moves no money for the intermediate statuses", async () => {
     mockedOrders.findById.mockResolvedValue(orderAt("CONFIRMED"));
 
-    await orderService.updateOrderStatus("order_1", { status: "PREPARING" });
+    await orderService.updateOrderStatus(
+      "order_1",
+      { status: "PREPARING" },
+      ADMIN,
+    );
 
     expect(mockedTransactions.refundOrderTransactions).not.toHaveBeenCalled();
     expect(mockedTransactions.settleOrderTransactions).not.toHaveBeenCalled();
@@ -274,7 +300,11 @@ describe("financial side effects follow the status", () => {
   it("runs the side effect inside the transaction, before the notification", async () => {
     mockedOrders.findById.mockResolvedValue(orderAt("OUT_FOR_DELIVERY"));
 
-    await orderService.updateOrderStatus("order_1", { status: "DELIVERED" });
+    await orderService.updateOrderStatus(
+      "order_1",
+      { status: "DELIVERED" },
+      ADMIN,
+    );
 
     const settle =
       mockedTransactions.settleOrderTransactions.mock.invocationCallOrder[0]!;

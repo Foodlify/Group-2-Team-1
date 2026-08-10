@@ -86,6 +86,9 @@ const restaurantRow = {
   isDeleted: false,
   createdBy: null,
   updatedBy: null,
+  // Unowned — the state every restaurant registered before the owner column
+  // existed is in, and the one an admin runs directly.
+  ownerId: null,
   createdAt: now,
   updatedAt: now,
 };

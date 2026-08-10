@@ -4,6 +4,8 @@ import type {
 } from "../../generated/prisma/models";
 import { AppError } from "../../middlewares/error.middleware";
 import { catalogErrors } from "../../shared/exceptions/catalog.errors";
+import { userErrors } from "../../shared/exceptions/user.errors";
+import { userRepository } from "../user/user.repository";
 import { cache, cacheKeys } from "../../shared/cache/cache";
 import { menuService } from "../menu/menu.service";
 // Imported as repositories (not services) to avoid a circular dependency:
@@ -14,6 +16,7 @@ import { restaurantRepository } from "./restaurant.repository";
 import type {
   CreateRestaurantInput,
   RestaurantDetailedResponse,
+  RestaurantOwnerResponse,
   RestaurantQuery,
   RestaurantResponse,
   UpdateRestaurantInput,
@@ -186,6 +189,48 @@ class RestaurantService {
     // Re-read rather than reconstruct: the restored row now has details to
     // report, and this endpoint documents the same shape as the other reads.
     return this.getByIdOrThrow(id);
+  }
+
+  // ─── Ownership ────────────────────────────────────────
+  /**
+   * Hands a restaurant to the account that runs it, or takes it back with a
+   * null. An admin action, and the only way ownership is ever established —
+   * there is no self-registration for restaurant owners, because the official
+   * scope map has no such endpoint and inventing one would mean deciding, with
+   * no source to go on, who is allowed to claim a restaurant.
+   *
+   * A restaurant may change hands, so this is a plain assignment rather than a
+   * one-time grant.
+   */
+  async assignOwner(
+    restaurantId: string,
+    ownerId: string | null,
+    actorId: string,
+  ): Promise<RestaurantOwnerResponse> {
+    await this.assertExists(restaurantId);
+
+    if (ownerId !== null) {
+      const owner = await userRepository.findById(ownerId);
+      if (!owner) {
+        throw new AppError(
+          userErrors.USER_NOT_FOUND.message,
+          userErrors.USER_NOT_FOUND.statusCode,
+        );
+      }
+      if (owner.role !== "RESTAURANT") {
+        throw new AppError(
+          catalogErrors.OWNER_ROLE_REQUIRED.message,
+          catalogErrors.OWNER_ROLE_REQUIRED.statusCode,
+        );
+      }
+    }
+
+    const updated = await restaurantRepository.setOwner(
+      restaurantId,
+      ownerId,
+      actorId,
+    );
+    return { restaurantId: updated.id, ownerId: updated.ownerId };
   }
 
   private async invalidateMenus(menuIds: string[]): Promise<void> {

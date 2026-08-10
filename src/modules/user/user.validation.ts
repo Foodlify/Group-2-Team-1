@@ -7,7 +7,10 @@ import {
 import { MAX_PASSWORD_BYTES } from "../../shared/auth/password.helper";
 
 // Role values kept as a tuple for z.enum (mirrors the Prisma `Role` enum).
-export const ROLES = ["CUSTOMER", "ADMIN"] as const;
+// RESTAURANT accounts are created and promoted here like any other; what they
+// can reach comes from `Restaurant.ownerId`, which an admin assigns separately
+// via `PATCH /restaurants/{id}/owner`. The role on its own grants nothing.
+export const ROLES = ["CUSTOMER", "ADMIN", "RESTAURANT"] as const;
 
 /**
  * A password the hasher will actually read in full.

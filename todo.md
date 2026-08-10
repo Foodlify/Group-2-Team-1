@@ -304,8 +304,24 @@ Still open in this area:
   is a property to keep, not a gap — it is why the tests above stub the
   environment instead of changing how the plans run.
 
-### Restaurant-owner perspective (Kamal's branch, part 4)
+### ~~Restaurant-owner perspective (Kamal's branch, part 4)~~ — done
 
-- `register / me / me/orders` for a restaurant owner actor exists on
-  `customer-management`. Needs a team decision before porting: it introduces a
-  third actor across the whole authorization surface.
+Shipped as `Restaurant.ownerId` + the `RESTAURANT` role, closing the scope
+map's `Restaurants Order History` and `Cancelled Orders by Customers or
+Restaurants`. Kamal's `customer-management` work was the starting point and the
+naming follows it (`/restaurants/me/orders`), with two departures:
+
+- **No self-registration.** His branch has `POST /restaurants/register`, which
+  creates a restaurant for whoever is logged in. The scope map has no such
+  endpoint, and adding one means deciding — with no source — who may claim a
+  restaurant. An admin assigns ownership instead.
+- **No `UserType` / `UserRole` tables.** His branch carries the ERD's full role
+  tables; ours stays an enum with a third value, because every role is named in
+  an `authorize()` call. Reasoned through in
+  [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#L399).
+
+Still open, and deliberately so: **demoting an account does not clear the
+`Restaurant.ownerId` rows pointing at it.** The service refuses a non-RESTAURANT
+actor regardless, so this is not a hole — but an admin who demotes an owner and
+later re-promotes them silently restores their old restaurants. Clearing the
+rows on demotion is a product decision nobody has made.

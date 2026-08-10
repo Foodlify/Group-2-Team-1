@@ -12,9 +12,17 @@ datasource db {
 // Users & Access Control
 // ═══════════════════════════════════════════════════════════════
 
+/// The official ERD lists `Role` and `User Type` as tables. They are an enum
+/// here because these three are fixed at build time: each one is named in an
+/// `authorize()` call somewhere in this codebase, so a role that exists only as
+/// a row would be a role no route can name. A table earns its place when roles
+/// are defined at runtime, which is a different system than this one.
 enum Role {
   CUSTOMER
   ADMIN
+  /// Runs one or more restaurants. Sees and acts on their orders, and nothing
+  /// else — the scope comes from `Restaurant.ownerId`, not from the role.
+  RESTAURANT
 }
 
 model User {
@@ -23,7 +31,8 @@ model User {
   email String @unique
   /// Hashed password (bcrypt). Never returned in any API response.
   password String
-  /// Account role — CUSTOMER for storefront users, ADMIN for dashboard.
+  /// Account role — CUSTOMER for storefront users, ADMIN for dashboard,
+  /// RESTAURANT for someone who runs a restaurant on the platform.
   role     Role   @default(CUSTOMER)
   /// When email ownership was proven via the registration OTP. Null until
   /// verified — login stays blocked while it is null.
@@ -35,6 +44,10 @@ model User {
 
   customer      Customer?
   refreshTokens RefreshToken[]
+  /// Restaurants this account runs. The ERD puts `Restaurant` among the user
+  /// module's tables next to `Customer`, and this is that edge: `Customer` is
+  /// what a User is to the storefront, this is what a User is to the catalog.
+  ownedRestaurants Restaurant[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -154,6 +167,19 @@ model Restaurant {
   /// rows created before auditing existed have no actor to attribute.
   createdBy String?
   updatedBy String?
+  /// The account that runs this restaurant, assigned by an admin. This is the
+  /// whole of the ownership model: "may I act on this order?" is answered by
+  /// walking the order's restaurant to here, never by the role alone.
+  ///
+  /// Nullable because a restaurant with no owner is a real state — every one
+  /// that predates this column has none, and an admin runs those. Not unique:
+  /// one account may run several restaurants, and the order history reads
+  /// across all of them.
+  ///
+  /// `SetNull` on delete: losing the account must not take the restaurant, its
+  /// menus and its order history down with it. It goes back to being unowned.
+  ownerId String?
+  owner   User?   @relation(fields: [ownerId], references: [id], onDelete: SetNull)
 
   menus   Menu[]
   carts   Cart[]
@@ -163,6 +189,9 @@ model Restaurant {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  /// Every owner-scoped read starts here: "which restaurants are mine".
+  @@index([ownerId])
 }
 
 /// The official ERD's `restaurantDetails` — how to reach a restaurant and where
