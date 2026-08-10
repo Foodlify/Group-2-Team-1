@@ -97,6 +97,25 @@ const EnvSchema = z
       (value) => (value === undefined || value === "" ? 300 : value),
       z.coerce.number().int().positive(),
     ),
+    // ── Google sign-in (Social Media Authentication) ── optional, same rule
+    // as everything else: unset means the two routes answer 404 and the API
+    // is honest about not offering it, rather than redirecting people to a
+    // consent screen that cannot come back.
+    GOOGLE_CLIENT_ID: z.string().trim().optional(),
+    GOOGLE_CLIENT_SECRET: z.string().trim().optional(),
+    // Must match a redirect URI registered on the OAuth client, exactly —
+    // Google compares the string, not the resolved URL.
+    GOOGLE_CALLBACK_URL: z.preprocess(
+      (value) =>
+        value === undefined || value === ""
+          ? "http://localhost:3000/api/v1/auth/google/callback"
+          : value,
+      z.url(),
+    ),
+    // Where the browser lands after a successful sign-in. Unset means the
+    // callback answers with JSON instead — which is what makes the flow
+    // demonstrable against a backend with no frontend in front of it.
+    GOOGLE_POST_LOGIN_REDIRECT: z.string().trim().optional(),
     // ── Web Push (order status notifications) ── optional, same rule as the
     // mailer and the cache: unset means push is simply off and everything else
     // works. Nobody is signed up to anything — these are a VAPID key pair you
@@ -140,6 +159,18 @@ const EnvSchema = z
         path: ["STRIPE_WEBHOOK_SECRET"],
         message:
           "STRIPE_WEBHOOK_SECRET is required when STRIPE_SECRET_KEY is set",
+      });
+    }
+
+    // Half-configured Google sign-in sends people to a consent screen whose
+    // callback can never complete the exchange — they authorise, come back,
+    // and get an error. Off is better than that.
+    if (Boolean(data.GOOGLE_CLIENT_ID) !== Boolean(data.GOOGLE_CLIENT_SECRET)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["GOOGLE_CLIENT_SECRET"],
+        message:
+          "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set together, or neither",
       });
     }
 

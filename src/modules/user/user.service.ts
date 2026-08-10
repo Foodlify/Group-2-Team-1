@@ -16,6 +16,7 @@ import {
   REFRESH_TOKEN_TTL_MS,
 } from "../../shared/auth/jwt.helper";
 import { otpErrors } from "../../shared/exceptions/otp.errors";
+import type { GoogleProfile } from "../../shared/auth/google.client";
 import { customerService } from "../customer/customer.service";
 import { otpService } from "../otp/otp.service";
 import { userRepository } from "./user.repository";
@@ -111,6 +112,64 @@ class UserService {
     // Checked only AFTER the password matched, so neither response reveals
     // whether an unverified/disabled address is registered.
     this.assertUsable(user);
+    const tokens = await this.issueTokens(user);
+    return { user: this.toUserResponse(user), tokens };
+  }
+
+  // ─── Social Media Authentication (Google) ─────────────
+  /**
+   * Signs in — or signs up — the person behind a verified Google identity.
+   *
+   * Three cases, in the order they are checked, and the order matters:
+   *
+   * 1. **We have seen this Google id before.** Matched on `sub`, not on email,
+   *    because Google lets people change their address and matching on it
+   *    would hand the account to whoever holds that address next.
+   * 2. **An account already exists with this email.** The Google identity is
+   *    linked to it. Safe *only* because the caller has already established
+   *    that Google verified the address — see below.
+   * 3. **Nobody has this email.** A new customer account, with no password and
+   *    no phone.
+   */
+  async loginWithGoogle(profile: GoogleProfile): Promise<AuthResult> {
+    // The single check the whole linking rule rests on. Google will issue a
+    // token for an address the account has not proven it owns; linking on one
+    // would let anyone who registers such an account walk straight into the
+    // password account that already holds that address.
+    if (!profile.emailVerified) {
+      throw appError(userErrors.GOOGLE_EMAIL_UNVERIFIED);
+    }
+
+    const existingByGoogleId = await userRepository.findByGoogleId(
+      profile.googleId,
+    );
+    if (existingByGoogleId) {
+      this.assertUsable(existingByGoogleId);
+      return this.authResult(existingByGoogleId);
+    }
+
+    const existingByEmail = await userRepository.findByEmail(profile.email);
+    if (existingByEmail) {
+      // Deliberately checked before linking: a disabled account must not be
+      // reachable through a second door, and writing the link first would
+      // leave it attached to an account that then refuses to sign in.
+      this.assertUsable(existingByEmail);
+      const linked = await userRepository.linkGoogleId(
+        existingByEmail.id,
+        profile.googleId,
+      );
+      return this.authResult(linked);
+    }
+
+    const created = await userRepository.createGoogleCustomerUser({
+      name: profile.name,
+      email: profile.email,
+      googleId: profile.googleId,
+    });
+    return this.authResult(created);
+  }
+
+  private async authResult(user: UserModel): Promise<AuthResult> {
     const tokens = await this.issueTokens(user);
     return { user: this.toUserResponse(user), tokens };
   }

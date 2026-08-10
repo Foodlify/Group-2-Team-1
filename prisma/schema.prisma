@@ -30,7 +30,17 @@ model User {
   name  String
   email String @unique
   /// Hashed password (bcrypt). Never returned in any API response.
-  password String
+  ///
+  /// Null for an account created through Google sign-in, which genuinely has
+  /// no password — storing a random unusable hash instead would have the data
+  /// model claim one exists. `comparePassword` treats null as "no".
+  password String?
+  /// Google's `sub` claim, for an account linked to a Google identity.
+  ///
+  /// The subject, not the email: Google lets a user change their address, and
+  /// an account matched on email alone would silently become a different
+  /// person's. Unique, so one Google identity cannot claim two accounts.
+  googleId String? @unique
   /// Account role — CUSTOMER for storefront users, ADMIN for dashboard,
   /// RESTAURANT for someone who runs a restaurant on the platform.
   role     Role   @default(CUSTOMER)
@@ -91,8 +101,14 @@ model Otp {
 model Customer {
   id     String @id @default(cuid())
   userId String @unique
-  /// Contact phone — required and unique per customer.
-  phone  String @unique
+  /// Contact phone — unique, and required of anyone who registers with a
+  /// password. Null only for an account created through Google sign-in: Google
+  /// returns no phone number, and inventing one would put fabricated data on a
+  /// delivery record. They add it through `PATCH /customers/me`.
+  ///
+  /// PostgreSQL treats NULLs as distinct in a unique index, so any number of
+  /// customers may have none while no two can share one.
+  phone  String? @unique
 
   cart              Cart?
   addresses         Address[]

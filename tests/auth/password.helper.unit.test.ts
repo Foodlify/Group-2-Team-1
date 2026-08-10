@@ -93,3 +93,21 @@ describe("the 72-byte limit bcrypt does not tell you about", () => {
     ).toBe(true);
   });
 });
+
+// ═══════════════════════════════════════════════════════════
+describe("an account that has no password at all", () => {
+  it("never matches, whatever is offered", async () => {
+    // A Google-created account stores null rather than an unusable hash. This
+    // is the single guard that makes that safe: every password check in the
+    // system goes through here, so no call site can forget it.
+    expect(await comparePassword("anything", null)).toBe(false);
+    expect(await comparePassword("", null)).toBe(false);
+  });
+
+  it("does not throw, so login answers 'wrong credentials' as usual", async () => {
+    // Throwing would turn a sign-in attempt on a Google-only account into a
+    // 500, and a 500 that only happens for those accounts tells an attacker
+    // exactly which addresses use Google.
+    await expect(comparePassword("anything", null)).resolves.toBe(false);
+  });
+});

@@ -64,7 +64,14 @@ export const CustomerResponseSchema = z
     id: z.cuid2(),
     userId: z.cuid2(),
     user: z.object({ name: z.string(), email: z.email() }),
-    phone: z.string(),
+    phone: z
+      .string()
+      .nullable()
+      .meta({
+        description:
+          "Null for an account created through Google sign-in, which supplies no " +
+          "phone number. Add one with PATCH /customers/me.",
+      }),
     addressesCount: z.number().int().nonnegative(),
     ordersCount: z.number().int().nonnegative(),
     hasCart: z.boolean(),

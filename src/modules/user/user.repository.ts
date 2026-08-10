@@ -15,6 +15,48 @@ export class UserRepository extends BaseRepository<PrismaClient["user"]> {
     return prisma.user.findUnique({ where: { email } });
   }
 
+  async findByGoogleId(googleId: string) {
+    return prisma.user.findUnique({ where: { googleId } });
+  }
+
+  /** Attaches a Google identity to an account that already exists. */
+  async linkGoogleId(id: string, googleId: string) {
+    return prisma.user.update({ where: { id }, data: { googleId } });
+  }
+
+  /**
+   * Creates a customer account from a Google identity.
+   *
+   * No password and no phone — Google supplies neither, and inventing either
+   * would put made-up data in a place that matters (an unusable hash claiming
+   * to be a password; a fabricated number on a delivery record). The customer
+   * adds a phone through `PATCH /customers/me`.
+   *
+   * `emailVerifiedAt` is set here rather than left for an OTP: Google has
+   * already proved the address belongs to them, and the caller only reaches
+   * this after checking the `email_verified` claim. Mailing a code to confirm
+   * what is already confirmed would be theatre.
+   */
+  async createGoogleCustomerUser(data: {
+    name: string;
+    email: string;
+    googleId: string;
+  }) {
+    return prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          name: data.name,
+          email: data.email,
+          googleId: data.googleId,
+          role: "CUSTOMER",
+          emailVerifiedAt: new Date(),
+        },
+      });
+      await tx.customer.create({ data: { userId: user.id } });
+      return user;
+    });
+  }
+
   /** True if a customer already uses this (unique) phone. */
   async phoneExists(phone: string): Promise<boolean> {
     const found = await prisma.customer.findUnique({

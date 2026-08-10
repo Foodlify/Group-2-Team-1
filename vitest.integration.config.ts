@@ -62,6 +62,12 @@ export default defineConfig({
       SMTP_HOST: "",
       VAPID_PUBLIC_KEY: vapid.publicKey,
       VAPID_PRIVATE_KEY: vapid.privateKey,
+      // Google sign-in has to be *on* for its routes to exist, but nothing
+      // here ever reaches Google: the code exchange is stubbed in the one
+      // suite that covers it. These only decide `isConfigured` and what goes
+      // into the consent-screen URL.
+      GOOGLE_CLIENT_ID: "integration-client-id.apps.googleusercontent.com",
+      GOOGLE_CLIENT_SECRET: "integration-client-secret",
     },
   },
 });
