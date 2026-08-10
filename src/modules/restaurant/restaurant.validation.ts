@@ -28,12 +28,42 @@ export const RestaurantQuerySchema = PaginationQuerySchema.extend({
   description: "Pagination + optional name search",
 });
 
+/**
+ * The official `Restaurant Details` table's payload. Field rules mirror
+ * `CreateAddressRequest` so the two address shapes in this API cannot drift
+ * apart for no reason.
+ */
+export const RestaurantDetailsRequestSchema = z
+  .object({
+    phone: z
+      .string()
+      .min(6)
+      .meta({ description: "Contact phone", example: "+201000000000" }),
+    email: z.email().optional().meta({ example: "hello@pizzapalace.example" }),
+    description: z.string().min(1).max(1000).optional().meta({
+      example: "Wood-fired pizza, open since 1998.",
+    }),
+    addressLine1: z.string().min(1).meta({ example: "12 Tahrir St" }),
+    addressLine2: z.string().min(1).optional().meta({ example: "Floor 2" }),
+    city: z.string().min(1).meta({ example: "Cairo" }),
+    postalCode: z.string().min(1).meta({ example: "11511" }),
+    country: z.string().min(1).meta({ example: "Egypt" }),
+  })
+  .meta({
+    id: "RestaurantDetailsRequest",
+    description:
+      "Contact and location details. Sent whole, never partially: on update this REPLACES any existing details rather than merging into them, because a partial patch nested inside a partial patch is ambiguous about required fields — is an absent `city` unchanged, or being cleared?",
+  });
+
 export const CreateRestaurantRequestSchema = z
   .object({
     name: z
       .string()
       .min(2)
       .meta({ description: "Restaurant name", example: "Pizza Palace" }),
+    details: RestaurantDetailsRequestSchema.optional().meta({
+      description: "Optional at registration; can be added later via PATCH",
+    }),
   })
   .meta({
     id: "CreateRestaurantRequest",
@@ -42,15 +72,40 @@ export const CreateRestaurantRequestSchema = z
 
 export const UpdateRestaurantRequestSchema = z
   .object({
+    // Optional now that there is a second thing to update. Every request that
+    // was valid before still is — this only widens what is accepted.
     name: z
       .string()
       .min(2)
+      .optional()
       .meta({ description: "Restaurant name", example: "Pizza Palace" }),
+    details: RestaurantDetailsRequestSchema.optional().meta({
+      description:
+        "Creates the details if there are none, replaces them if there are",
+    }),
+  })
+  .refine((data) => data.name !== undefined || data.details !== undefined, {
+    // An empty body would otherwise be a successful request that changed
+    // nothing, which reads to the caller as "your update was applied".
+    message: "Provide at least one of 'name' or 'details'",
   })
   .meta({
     id: "UpdateRestaurantRequest",
     description: "Fields to update on a restaurant",
   });
+
+export const RestaurantDetailsResponseSchema = z
+  .object({
+    phone: z.string(),
+    email: z.string().nullable(),
+    description: z.string().nullable(),
+    addressLine1: z.string(),
+    addressLine2: z.string().nullable(),
+    city: z.string(),
+    postalCode: z.string(),
+    country: z.string(),
+  })
+  .meta({ id: "RestaurantDetails" });
 
 export const RestaurantResponseSchema = z
   .object({
@@ -66,11 +121,26 @@ export const RestaurantResponseSchema = z
   })
   .meta({ id: "RestaurantResponse" });
 
+/**
+ * One restaurant, with its details. Separate from `RestaurantResponse` on
+ * purpose: the listing deliberately does NOT carry details — joining them onto
+ * every page of every search is exactly the cost the separate table exists to
+ * avoid — and giving the list a `details` field it always filled with `null`
+ * would say "this restaurant has none" when it may well have some.
+ */
+export const RestaurantDetailedResponseSchema = RestaurantResponseSchema.extend(
+  {
+    details: RestaurantDetailsResponseSchema.nullable().meta({
+      description: "Null for a restaurant registered without details",
+    }),
+  },
+).meta({ id: "RestaurantDetailedResponse" });
+
 export const RestaurantSuccessResponseSchema = z
   .object({
     success: z.literal(true),
     message: z.string(),
-    data: RestaurantResponseSchema,
+    data: RestaurantDetailedResponseSchema,
   })
   .meta({ id: "RestaurantSuccessResponse" });
 
@@ -93,7 +163,16 @@ schemaRegistry.register(
   "UpdateRestaurantRequest",
   UpdateRestaurantRequestSchema,
 );
+schemaRegistry.register(
+  "RestaurantDetailsRequest",
+  RestaurantDetailsRequestSchema,
+);
+schemaRegistry.register("RestaurantDetails", RestaurantDetailsResponseSchema);
 schemaRegistry.register("RestaurantResponse", RestaurantResponseSchema);
+schemaRegistry.register(
+  "RestaurantDetailedResponse",
+  RestaurantDetailedResponseSchema,
+);
 schemaRegistry.register(
   "RestaurantSuccessResponse",
   RestaurantSuccessResponseSchema,
@@ -112,3 +191,12 @@ export type UpdateRestaurantInput = z.infer<
   typeof UpdateRestaurantRequestSchema
 >;
 export type RestaurantResponse = z.infer<typeof RestaurantResponseSchema>;
+export type RestaurantDetailsInput = z.infer<
+  typeof RestaurantDetailsRequestSchema
+>;
+export type RestaurantDetailsResponse = z.infer<
+  typeof RestaurantDetailsResponseSchema
+>;
+export type RestaurantDetailedResponse = z.infer<
+  typeof RestaurantDetailedResponseSchema
+>;

@@ -104,6 +104,8 @@ routeRegistry.push({
     get: {
       tags: [tag],
       summary: "List restaurants (paginated, optional name search)",
+      description:
+        "Deliberately does not carry contact and location details. Those live in their own table so that this query — the most-run read in the system — does not pay for them; fetch one restaurant by id to get them.",
       parameters: [
         { name: "page", in: "query", schema: { type: "integer", default: 1 } },
         {
@@ -146,7 +148,9 @@ routeRegistry.push({
   pathItem: {
     get: {
       tags: [tag],
-      summary: "Get a restaurant by ID",
+      summary: "Get a restaurant by ID, with its contact and location details",
+      description:
+        "`details` is null for a restaurant registered without them — a real state, not a placeholder.",
       parameters: [restaurantIdParam],
       responses: {
         "200": {
@@ -209,6 +213,8 @@ routeRegistry.push({
     post: {
       tags: [tag],
       summary: "Create a restaurant (ADMIN)",
+      description:
+        "`details` is optional at registration and can be added later with PATCH. Both rows are written in one transaction, so a restaurant is never left half-registered.",
       security,
       requestBody: jsonBody("CreateRestaurantRequest"),
       responses: {
@@ -240,7 +246,9 @@ routeRegistry.push({
   pathItem: {
     patch: {
       tags: [tag],
-      summary: "Update a restaurant (ADMIN)",
+      summary: "Update a restaurant's name, its details, or both (ADMIN)",
+      description:
+        "Send at least one of `name` or `details`; an empty body is rejected rather than reported as a successful no-op. A `details` object REPLACES any existing details — it is not merged into them.",
       security,
       parameters: [restaurantIdParam],
       requestBody: jsonBody("UpdateRestaurantRequest"),

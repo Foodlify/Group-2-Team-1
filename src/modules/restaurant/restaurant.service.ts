@@ -1,4 +1,7 @@
-import type { RestaurantModel } from "../../generated/prisma/models";
+import type {
+  RestaurantModel,
+  RestaurantDetailsModel,
+} from "../../generated/prisma/models";
 import { AppError } from "../../middlewares/error.middleware";
 import { catalogErrors } from "../../shared/exceptions/catalog.errors";
 import { cache, cacheKeys } from "../../shared/cache/cache";
@@ -10,6 +13,7 @@ import { menuItemRepository } from "../menuItem/menuItem.repository";
 import { restaurantRepository } from "./restaurant.repository";
 import type {
   CreateRestaurantInput,
+  RestaurantDetailedResponse,
   RestaurantQuery,
   RestaurantResponse,
   UpdateRestaurantInput,
@@ -41,9 +45,15 @@ class RestaurantService {
     };
   }
 
-  async getByIdOrThrow(id: string): Promise<RestaurantResponse> {
-    const restaurant = await this.assertExists(id);
-    return this.toRestaurantResponse(restaurant);
+  async getByIdOrThrow(id: string): Promise<RestaurantDetailedResponse> {
+    const restaurant = await restaurantRepository.findByIdWithDetails(id);
+    if (!restaurant) {
+      throw new AppError(
+        catalogErrors.RESTAURANT_NOT_FOUND.message,
+        catalogErrors.RESTAURANT_NOT_FOUND.statusCode,
+      );
+    }
+    return this.toDetailedResponse(restaurant, restaurant.details);
   }
 
   async getMenus(
@@ -65,27 +75,61 @@ class RestaurantService {
   }
 
   // ─── Admin management (CRUD) ──────────────────────────
+  /**
+   * One transaction for both rows. A restaurant that exists while its details
+   * insert failed is a half-registered restaurant nobody asked for — and the
+   * admin who sent one request would have no way to tell which half landed.
+   */
   async create(
     input: CreateRestaurantInput,
     actorId: string,
-  ): Promise<RestaurantResponse> {
-    const restaurant = await restaurantRepository.create({
-      data: { name: input.name, createdBy: actorId, updatedBy: actorId },
+  ): Promise<RestaurantDetailedResponse> {
+    return restaurantRepository.transaction(async (tx) => {
+      const restaurant = await restaurantRepository.createRestaurant(
+        { name: input.name, createdBy: actorId, updatedBy: actorId },
+        tx,
+      );
+      const details = input.details
+        ? await restaurantRepository.upsertDetails(
+            restaurant.id,
+            input.details,
+            tx,
+          )
+        : null;
+      return this.toDetailedResponse(restaurant, details);
     });
-    return this.toRestaurantResponse(restaurant);
   }
 
   async update(
     id: string,
     input: UpdateRestaurantInput,
     actorId: string,
-  ): Promise<RestaurantResponse> {
-    await this.assertExists(id);
-    const restaurant = await restaurantRepository.update({
-      where: { id },
-      data: { ...input, updatedBy: actorId },
+  ): Promise<RestaurantDetailedResponse> {
+    const existing = await restaurantRepository.findByIdWithDetails(id);
+    if (!existing) {
+      throw new AppError(
+        catalogErrors.RESTAURANT_NOT_FOUND.message,
+        catalogErrors.RESTAURANT_NOT_FOUND.statusCode,
+      );
+    }
+
+    return restaurantRepository.transaction(async (tx) => {
+      // `updatedBy` is stamped even when only the details changed: from the
+      // catalog's point of view this restaurant was touched, and the auditing
+      // column exists to answer "by whom" for exactly that.
+      const restaurant = await restaurantRepository.updateById(
+        id,
+        {
+          ...(input.name !== undefined ? { name: input.name } : {}),
+          updatedBy: actorId,
+        },
+        tx,
+      );
+      const details = input.details
+        ? await restaurantRepository.upsertDetails(id, input.details, tx)
+        : existing.details;
+      return this.toDetailedResponse(restaurant, details);
     });
-    return this.toRestaurantResponse(restaurant);
   }
 
   /**
@@ -114,7 +158,10 @@ class RestaurantService {
    * about: an item deleted on its own *before* the restaurant was deleted comes
    * back too, because the flag doesn't record which delete set it.
    */
-  async restore(id: string, actorId: string): Promise<RestaurantResponse> {
+  async restore(
+    id: string,
+    actorId: string,
+  ): Promise<RestaurantDetailedResponse> {
     const restaurant = await restaurantRepository.findByIdIncludingDeleted(id);
     if (!restaurant) {
       throw new AppError(
@@ -136,11 +183,9 @@ class RestaurantService {
       return ids;
     });
     await this.invalidateMenus(menuIds);
-    return this.toRestaurantResponse({
-      ...restaurant,
-      isDeleted: false,
-      updatedBy: actorId,
-    });
+    // Re-read rather than reconstruct: the restored row now has details to
+    // report, and this endpoint documents the same shape as the other reads.
+    return this.getByIdOrThrow(id);
   }
 
   private async invalidateMenus(menuIds: string[]): Promise<void> {
@@ -171,6 +216,36 @@ class RestaurantService {
       isDeleted: r.isDeleted,
       createdAt: r.createdAt.toISOString(),
       updatedAt: r.updatedAt.toISOString(),
+    };
+  }
+
+  /**
+   * The single-restaurant shape. `details` is null when the restaurant has
+   * none — which is a real state, not a placeholder: registration does not
+   * require them and every restaurant that predates the table has none.
+   *
+   * The details row's own `id` and timestamps are left out. They belong to a
+   * one-to-one row the caller can neither address nor update on its own, so
+   * exposing them would only invite someone to try.
+   */
+  private toDetailedResponse(
+    r: RestaurantModel,
+    details: RestaurantDetailsModel | null,
+  ): RestaurantDetailedResponse {
+    return {
+      ...this.toRestaurantResponse(r),
+      details: details
+        ? {
+            phone: details.phone,
+            email: details.email,
+            description: details.description,
+            addressLine1: details.addressLine1,
+            addressLine2: details.addressLine2,
+            city: details.city,
+            postalCode: details.postalCode,
+            country: details.country,
+          }
+        : null,
     };
   }
 }
