@@ -46,6 +46,7 @@
 | `feat/redis-cache`                 | 2026-08-06 | Redis Caching للكارت والمنيو (بند البونص الرسمي) — cache-aside: القراءة من الكاش والكتابة بتمسح المفتاح، وRedis اختياري بالكامل (من غير REDIS_URL الأبلكيشن شغال عادي على PostgreSQL)                           | ✅ مدموج في develop |
 | `feat/order-notifications`         | 2026-08-06 | إشعارات الأوردر بالإيميل — تأكيد بعد الشيك أوت وإشعار مع كل تغيير حالة (والإلغاء)، بتتبعت **بعد** ما الترانزاكشن تنجح ومش بتفشّل الأوردر أبداً لو الإيميل وقع                                                   | ✅ مدموج في develop |
 | `feat/soft-delete-auditing`        | 2026-08-07 | Soft Delete + Auditing (قاعدة رسمية) — عمود `isDeleted` على المطعم/المنيو/الصنف بيتفلتر في الريبوزيتوري، الحذف بيتسلسل لتحت في ترانزاكشن، وendpoints للاسترجاع + أعمدة `createdBy/updatedBy`                    | ✅ مدموج في develop |
+| `feat/payment-verification`        | 2026-08-10 | Payment Verification & Validation (بند رسمي) — الـ webhook بقى يتأكد إن الجلسة `paid` فعلاً وإن المبلغ والعملة يطابقوا صف الليدجر قبل ما يعلّمها SUCCESS. عدم التطابق بيسيب الصف PENDING ومعلّم، مش FAILED      | ✅ مدموج في develop |
 | `feat/auditing-events`             | 2026-08-10 | جدول `AuditingEvent` الرسمي (append-only) على كل كتابة في `Transaction` + `GET /audit-events` للأدمن. القيد بيتكتب جوه **نفس** ترانزاكشن الداتابيز بتاعة التغيير، والفاعل بيتنقل ambient بـ `AsyncLocalStorage` | ✅ مدموج في develop |
 
 ## 🔧 فروع البنية التحتية

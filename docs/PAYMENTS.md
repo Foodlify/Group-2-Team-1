@@ -136,6 +136,67 @@ which is right for a forged call). A handler that fails halfway answers `500`
 
 ---
 
+## Payment verification & validation
+
+A valid signature proves the event came from Stripe. It does **not** prove the
+event settles _this_ payment. Those are different claims, and only the first one
+is what a signature can carry. Before a transaction is marked `SUCCESS`, three
+things are checked.
+
+### 1. The session was actually paid
+
+`checkout.session.completed` fires when the customer finishes the checkout —
+which, for a delayed payment method, is **before any money has moved**. Stripe
+reports `payment_status: "unpaid"` in that case and sends
+`checkout.session.async_payment_succeeded` later, if and when the payment
+clears.
+
+Settlement therefore requires `payment_status: "paid"`. Both events route to the
+same handler, so the pair is safe in either order and safe to redeliver. An
+`unpaid` session is logged and left alone — it is a normal waiting state, not a
+problem, and flagging it would send somebody chasing a payment that is simply
+still in flight.
+
+### 2. The amount matches
+
+`verifySettlement` compares Stripe's `amount_total` against the amount on our
+pending ledger row. Without it the webhook accepts whatever figure the event
+carries, and **an order for 100 EGP is settled in full by a session for 1 EGP**.
+
+The comparison is done in `Decimal`, never as a float: `19.99 * 100` is
+`1998.9999999999998` in JavaScript, so a float comparison would reject correct
+payments — and only on certain prices, which is how such a bug survives every
+test written against round numbers.
+
+### 3. The currency matches
+
+Checked before the amount, because minor units across two currencies are not
+comparable and `2445 ≠ 2445` is a baffling thing to hand whoever investigates.
+Both sides are normalised, so neither our storage convention nor Stripe's
+formatting is depended on.
+
+### What happens on a mismatch
+
+The row is left **`PENDING`**, not `FAILED`.
+
+The signature is valid, so money genuinely moved at the gateway. Calling that a
+failure is as untrue as calling it a success — and `FAILED` would drop the row
+out of the outstanding views where somebody still needs to look at it. What
+happens instead:
+
+- the discrepancy (`reason`, `expected`, `received`) is written to the
+  transaction's metadata, so the row itself carries the evidence;
+- it is logged at `error` level;
+- the order is **not** confirmed and the customer is **not** notified;
+- the handler does **not** throw. The mismatch is permanent — the same event
+  redelivered for three days will disagree in exactly the same way — so a `5xx`
+  would buy nothing but three days of noise.
+
+The write goes through `TransactionRepository`, so it also lands in the audit
+trail as an `UPDATED` entry. See [the Auditing section](../README.md#the-auditing-table).
+
+---
+
 ## Configuration
 
 ```bash
@@ -465,9 +526,15 @@ wrongly once, as `24.450000000000003`, in the order line subtotals.
 
 ## What is not built
 
-- **Alerting.** Nothing tells anyone an outstanding refund exists; someone has
-  to call the endpoint. A scheduled check that reports the count would close
-  that without any automatic money movement.
+- **Alerting.** Nothing tells anyone an outstanding refund exists, or that a
+  settlement failed verification; someone has to read the log or call the
+  endpoint. A scheduled check that reports the counts would close both without
+  any automatic money movement.
+- **The three payment-configuration tables.** `Payment Integration Type`,
+  `Payment Integration Configuration` and `Transaction Details` are named in the
+  official scope map and are not built. The gateway is configured through
+  environment variables instead, and the strategy registry decides at boot which
+  methods exist.
 - **Wallet and PayPal.** Present in the `PaymentMethod` enum, no strategy
   behind either, absent from `SUPPORTED_PAYMENT_METHODS`.
 - **Saved cards** and 3-D Secure step-up handling beyond what Stripe Checkout
