@@ -398,14 +398,16 @@ graph TD
 | ------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | 👤 **Users & Auth** | `user`, `userType`, `userRole`, `role`, `customer`                              | `User` (بعمود `role`), `Customer`, `RefreshToken`, `Otp`                            |
 | 🛒 **Cart**         | `cart`, `cartItem`                                                              | `Cart`, `CartItem` ✅                                                               |
-| 🍽️ **Restaurants**  | `restaurant`, `restaurantDetails`, `menu`, `menuItem`                           | `Restaurant`, `Menu`, `MenuItem`, `MenuChangeLog`                                   |
+| 🍽️ **Restaurants**  | `restaurant`, `restaurantDetails`, `menu`, `menuItem`                           | `Restaurant`, `RestaurantDetails` ✅, `Menu`, `MenuItem`, `MenuChangeLog`           |
 | 📦 **Orders**       | `order`, `orderItem`, `orderStatus`, `orderTracking`                            | `Order` (الحالة enum والتتبّع في `timeline`), `OrderItems`                          |
 | 💳 **Payments**     | `paymentIntegrationType`, `paymentTypeConfiguration`, `preferredPaymentSetting` | `PreferredPaymentSetting` (الجدولين التانيين مع بوّابة الدفع المؤجّلة)              |
 | 💰 **Transactions** | `transaction`, `transactionDetails`, `transactionStatus`                        | `Transaction` (النوع والحالة enums)                                                 |
 | 📍 **Misc**         | `address`, `auditingEvent`                                                      | `Address`, `AuditingEvent` ✅ — وكمان أعمدة `createdBy/updatedBy` + `MenuChangeLog` |
 | ➕ **زيادة عندنا**  | —                                                                               | `RestaurantRate`, `SupportTicket`, `CustomerServiceEmployee`                        |
 
-**الخلاصة:** الجداول اللي "ناقصة" أغلبها lookup tables استبدلناها بـ enums في Postgres (أسرع وأأمن type-safety)، و`orderTracking` بقى `timeline` JSON. الناقص فعلاً: جدولا تهيئة بوّابة الدفع (`paymentIntegrationType` و`paymentTypeConfiguration`) و`transactionDetails`.
+**الخلاصة:** الجداول اللي "ناقصة" أغلبها lookup tables استبدلناها بـ enums في Postgres (أسرع وأأمن type-safety)، و`orderTracking` بقى `timeline` JSON. الناقص فعلاً تلات جداول، كلهم في موديول الدفع: `paymentIntegrationType` و`paymentTypeConfiguration` (البوّابة متظبّطة من الـ env بدالهم) و`transactionDetails`.
+
+**عن `RestaurantDetails`:** جدول منفصل زي ما الـ ERD حاططه، ومش أعمدة زيادة على `Restaurant` — لإن `Restaurant` بيتعمله join في كل قراءة تقريباً (اللستة، البحث، الكارت، الأوردر، التقييمات، الداشبورد) بينما البيانات دي مطلوبة في شاشة واحدة. وهو **اختياري**: المطاعم اللي اتسجلت قبل الجدول ده معندهاش تفاصيل فعلاً، واختراع رقم تليفون ليها أسوأ من خانة فاضية. عشان كده اللستة المرقّمة **مفيهاش حقل `details` أصلاً** بدل ما يكون فيها حقل بيرجع `null` دايماً.
 
 **عن `AuditingEvent`:** ده مختلف عن أعمدة `createdBy/updatedBy`. الأعمدة بتجاوب على "مين آخر واحد لمس الصف ده"، والجدول بيجاوب على "إيه اللي حصل للصف، بأي ترتيب، ومن فين" — الأعمدة بتحتفظ بإجابة واحدة، والجدول بيحتفظ بكلها. التفاصيل في [README](../README.md#the-auditing-table).
 

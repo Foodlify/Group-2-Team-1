@@ -97,6 +97,22 @@ describe("adding and changing details later", () => {
     expect(res.body.data.details).toEqual(details);
   });
 
+  it("leaves the name untouched when only details were sent", async () => {
+    const created = await createRestaurant({ name: "Bare" });
+
+    await api()
+      .patch(`/api/v1/restaurants/${created.id}`)
+      .set("Cookie", asCookie(adminToken))
+      .send({ details });
+
+    // Asserted against the row, not the response: a name the update wrote as
+    // undefined would come back looking fine either way.
+    const row = await prisma.restaurant.findUniqueOrThrow({
+      where: { id: created.id },
+    });
+    expect(row.name).toBe("Bare");
+  });
+
   it("replaces them rather than merging into them", async () => {
     const created = await createRestaurant({ name: "Koshary", details });
 
