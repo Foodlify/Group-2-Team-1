@@ -11,6 +11,7 @@ import logger from "./config/logger";
 import prisma from "./config/prisma";
 import env from "./config/env";
 import { serveOpenApi } from "./openapi/serve";
+import { runWithContext } from "./shared/context/request.context";
 
 const app: Application = express();
 
@@ -38,6 +39,16 @@ app.use(
     credentials: true,
   }),
 );
+// ── Request context ──────────────────────────────────
+// Opens the async-local store that carries the audit actor. Mounted here, ahead
+// of the webhook and every route, so that a request which never authenticates
+// still records its ip and route — a Stripe callback has no user, but "which
+// endpoint, from which address" is most of what makes the entry useful.
+// `req.ip` is only trustworthy because `trust proxy` was set above.
+app.use((req: Request, res: Response, next: NextFunction): void => {
+  runWithContext({ ip: req.ip, route: `${req.method} ${req.path}` }, next);
+});
+
 // The Stripe webhook is mounted BEFORE the JSON parser and outside the
 // rate-limited `/api/v1` router — see the note in payment.routes.ts. Its
 // signature check needs the raw bytes, which `express.json()` would consume.

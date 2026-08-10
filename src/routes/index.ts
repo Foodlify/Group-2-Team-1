@@ -21,6 +21,7 @@ import {
   adminTransactionsRouter,
   myTransactionsRouter,
 } from "../modules/transaction/transaction.routes";
+import auditRouter from "../modules/auditing/auditing.routes";
 import menuRouter from "../modules/menu/menu.routes";
 import menuItemRouter from "../modules/menuItem/menuItem.routes";
 
@@ -39,6 +40,7 @@ router.use("/customers/me/support-tickets", mySupportRouter);
 router.use("/customers/me/transactions", myTransactionsRouter);
 router.use("/customers", customerRouter);
 router.use("/transactions", adminTransactionsRouter);
+router.use("/audit-events", auditRouter);
 router.use("/support-tickets", adminSupportRouter);
 router.use("/restaurants", restaurantDiscoveryRouter);
 router.use("/restaurants/:restaurantId/ratings", restaurantRatingsRouter);
