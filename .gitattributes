@@ -1,0 +1,16 @@
+# Let Git normalise text files in the repository, and check them out however
+# the platform prefers — except where the platform is wrong.
+* text=auto
+
+# Files a Linux container executes must be checked out with LF whatever the
+# developer's OS thinks. A shell script checked out with CRLF on Windows fails
+# inside the image with `/bin/sh^M: bad interpreter` — a message that names
+# neither the file nor line endings, on a machine that never ran the script.
+*.sh text eol=lf
+Dockerfile text eol=lf
+docker-compose.yml text eol=lf
+.dockerignore text eol=lf
+
+# Read by tooling that does not expect a trailing carriage return in a version
+# string (actions/setup-node, nvm).
+.nvmrc text eol=lf

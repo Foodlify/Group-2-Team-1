@@ -2,6 +2,21 @@ generator client {
   provider     = "prisma-client"
   output       = "../src/generated/prisma"
   moduleFormat = "cjs"
+
+  /// Extensionless imports inside the generated client, stated rather than
+  /// inferred.
+  ///
+  /// Left unset, Prisma picks a default by looking at the surrounding project
+  /// — and picks a different one when it cannot see a tsconfig.json. That is
+  /// exactly the situation in the Docker build, where dependencies install
+  /// (and `prisma generate` runs) a stage before the tsconfig is copied. The
+  /// result was a client importing `./internal/class.ts` next to a compiled
+  /// `class.js`: fine through ts-node, `MODULE_NOT_FOUND` the moment it ran
+  /// from dist/, so the image built cleanly and died on boot.
+  ///
+  /// No extension is the one form that resolves in both places — `.ts` under
+  /// ts-node in development, `.js` after tsc in production.
+  importFileExtension = ""
 }
 
 datasource db {

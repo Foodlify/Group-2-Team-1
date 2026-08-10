@@ -36,8 +36,8 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          # Matches `engines.node` in package.json.
-          node-version: "22"
+          # Read from .nvmrc so CI, Docker and every checkout cannot drift apart.
+          node-version-file: ".nvmrc"
           cache: npm
 
       # Also generates the Prisma client via postinstall — `src/generated` is
@@ -103,7 +103,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: ".nvmrc"
           cache: npm
 
       - name: Install dependencies

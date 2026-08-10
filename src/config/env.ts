@@ -54,6 +54,20 @@ const EnvSchema = z
       (value) => (value === undefined || value === "" ? 0 : value),
       z.coerce.number().int().min(0),
     ),
+    // Where the rotating log files are written. Logs always go to stdout as
+    // well, which is the channel a container platform actually reads, so this
+    // exists for the two cases stdout does not cover: a local checkout, where
+    // grepping yesterday's file beats scrolling a terminal, and a deployment
+    // that mounts a volume to keep logs across a redeploy.
+    //
+    // Set it to an empty string to turn file logging off entirely. That is a
+    // reasonable thing to want in a container: the files are capped at roughly
+    // 560MB by the rotation settings, but they are 560MB of a copy of what the
+    // platform already collected.
+    LOG_DIR: z.preprocess(
+      (value) => (value === undefined ? "logs" : value),
+      z.string(),
+    ),
     // ── SMTP (OTP emails) ── all optional: when SMTP_HOST is unset the mailer
     // logs messages instead of sending (dev/test) and refuses in production.
     SMTP_HOST: z.string().trim().optional(),
