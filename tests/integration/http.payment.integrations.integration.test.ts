@@ -9,7 +9,12 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import prisma from "../../src/config/prisma";
 import { paymentIntegrationService } from "../../src/modules/payment/integration.service";
-import { disconnect, resetDatabase } from "./helpers/db";
+import {
+  createCartWithItem,
+  createCatalog,
+  disconnect,
+  resetDatabase,
+} from "./helpers/db";
 import { api, asCookie, createAccount } from "./helpers/http";
 
 /**
@@ -42,6 +47,26 @@ const seedIntegrations = async () => {
     },
   });
   return { cash, stripe };
+};
+
+/** A customer with an address and a cart, ready to check out over HTTP. */
+const readyToCheckout = async () => {
+  const { customer, token } = await createAccount("CUSTOMER", {
+    suffix: "buyer",
+  });
+  const { restaurant, menuItem } = await createCatalog({ price: "8.15" });
+  const address = await prisma.address.create({
+    data: {
+      customerId: customer!.id,
+      addressLine1: "12 Test Street",
+      city: "Cairo",
+      postalCode: "11511",
+      country: "EG",
+      isDefault: true,
+    },
+  });
+  await createCartWithItem(customer!.id, restaurant.id, menuItem, 3);
+  return { address, token };
 };
 
 let adminToken: string;
@@ -109,6 +134,30 @@ describe("what a secret is allowed to do here", () => {
     expect(JSON.stringify(rows)).not.toContain("sk_live");
   });
 
+  it("does not return the key even when one is really set", async () => {
+    // The suite blanks STRIPE_SECRET_KEY, so "no secret appeared in the
+    // response" would be true no matter what the code did. A canary value is
+    // the only way this assertion can fail — and it did, against a version
+    // that returned the key alongside the flag.
+    const CANARY = "sk_test_canary_must_never_be_returned";
+    const previous = process.env.STRIPE_SECRET_KEY;
+    process.env.STRIPE_SECRET_KEY = CANARY;
+    try {
+      const res = await api()
+        .get("/api/v1/payments/integrations")
+        .set("Cookie", asCookie(adminToken));
+
+      const stripe = res.body.data.find(
+        (i: { code: string }) => i.code === "stripe",
+      );
+      // The flag says it is wired up; the value stays where it lives.
+      expect(stripe.configuration.secretConfigured).toBe(true);
+      expect(JSON.stringify(res.body)).not.toContain(CANARY);
+    } finally {
+      process.env.STRIPE_SECRET_KEY = previous;
+    }
+  });
+
   it("reports whether the named variable is set, without its value", async () => {
     // The integration suite blanks STRIPE_SECRET_KEY, so this deployment has
     // the variable named but not configured — exactly the state an admin needs
@@ -138,6 +187,26 @@ describe("the kill switch", () => {
     await expect(
       paymentIntegrationService.assertMethodEnabled("CASH"),
     ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it("stops a real checkout, not just a direct call to the service", async () => {
+    const buyer = await readyToCheckout();
+
+    await api()
+      .patch("/api/v1/payments/integrations/cash")
+      .set("Cookie", asCookie(adminToken))
+      .send({ isEnabled: false });
+
+    const res = await api()
+      .post("/api/v1/orders")
+      .set("Cookie", asCookie(buyer.token))
+      .send({ addressId: buyer.address.id, paymentMethod: "CASH" });
+
+    // Driven through HTTP on purpose. Asserting on the service alone cannot
+    // tell whether the payment path ever consults it — a version with the
+    // check deleted from `processPayment` passed every other test here.
+    expect(res.status).toBe(400);
+    expect(await prisma.order.count()).toBe(0);
   });
 
   it("lets it back through when switched on again", async () => {

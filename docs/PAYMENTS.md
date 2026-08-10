@@ -136,6 +136,61 @@ which is right for a forged call). A handler that fails halfway answers `500`
 
 ---
 
+## Payment integrations, and the kill switch
+
+```
+GET   /api/v1/payments/integrations          (ADMIN)
+PATCH /api/v1/payments/integrations/{code}   (ADMIN)
+```
+
+The official `Payment Integration Type` and `Payment Integration Configuration`
+tables. Seeded by the migration with `cash` and `stripe`, both enabled — so a
+fresh database and a migrated one are identical, and the migration changes no
+behaviour on the day it runs.
+
+### What they are for
+
+The gateway is configured by environment variables, so the honest question is
+what a table adds. The answer is **`isEnabled`**. Today, stopping card payments
+means removing `STRIPE_SECRET_KEY` and restarting — not what anyone wants to be
+doing at the moment a gateway starts misbehaving. The flag is read **when a
+payment is taken**, so flipping it applies on the next request.
+
+A payment through a disabled integration is refused with the **same 400** an
+unsupported method gets. Saying which of the two it is would report our
+operational state to whoever asked.
+
+An integration the table says nothing about is **allowed**. These tables arrived
+after the payment methods did, and a deployment whose seed has not run must keep
+taking payments rather than silently refuse every one. Absence of a rule is not
+a rule.
+
+### No secret is stored here, ever
+
+A database is dumped, backed up and replicated, and a key in a table is a key in
+all of those places. What is stored is the **name** of the environment variable
+holding each key:
+
+```json
+{
+  "secretKeyEnvVar": "STRIPE_SECRET_KEY",
+  "webhookSecretEnvVar": "STRIPE_WEBHOOK_SECRET",
+  "secretConfigured": true
+}
+```
+
+`secretConfigured` is computed from `process.env` at read time and is the only
+thing this endpoint says about a secret: whether the named variable has a value
+on this deployment. That answers what an admin actually wants to know — "is this
+wired up?" — without the response, the logs it may reach, or the tab it is read
+in ever holding the key.
+
+There is **no create or delete**. An integration exists when a strategy is
+written for it in code; a row for a gateway with no strategy behind it would
+advertise a payment method that fails the moment somebody tries to pay.
+
+---
+
 ## Payment verification & validation
 
 A valid signature proves the event came from Stripe. It does **not** prove the
@@ -530,10 +585,12 @@ wrongly once, as `24.450000000000003`, in the order line subtotals.
   settlement failed verification; someone has to read the log or call the
   endpoint. A scheduled check that reports the counts would close both without
   any automatic money movement.
-- **The two payment-configuration tables.** `Payment Integration Type` and
-  `Payment Integration Configuration` are named in the official scope map and
-  are not built. The gateway is configured through environment variables
-  instead, and the strategy registry decides at boot which methods exist.
+- **Driving the strategy registry from the database.** `SUPPORTED_PAYMENT_METHODS`
+  is still computed from environment variables at import time, because the Zod
+  schemas that use it are built then and cannot await a query. So the request
+  schema may accept `CREDIT_CARD` while a disabled integration refuses it at
+  payment time — the same shape as a soft-deleted restaurant passing validation
+  and failing the business rule.
 - **Wallet and PayPal.** Present in the `PaymentMethod` enum, no strategy
   behind either, absent from `SUPPORTED_PAYMENT_METHODS`.
 - **Saved cards** and 3-D Secure step-up handling beyond what Stripe Checkout
