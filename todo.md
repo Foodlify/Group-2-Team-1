@@ -157,6 +157,11 @@ Still open in this area:
   overview, daily/monthly transaction report, and the same per restaurant.
   No new tables and no migration. See [docs/DASHBOARD.md](docs/DASHBOARD.md).
 - Still the only one of the seven that **no other team has built**.
+- **Completed 2026-08-11** with the day and month counters the map names —
+  cancelled orders daily and monthly on both branches, the restaurant's own
+  daily and monthly order counts, and `Daily Orders not Delivered Count`. Until
+  then those bullets were served only as all-time totals, which cannot be
+  narrowed to a day or a month after the fact.
 
 **Open items it produced:**
 

@@ -7,6 +7,7 @@ import type {
   ReportGranularity,
   TransactionBucketRow,
 } from "./dashboard.model";
+import { NOT_DELIVERED_STATUSES_EXCLUDED } from "./dashboard.model";
 import type {
   OverviewResponse,
   ReportQuery,
@@ -41,6 +42,8 @@ class DashboardService {
       ordersToday,
       ordersThisMonth,
       ordersByStatus,
+      cancelledToday,
+      cancelledThisMonth,
       transactionsTotal,
       totalsAllTime,
       totalsToday,
@@ -52,6 +55,17 @@ class DashboardService {
       dashboardRepository.countOrders({ orderDate: { gte: dayStart } }),
       dashboardRepository.countOrders({ orderDate: { gte: monthStart } }),
       dashboardRepository.countOrdersByStatus({}),
+      // The official `Daily Cancelled Orders` / `Monthly Cancelled Orders`.
+      // Counted with their own query rather than read off `ordersByStatus`,
+      // which is all-time and cannot be narrowed after the fact.
+      dashboardRepository.countOrders({
+        status: "CANCELLED",
+        orderDate: { gte: dayStart },
+      }),
+      dashboardRepository.countOrders({
+        status: "CANCELLED",
+        orderDate: { gte: monthStart },
+      }),
       dashboardRepository.countTransactions({}),
       dashboardRepository.sumByType(successfulPayments),
       dashboardRepository.sumByType({
@@ -75,6 +89,8 @@ class DashboardService {
         ordersToday,
         ordersThisMonth,
         cancelledOrders: ordersByStatus.get("CANCELLED") ?? 0,
+        cancelledOrdersToday: cancelledToday,
+        cancelledOrdersThisMonth: cancelledThisMonth,
         deliveredOrders: ordersByStatus.get("DELIVERED") ?? 0,
         transactions: transactionsTotal,
       },
@@ -112,28 +128,70 @@ class DashboardService {
 
     const { from, to } = resolveRange(query);
     const scoped = { restaurantId };
+    // Same boundaries the system overview uses, so the two screens agree on
+    // what "today" means. Both declare UTC.
+    const now = new Date();
+    const dayStart = startOfUtcDay(now);
+    const monthStart = startOfUtcMonth(now);
 
-    const [ordersTotal, ordersInRange, ordersByStatus, totals, rows] =
-      await Promise.all([
-        dashboardRepository.countOrders(scoped),
-        dashboardRepository.countOrders({
-          ...scoped,
-          orderDate: { gte: from, lt: to },
-        }),
-        dashboardRepository.countOrdersByStatus(scoped),
-        // Transactions belong to orders, so a restaurant's money is reached
-        // through the order relation rather than stored on the transaction.
-        dashboardRepository.sumByType({
-          status: "SUCCESS",
-          order: { restaurantId },
-        }),
-        dashboardRepository.transactionSeries(
-          query.granularity,
-          from,
-          to,
-          restaurantId,
-        ),
-      ]);
+    const [
+      ordersTotal,
+      ordersInRange,
+      ordersByStatus,
+      ordersToday,
+      ordersThisMonth,
+      cancelledToday,
+      cancelledThisMonth,
+      notDeliveredToday,
+      totals,
+      rows,
+    ] = await Promise.all([
+      dashboardRepository.countOrders(scoped),
+      dashboardRepository.countOrders({
+        ...scoped,
+        orderDate: { gte: from, lt: to },
+      }),
+      dashboardRepository.countOrdersByStatus(scoped),
+      // The five counters the scope map names under Dashboard → Restaurants.
+      // Fixed to today and this month, unlike `ordersInRange` above, which
+      // follows the caller's window — the map asks for the day and the month,
+      // and a number that moves with a query parameter is not that.
+      dashboardRepository.countOrders({
+        ...scoped,
+        orderDate: { gte: dayStart },
+      }),
+      dashboardRepository.countOrders({
+        ...scoped,
+        orderDate: { gte: monthStart },
+      }),
+      dashboardRepository.countOrders({
+        ...scoped,
+        status: "CANCELLED",
+        orderDate: { gte: dayStart },
+      }),
+      dashboardRepository.countOrders({
+        ...scoped,
+        status: "CANCELLED",
+        orderDate: { gte: monthStart },
+      }),
+      dashboardRepository.countOrders({
+        ...scoped,
+        status: { notIn: [...NOT_DELIVERED_STATUSES_EXCLUDED] },
+        orderDate: { gte: dayStart },
+      }),
+      // Transactions belong to orders, so a restaurant's money is reached
+      // through the order relation rather than stored on the transaction.
+      dashboardRepository.sumByType({
+        status: "SUCCESS",
+        order: { restaurantId },
+      }),
+      dashboardRepository.transactionSeries(
+        query.granularity,
+        from,
+        to,
+        restaurantId,
+      ),
+    ]);
 
     return {
       restaurantId: restaurant.id,
@@ -141,7 +199,12 @@ class DashboardService {
       counters: {
         orders: ordersTotal,
         ordersInRange,
+        ordersToday,
+        ordersThisMonth,
         cancelledOrders: ordersByStatus.get("CANCELLED") ?? 0,
+        cancelledOrdersToday: cancelledToday,
+        cancelledOrdersThisMonth: cancelledThisMonth,
+        notDeliveredToday,
         deliveredOrders: ordersByStatus.get("DELIVERED") ?? 0,
       },
       ordersByStatus: Object.fromEntries(ordersByStatus),
