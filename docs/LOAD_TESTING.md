@@ -47,6 +47,20 @@ which is exactly what makes the measurement possible — and worth stating,
 because "we disabled a protection to get these numbers" belongs in the report,
 not in a footnote.
 
+**Run the order plans with `SMTP_HOST=` blank.** Every placed order sends a
+confirmation email, so a 500-customer run is 500 real SMTP deliveries to
+`load0@example.com` … `load499@example.com` — addresses that cannot receive
+mail. This was found the hard way during the pool sweep, in a run that produced
+405 `Sending email failed` lines: with real credentials in `.env`, the harness
+quietly turns into a bulk sender of undeliverable mail through the developer's
+own account, which is a good way to get that account rate-limited. Blanking
+`SMTP_HOST` puts the mailer back on its log-only fallback. It also removes 500
+outbound connections from inside the measurement.
+
+`NODE_ENV=test` alone does **not** do this: the mailer only falls back to
+logging when it has no host configured, and it is configured from `.env` like
+everything else.
+
 ---
 
 ## Finding 1 — Login is the ceiling, and bcrypt is why
@@ -207,7 +221,7 @@ login capacity is reported separately above.
 
 ---
 
-## Finding 2 — The connection pool was set to 10
+## Finding 2 — The connection pool, and where its cliff actually is
 
 Chasing Finding 1 surfaced a genuine misconfiguration:
 [`config/prisma.ts`](../src/config/prisma.ts) hard-coded `max: 10` with a
@@ -218,11 +232,68 @@ It is now `DATABASE_POOL_MAX`, defaulting to **20**, with the constraint written
 down: `instances × DATABASE_POOL_MAX` must stay below the server's
 `max_connections` (100 by default).
 
-Being honest about the evidence: raising it from 10 to 20 produced **no
-measurable improvement in these runs**, because bcrypt was saturating the
-process long before the pool mattered. The change stands on its own reasoning —
-once login is off the critical path, the order flow moves ~100 req/s through
-that pool without a single timeout — but this test did not isolate its benefit.
+At the time, raising it from 10 to 20 produced **no measurable improvement**,
+because bcrypt was saturating the process long before the pool mattered. The
+default stood on reasoning rather than evidence, and this is the measurement
+that was owed.
+
+### Swept, now that login is off the critical path (2026-08-10)
+
+Plan 1, 500 customers, 10-second ramp-up. One variable: the seed is re-run and
+the server restarted for every size, so each faces identical data.
+
+| `DATABASE_POOL_MAX` | ok %     | req/s | place-order p95 | p99    | pool timeouts |
+| ------------------- | -------- | ----- | --------------- | ------ | ------------- |
+| 5                   | 30.3%    | 44.9  | 5 192 ms        | —      | 732           |
+| 6                   | 30.7%    | 44.9  | 5 221 ms        | —      | 705           |
+| 8                   | 31.6%    | 45.0  | 5 294 ms        | —      | 735           |
+| **10**              | **100%** | 102.2 | **102 ms**      | 209 ms | **0**         |
+| 12                  | 100%     | 102.2 | 120 ms          | 236 ms | 0             |
+| 16                  | 100%     | 102.2 | 180 ms          | 378 ms | 0             |
+| 20 (current)        | 100%     | 102.3 | 193 ms          | 339 ms | 0             |
+| 40                  | 100%     | 102.2 | 337 ms          | 632 ms | 0             |
+| 80                  | 100%     | 102.3 | 329 ms          | 710 ms | 0             |
+
+Three things fall out of it, and the middle one was a surprise.
+
+**1. There is a cliff between 8 and 10, and it is nearly binary.** Not a
+gradual slope: 8 connections serve 31% of requests, 10 serve 100%. Everything
+below the cliff behaves identically to everything else below it — same
+throughput, same duration, same failure count.
+
+The obvious explanation is wrong, which is worth recording. Little's Law on the
+healthy run gives `102 req/s × 22.3 ms ≈ 2.3` connections — the app needs about
+two to keep up on average, nowhere near nine. So this is not average capacity.
+The likeliest reading is congestion collapse: once a burst outruns the pool,
+every waiting request occupies a queue slot for the full 5-second
+`connectionTimeoutMillis` before giving up, so the pool stops turning over fast
+enough to drain the backlog and the run never recovers. That is a hypothesis
+about the mechanism; the cliff itself is measured.
+
+**2. Above 10, a bigger pool is not free — it makes the tail worse.** Throughput
+is identical from 10 upward (the plan's 10-second ramp-up sets the pace at ~100
+req/s), but place-order p95 rises steadily: 102 ms at 10, 193 ms at 20, 329 ms
+at 80. Reproduced across two independent sweeps. More concurrent connections
+means more contention inside PostgreSQL, and every query pays for it.
+
+**3. The default stays at 20 — now for a measured reason.** 10 is enough and has
+the best latency, but it sits directly on the edge of a cliff whose far side is
+a 31% success rate. 20 buys a 2× margin over the measured cliff for about 90 ms
+of p95, which is the right trade for a default. Going past 20 buys nothing at
+all, so the guidance is a range: **do not go below 12, and do not bother going
+above 20.**
+
+This also closes Finding 1 from the other direction. The original run blamed
+`max: 10` for 499 pool timeouts; the same pool size now serves the same order
+flow with zero. The pool was never the problem — the blocked event loop was, and
+it could not run the callbacks that hand connections back.
+
+### What this sweep does not cover
+
+Only the cart and checkout paths. The dashboard reports run raw aggregate
+queries that hold a connection far longer than 22 ms, and nothing here exercises
+them under load. A deployment serving heavy concurrent reports should re-measure
+rather than assume this range transfers.
 
 ---
 

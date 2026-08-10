@@ -592,7 +592,10 @@ npm run perf:plan2
 ```
 
 Two findings came out of it. The pool in `config/prisma.ts` was capped at 10
-connections and is now `DATABASE_POOL_MAX` (default 20). And **login was the
+connections and is now `DATABASE_POOL_MAX` (default 20) — swept from 5 to 80,
+which found a near-binary cliff between 8 and 10 (31% → 100% of requests
+served), no throughput gain above 10, and a tail-latency cost for going higher.
+The useful answer is a range: **stay between 12 and 20**. And **login was the
 system's ceiling**: at 500 concurrent logins the success rate was 23.6% with a
 35-second p50, because `bcryptjs` is pure JavaScript and hashes _on the event
 loop_ — while it worked, the process served nobody.
