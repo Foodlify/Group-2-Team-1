@@ -18,7 +18,7 @@ import {
   resetDatabase,
 } from "./helpers/db";
 
-const cardPayment = (metadata?: Record<string, unknown>) =>
+const cardPayment = (metadata?: Prisma.InputJsonValue) =>
   transactionRepository.createTransaction({
     type: "ORDER_PAYMENT",
     amount: 24.45,
