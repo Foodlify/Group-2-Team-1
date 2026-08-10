@@ -396,7 +396,7 @@ graph TD
 
 | المجموعة            | في الـ mindmap الرسمي                                                           | عندنا                                                                                        |
 | ------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| 👤 **Users & Auth** | `user`, `userType`, `userRole`, `role`, `customer`, و`restaurant` مدرج هنا     | `User` (بعمود `role` بتلات قيم), `Customer`, `Restaurant.ownerId` ✅, `RefreshToken`, `Otp` |
+| 👤 **Users & Auth** | `user`, `userType`, `userRole`, `role`, `customer`, و`restaurant` مدرج هنا      | `User` (بعمود `role` بتلات قيم), `Customer`, `Restaurant.ownerId` ✅, `RefreshToken`, `Otp`  |
 | 🛒 **Cart**         | `cart`, `cartItem`                                                              | `Cart`, `CartItem` ✅                                                                        |
 | 🍽️ **Restaurants**  | `restaurant`, `restaurantDetails`, `menu`, `menuItem`                           | `Restaurant`, `RestaurantDetails` ✅, `Menu`, `MenuItem`, `MenuChangeLog`                    |
 | 📦 **Orders**       | `order`, `orderItem`, `orderStatus`, `orderTracking`                            | `Order` (الحالة enum والتتبّع في `timeline`), `OrderItems`                                   |
