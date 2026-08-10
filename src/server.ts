@@ -18,6 +18,12 @@ const startupLinks = (): string => {
   const rows: Array<[string, string]> = [
     ["API", `${base}/api/v1`],
     ["Docs", `${base}/api-docs`],
+    // Swagger is listed beside Scalar rather than treated as an implementation
+    // detail: it renders the same document from this origin with no CDN, so it
+    // is the one that still works offline, behind a proxy, or on the day
+    // jsdelivr is having a bad afternoon. Worth being able to reach without
+    // having to remember the path.
+    ["Swagger", `${base}/api-docs/swagger/`],
     ["Health", `${base}/health`],
   ];
   // The demo page only exists outside production, so linking to it there would

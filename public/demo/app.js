@@ -96,9 +96,17 @@ async function refreshPushState() {
 
 $("subscribe").addEventListener("click", async () => {
   try {
+    // Note this only asks: a site whose notifications have been *muted* can
+    // still answer "granted" here and fail at the subscribe below, which is
+    // why that step reports its own failure separately.
     const permission = await Notification.requestPermission();
     if (permission !== "granted") {
-      log(`Notification permission: ${permission}. Nothing to do.`);
+      log(
+        `Notification permission: ${permission}. ` +
+          "Push needs it — a subscription that cannot show anything is one " +
+          "no browser will create. Allow notifications for this site and " +
+          "press the button again.",
+      );
       return;
     }
 
@@ -114,12 +122,30 @@ $("subscribe").addEventListener("click", async () => {
     });
     await navigator.serviceWorker.ready;
 
-    const subscription = await reg.pushManager.subscribe({
-      // Required by every browser: a push must produce a visible
-      // notification, not act as a silent background channel.
-      userVisibleOnly: true,
-      applicationServerKey: toUint8Array(data.publicKey),
-    });
+    let subscription;
+    try {
+      subscription = await reg.pushManager.subscribe({
+        // Required by every browser: a push must produce a visible
+        // notification, not act as a silent background channel.
+        userVisibleOnly: true,
+        applicationServerKey: toUint8Array(data.publicKey),
+      });
+    } catch (error) {
+      // This step is the browser talking to its own push service — Google's or
+      // Mozilla's — and nothing here has reached our server yet. Its errors
+      // arrive as one opaque sentence ("Registration failed - push service
+      // error"), so say where the failure happened rather than repeating it.
+      log(
+        `The browser could not register with its push service: ${error.message}`,
+      );
+      log(
+        "Nothing reached this server — that step is between the browser and " +
+          "its push service. Usual causes: notifications muted or blocked for " +
+          "this site, notifications off at the OS level, or no route to the " +
+          "push service (offline, VPN, or a firewall).",
+      );
+      return;
+    }
 
     const saved = await api("/push/subscriptions", {
       method: "POST",

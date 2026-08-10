@@ -142,6 +142,28 @@ page is served by the API itself rather than opened from disk.
 The notification arrives with the tab closed. That is the part polling cannot
 do, and the reason the service worker exists.
 
+### `Registration failed - push service error`
+
+This one never reached us. `pushManager.subscribe()` is the browser
+negotiating with **its own** push service, before a single byte goes to this
+API, and Chrome reports every failure in that step with the same sentence.
+
+| Cause                                       | Fix                                   |
+| ------------------------------------------- | ------------------------------------- |
+| Notifications muted or blocked for the site | Site settings → Notifications → Allow |
+| Notifications off for the browser in the OS | Windows Settings → Notifications      |
+| No route to the push service                | Check for a VPN, proxy or firewall    |
+
+Muting is the interesting one, because permission and delivery are separate
+switches: `Notification.requestPermission()` can still answer `granted` while
+the site is muted, so the page gets a green light and fails at the next step.
+The demo reports that step's failure on its own rather than folding it into a
+generic "failed", since the difference between "our server refused it" and
+"your browser never got that far" is the entire diagnosis.
+
+Nothing is left half-done when it fails: no subscription exists, so no row is
+written. Pressing the button again after fixing the cause is the whole retry.
+
 ---
 
 ## Testing

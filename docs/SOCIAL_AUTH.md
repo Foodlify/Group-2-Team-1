@@ -17,8 +17,9 @@ GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxxxxxx
 GOOGLE_CALLBACK_URL=http://localhost:3000/api/v1/auth/google/callback
 
 # Optional — leave unset and the callback answers with JSON, which is what
-# makes the flow demonstrable with no frontend:
-# GOOGLE_POST_LOGIN_REDIRECT=
+# makes the flow demonstrable with no frontend. Uncomment it to land on the
+# demo page instead (and to stop a reload of the callback URL 400ing):
+# GOOGLE_POST_LOGIN_REDIRECT=http://localhost:3000/demo/
 ```
 
 Unset credentials mean the two routes answer **404**: this deployment does not
@@ -117,14 +118,24 @@ assert against and what the OpenAPI document promises. Uncomment it when you
 want the browser to land on something — the session is already in the cookies,
 so nothing sensitive travels in the URL.
 
+**Unset also decides where the browser is standing when it finishes.** With no
+redirect the callback renders its own JSON, so the address bar keeps
+`?code=…&state=…` — and pressing reload re-submits both. The `code` was spent
+on the first exchange and the `state` cookie was cleared before the exchange
+even ran, so the second attempt is a 400. That is the protection working:
+neither value is meant to be usable twice, and a callback that could be
+replayed is the bug. Setting the redirect moves the browser off that URL, which
+is the only reason the reload is ever tried.
+
 ### When it goes wrong
 
-| What you see                | What it means                                                            |
-| --------------------------- | ------------------------------------------------------------------------ |
-| `redirect_uri_mismatch`     | The registered URI is not character-for-character the callback.          |
-| `access_denied`             | The account is not a test user, and the app is still in Testing.         |
-| 400 `could not be verified` | The `oauthState` cookie did not survive — usually a different host/port. |
-| 404 on `/auth/google`       | No credentials configured on this deployment.                            |
+| What you see                                | What it means                                                               |
+| ------------------------------------------- | --------------------------------------------------------------------------- |
+| `redirect_uri_mismatch`                     | The registered URI is not character-for-character the callback.             |
+| `access_denied`                             | The account is not a test user, and the app is still in Testing.            |
+| 400 `could not be verified` on first try    | The `oauthState` cookie did not survive — usually a different host/port.    |
+| 400 `could not be verified` **on a reload** | Expected. The callback URL is single-use; set `GOOGLE_POST_LOGIN_REDIRECT`. |
+| 404 on `/auth/google`                       | No credentials configured on this deployment.                               |
 
 ---
 
