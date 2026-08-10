@@ -530,11 +530,10 @@ wrongly once, as `24.450000000000003`, in the order line subtotals.
   settlement failed verification; someone has to read the log or call the
   endpoint. A scheduled check that reports the counts would close both without
   any automatic money movement.
-- **The three payment-configuration tables.** `Payment Integration Type`,
-  `Payment Integration Configuration` and `Transaction Details` are named in the
-  official scope map and are not built. The gateway is configured through
-  environment variables instead, and the strategy registry decides at boot which
-  methods exist.
+- **The two payment-configuration tables.** `Payment Integration Type` and
+  `Payment Integration Configuration` are named in the official scope map and
+  are not built. The gateway is configured through environment variables
+  instead, and the strategy registry decides at boot which methods exist.
 - **Wallet and PayPal.** Present in the `PaymentMethod` enum, no strategy
   behind either, absent from `SUPPORTED_PAYMENT_METHODS`.
 - **Saved cards** and 3-D Secure step-up handling beyond what Stripe Checkout

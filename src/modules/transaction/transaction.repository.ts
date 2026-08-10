@@ -16,6 +16,7 @@ import {
   auditGatewayReference,
   auditStatusChange,
 } from "./transaction.audit";
+import { extractDetails } from "./transaction.details";
 
 export class TransactionRepository extends BaseRepository<
   PrismaClient["transaction"]
@@ -28,10 +29,24 @@ export class TransactionRepository extends BaseRepository<
     return this.findUnique({ where: { id } });
   }
 
+  async findByIdWithDetails(id: string) {
+    return prisma.transaction.findUnique({
+      where: { id },
+      include: { details: true },
+    });
+  }
+
+  /**
+   * Details are joined here because every caller that refunds reads this, and
+   * the PaymentIntent id is the one thing a refund cannot proceed without.
+   * Fetching it separately later would mean a query per refund, issued from
+   * inside a payment strategy that has no business talking to the database.
+   */
   async findByOrderId(orderId: string, tx?: Prisma.TransactionClient) {
     return (tx ?? prisma).transaction.findMany({
       where: { orderId },
       orderBy: { createdAt: "desc" },
+      include: { details: true },
     });
   }
 
@@ -50,6 +65,7 @@ export class TransactionRepository extends BaseRepository<
     where: Prisma.TransactionWhereInput,
     skip: number,
     take: number,
+    withDetails = false,
   ) {
     const [rows, total] = await prisma.$transaction([
       prisma.transaction.findMany({
@@ -57,6 +73,9 @@ export class TransactionRepository extends BaseRepository<
         orderBy: { createdAt: "desc" },
         skip,
         take,
+        // Joined only for the admin listing. The customer's own listing has no
+        // use for gateway internals and should not pay to load them.
+        ...(withDetails ? { include: { details: true } } : {}),
       }),
       prisma.transaction.count({ where }),
     ]);
@@ -119,6 +138,33 @@ export class TransactionRepository extends BaseRepository<
   }
 
   /**
+   * Records the typed gateway facts from a write's metadata.
+   *
+   * MERGES rather than replaces, which is the opposite of how
+   * `RestaurantDetails` is written — and correctly so. There, the payload is a
+   * complete object an admin typed. Here, each write is one more fact learned
+   * about the same payment: `initiate` knows the session id, the webhook later
+   * knows the PaymentIntent. Replacing on the second write would throw away the
+   * first, so only the keys this write actually carries are set.
+   *
+   * Silent when there is nothing gateway-shaped to record — a cash payment has
+   * no details, and an all-null row would claim otherwise.
+   */
+  private async writeDetails(
+    transactionId: string,
+    metadata: unknown,
+    client: Prisma.TransactionClient,
+  ): Promise<void> {
+    const fields = extractDetails(metadata);
+    if (!fields) return;
+    await client.transactionDetails.upsert({
+      where: { transactionId },
+      create: { ...fields, transactionId },
+      update: fields,
+    });
+  }
+
+  /**
    * Reads a transaction's audited fields while holding a row lock.
    *
    * The lock is what makes the recorded `from` value true. Without it two
@@ -156,6 +202,9 @@ export class TransactionRepository extends BaseRepository<
           internalTxNumber: data.internalTxNumber ?? randomUUID(),
         },
       });
+      // Same client, so the details commit with the row they describe — the
+      // same rule the audit entry follows two lines below.
+      await this.writeDetails(created.id, data.metadata, client);
       return {
         result: created,
         event: {
@@ -220,6 +269,7 @@ export class TransactionRepository extends BaseRepository<
           ...(data.metadata !== undefined ? { metadata: data.metadata } : {}),
         },
       });
+      await this.writeDetails(id, data.metadata, client);
       return {
         result: updated,
         // STATUS_CHANGED rather than UPDATED: the reference moving is
@@ -261,6 +311,7 @@ export class TransactionRepository extends BaseRepository<
           ...(data.metadata !== undefined ? { metadata: data.metadata } : {}),
         },
       });
+      await this.writeDetails(id, data.metadata, client);
       return {
         result: updated,
         // UPDATED, not STATUS_CHANGED — attaching a reference says the hand-off

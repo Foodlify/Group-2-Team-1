@@ -543,13 +543,69 @@ model Transaction {
   orderId        String?
   metadata       Json?
 
-  order Order? @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  order   Order?              @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  details TransactionDetails?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([orderId])
   @@index([externalRef])
+}
+
+/// The official ERD's `transactionDetails` — the gateway's own facts about a
+/// transaction, as typed columns.
+///
+/// NOT a line-item breakdown. That already exists as `OrderItems`, which the
+/// receipt is built from, and a second copy of it would be a second version of
+/// the truth about what somebody bought.
+///
+/// What this replaces is the `Transaction.metadata` blob. Those facts were
+/// real but untyped, and the cost showed: `resolvePaymentIntentId` dug the
+/// refund reference out of JSON with a `typeof` check and paid an extra round
+/// trip to Stripe whenever the key was missing or misspelled. A column cannot
+/// be misspelled.
+///
+/// Every field is nullable and the row itself is optional, because every fact
+/// here belongs to a gateway and cash payments have none. Only fields the
+/// payment paths actually populate are present — a column nothing ever writes
+/// is decoration that reads as data.
+///
+/// `metadata` stays on `Transaction` as the raw, unstructured record of what
+/// the provider said. This table is what code reads; that blob is what a human
+/// reads when something inexplicable happened.
+model TransactionDetails {
+  id            String @id @default(cuid())
+  transactionId String @unique
+
+  /// Which provider, e.g. "stripe". Null for cash.
+  gateway String?
+  /// Where in the gateway's flow this row got to — "checkout_created",
+  /// "paid", "verification_failed".
+  stage   String?
+
+  /// The Checkout Session. Also on `Transaction.externalRef`, kept here too
+  /// because that column holds whichever reference came first and this one
+  /// says which kind it is.
+  sessionId       String?
+  /// What Stripe will actually accept a refund against. The session id is not
+  /// it, which is the whole reason this column exists.
+  paymentIntentId String?
+  refundId        String?
+
+  /// The provider's own status word, unmapped — "succeeded", "requires_action".
+  /// Our three-state `TransactionStatus` is the mapped version; this is what it
+  /// was mapped from, which is what you need when the mapping looks wrong.
+  gatewayStatus String?
+  /// Why it failed, in the provider's words.
+  failureReason String?
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([paymentIntentId])
 }
 
 // ═══════════════════════════════════════════════════════════════

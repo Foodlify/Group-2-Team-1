@@ -401,11 +401,13 @@ graph TD
 | 🍽️ **Restaurants**  | `restaurant`, `restaurantDetails`, `menu`, `menuItem`                           | `Restaurant`, `RestaurantDetails` ✅, `Menu`, `MenuItem`, `MenuChangeLog`           |
 | 📦 **Orders**       | `order`, `orderItem`, `orderStatus`, `orderTracking`                            | `Order` (الحالة enum والتتبّع في `timeline`), `OrderItems`                          |
 | 💳 **Payments**     | `paymentIntegrationType`, `paymentTypeConfiguration`, `preferredPaymentSetting` | `PreferredPaymentSetting` (الجدولين التانيين مع بوّابة الدفع المؤجّلة)              |
-| 💰 **Transactions** | `transaction`, `transactionDetails`, `transactionStatus`                        | `Transaction` (النوع والحالة enums)                                                 |
+| 💰 **Transactions** | `transaction`, `transactionDetails`, `transactionStatus`                        | `Transaction`, `TransactionDetails` ✅ (النوع والحالة enums)                        |
 | 📍 **Misc**         | `address`, `auditingEvent`                                                      | `Address`, `AuditingEvent` ✅ — وكمان أعمدة `createdBy/updatedBy` + `MenuChangeLog` |
 | ➕ **زيادة عندنا**  | —                                                                               | `RestaurantRate`, `SupportTicket`, `CustomerServiceEmployee`                        |
 
-**الخلاصة:** الجداول اللي "ناقصة" أغلبها lookup tables استبدلناها بـ enums في Postgres (أسرع وأأمن type-safety)، و`orderTracking` بقى `timeline` JSON. الناقص فعلاً تلات جداول، كلهم في موديول الدفع: `paymentIntegrationType` و`paymentTypeConfiguration` (البوّابة متظبّطة من الـ env بدالهم) و`transactionDetails`.
+**الخلاصة:** الجداول اللي "ناقصة" أغلبها lookup tables استبدلناها بـ enums في Postgres (أسرع وأأمن type-safety)، و`orderTracking` بقى `timeline` JSON. الناقص فعلاً جدولين بس، الاتنين تهيئة بوّابة الدفع: `paymentIntegrationType` و`paymentTypeConfiguration` — البوّابة متظبّطة من الـ env بدالهم، وسجلّ الاستراتيجيات هو اللي بيقرر وقت الإقلاع أنهي طرق دفع موجودة.
+
+**عن `TransactionDetails`:** ده **مش** تفصيل الأصناف — ده موجود في `OrderItems` واللي الإيصال بيتبني منه، ونسخة تانية منه هتبقى نسخة تانية من الحقيقة. اللي الجدول ده بيستبدله هو `Transaction.metadata` blob: الحقائق كانت حقيقية بس من غير أنواع، والتكلفة بانت — `resolvePaymentIntentId` كان بيحفر في JSON بـ `typeof` وبيدفع round-trip زيادة لسترايب لو المفتاح ناقص. العمود ما ينفعش يتكتب غلط. والـ blob فاضل مكانه كسجل خام لكلام المزوّد، والكود بيقرا من الأعمدة.
 
 **عن `RestaurantDetails`:** جدول منفصل زي ما الـ ERD حاططه، ومش أعمدة زيادة على `Restaurant` — لإن `Restaurant` بيتعمله join في كل قراءة تقريباً (اللستة، البحث، الكارت، الأوردر، التقييمات، الداشبورد) بينما البيانات دي مطلوبة في شاشة واحدة. وهو **اختياري**: المطاعم اللي اتسجلت قبل الجدول ده معندهاش تفاصيل فعلاً، واختراع رقم تليفون ليها أسوأ من خانة فاضية. عشان كده اللستة المرقّمة **مفيهاش حقل `details` أصلاً** بدل ما يكون فيها حقل بيرجع `null` دايماً.
 

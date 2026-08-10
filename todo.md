@@ -137,6 +137,10 @@ Still open in this area:
 - ~~**`RestaurantDetails` table**~~ — done (2026-08-10). Contact and location,
   one-to-one and optional, carried on the existing Register/Update Restaurant
   payloads rather than on a new endpoint the scope map does not name.
+- ~~**`TransactionDetails` table**~~ — done (2026-08-10). The gateway's own
+  facts as typed columns instead of keys in `Transaction.metadata`. Written at
+  the repository layer, merged across the successive writes of one payment, and
+  exposed on the ADMIN listing only. 10 mutations, all caught.
 - **Partial indexes** for the soft-delete filter (`WHERE "isDeleted" = false`).
   Prisma can't express them; worth adding by hand to a migration if the catalog
   ever grows enough for it to matter.

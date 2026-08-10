@@ -6,7 +6,10 @@ import { appError } from "../../middlewares/error.middleware";
 import { customerService } from "../customer/customer.service";
 import { transactionService } from "./transaction.service";
 import { buildReceipt } from "./receipt.builder";
-import { toTransactionResponse } from "./transaction.mapper";
+import {
+  toAdminTransactionResponse,
+  toTransactionResponse,
+} from "./transaction.mapper";
 import { transactionErrors } from "../../shared/exceptions/transaction.errors";
 import type {
   TransactionIdParams,
@@ -65,7 +68,7 @@ export const listAllTransactions = asyncHandler(
     const { rows, total } = await transactionService.listAll(query);
     sendSuccess(
       res,
-      rows.map(toTransactionResponse),
+      rows.map(toAdminTransactionResponse),
       "Transactions retrieved",
       StatusCodes.OK,
       pageMeta(total, query.page, query.limit),
