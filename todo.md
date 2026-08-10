@@ -214,10 +214,25 @@ Still open in this area:
   deployment decision about instance count.
   **Do not lower the cost factor** without treating it as a security decision.
   Both sibling teams hash at cost 10 — a quarter of the work per attempt.
-- **`DATABASE_POOL_MAX` is untuned.** Default raised 10 → 20 on reasoning, not
-  evidence: bcrypt saturated the process before the pool mattered, so these
-  runs could not isolate its effect. Re-measure once login is off the critical
-  path.
+- ~~**`DATABASE_POOL_MAX` is untuned.**~~ — done (2026-08-10). Swept 5 → 80
+  against the order-flow plan now that login is off the critical path. There is
+  a near-binary cliff between 8 and 10 (31% → 100% success), no throughput gain
+  above 10, and a measurable tail-latency cost for going higher: place-order p95
+  102 ms at 10, 193 ms at 20, 329 ms at 80, reproduced across two sweeps.
+  **Default stays 20** — twice the margin over the cliff for ~90 ms of p95 —
+  with the guidance now a range: no lower than 12, no higher than 20. Little's
+  Law says only ~2.3 connections are needed on average, so the cliff is burst
+  behaviour rather than capacity; the mechanism is a hypothesis, the cliff is
+  measured.
+- **The pool sweep covers checkout only.** The dashboard reports hold a
+  connection far longer than the 22 ms average that sweep measured, and nothing
+  exercises them under load. Re-measure before assuming the range transfers.
+- **500 truly simultaneous checkouts fail at every pool size tested.** With a
+  1-second ramp-up instead of 10, place-order collapses to ~0% at 10, 20, 40 and
+  80 — a mix of pool timeouts and Prisma's 2-second transaction `maxWait`, plus
+  socket-level refusals once the pool is large. No pool size rescues it; that is
+  an admission-control problem (queue, shed load, or scale out), not a tuning
+  one.
 - **The rate limiter is untested under load.** Runs use `NODE_ENV=test`, which
   skips it entirely. Its real behaviour — and whether the limits are right for
   production traffic — has never been exercised.
