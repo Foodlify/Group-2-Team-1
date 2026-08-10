@@ -608,6 +608,59 @@ model TransactionDetails {
   @@index([paymentIntentId])
 }
 
+/// The official ERD's `paymentIntegrationType` — the catalogue of payment
+/// integrations this deployment knows about, one row each.
+///
+/// `isEnabled` is the point of putting this in a table at all: turning card
+/// payments off is currently a matter of removing an environment variable and
+/// restarting, which is not something anyone wants to do at the moment a
+/// gateway starts misbehaving. This flag is checked when a payment is taken,
+/// so flipping it takes effect on the next request.
+model PaymentIntegrationType {
+  id String @id @default(cuid())
+  /// Stable machine name — "stripe", "cash". What code and the admin API use.
+  code        String        @unique
+  displayName String
+  /// Which of our payment methods this integration serves.
+  paymentMethod PaymentMethod
+  isEnabled     Boolean       @default(true)
+
+  configuration PaymentIntegrationConfiguration?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// The official ERD's `paymentIntegrationConfiguration` — how one integration
+/// is set up.
+///
+/// **No secrets live here, ever.** A database is dumped, backed up, replicated
+/// and readable by anyone with a connection string; an API key in a table is an
+/// API key in every one of those places. What is stored instead is the NAME of
+/// the environment variable holding each secret, so this table can say how the
+/// integration is wired without being able to leak it.
+model PaymentIntegrationConfiguration {
+  id     String @id @default(cuid())
+  typeId String @unique
+
+  /// Currency the integration charges in, as an ISO code.
+  currency   String  @default("EGP")
+  successUrl String?
+  cancelUrl  String?
+  /// Whether this points at the provider's sandbox. Recorded rather than
+  /// inferred: "are we live?" should not be answered by squinting at a key.
+  isTestMode Boolean @default(true)
+
+  /// Names, never values. `STRIPE_SECRET_KEY`, not `sk_live_...`.
+  secretKeyEnvVar     String?
+  webhookSecretEnvVar String?
+
+  type PaymentIntegrationType @relation(fields: [typeId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Auditing
 // ═══════════════════════════════════════════════════════════════

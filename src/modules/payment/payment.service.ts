@@ -18,6 +18,7 @@ import type {
 import { cashOnDeliveryStrategy } from "./cash.strategy";
 import { stripeCardStrategy } from "./stripe.strategy";
 import { isStripeConfigured } from "./stripe.client";
+import { paymentIntegrationService } from "./integration.service";
 import type { TransactionResponse } from "./payment.validation";
 
 class PaymentService {
@@ -51,6 +52,10 @@ class PaymentService {
     tx?: Prisma.TransactionClient,
   ) {
     const strategy = this.requireStrategy(method);
+    // Checked per payment, not at boot, which is the whole point of the
+    // integration table: switching a gateway off has to take effect on the
+    // next request rather than on the next deploy.
+    await paymentIntegrationService.assertMethodEnabled(method);
 
     const result = await strategy.pay(amount, context);
 

@@ -1,6 +1,12 @@
 import type { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import { asyncHandler } from "../../utils/asyncHandler";
+import { paymentIntegrationService } from "./integration.service";
+import { toIntegrationResponse } from "./integration.mapper";
+import type {
+  IntegrationCodeParams,
+  UpdateIntegrationInput,
+} from "./integration.validation";
 import logger from "../../config/logger";
 import { describeError } from "../../shared/errors/describe";
 import { sendSuccess } from "../../utils/response";
@@ -60,5 +66,32 @@ export const stripeWebhook = asyncHandler(
     }
 
     res.status(StatusCodes.OK).json({ received: true });
+  },
+);
+
+// ─── Payment integrations (ADMIN) ─────────────────────────
+
+export const listIntegrations = asyncHandler(
+  async (req: Request, res: Response): Promise<void> => {
+    const types = await paymentIntegrationService.list();
+    sendSuccess(
+      res,
+      types.map(toIntegrationResponse),
+      "Payment integrations retrieved",
+    );
+  },
+);
+
+export const updateIntegration = asyncHandler(
+  async (req: Request<IntegrationCodeParams>, res: Response): Promise<void> => {
+    const updated = await paymentIntegrationService.update(
+      req.params.code,
+      req.body as UpdateIntegrationInput,
+    );
+    sendSuccess(
+      res,
+      toIntegrationResponse(updated),
+      "Payment integration updated",
+    );
   },
 );
