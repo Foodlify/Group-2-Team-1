@@ -65,9 +65,9 @@ OAuth client ID**.
   http://localhost:3000/api/v1/auth/google/callback
   ```
 
-  Google compares the **string**, not the resolved URL. A trailing slash, `127.
-0.0.1` instead of `localhost`, or a different port is a different URI and
-  fails with `redirect_uri_mismatch`.
+  Google compares the **string**, not the resolved URL. A trailing slash, a
+  different port, or the loopback IP written out instead of `localhost` all
+  count as a different URI and fail with `redirect_uri_mismatch`.
 
   Plain `http` is fine here: Google requires HTTPS for redirect URIs generally,
   but exempts loopback addresses — `localhost`, `127.0.0.1`, `[::1]` — for
@@ -89,8 +89,8 @@ no library to enable and nothing to add to the project.
 curl -i http://localhost:3000/api/v1/auth/google
 ```
 
-- **302** with a `Location` on `accounts.google.com` and a `Set-Cookie:
-oauthState=…` — configured correctly.
+- **302**, with a `Location` on `accounts.google.com` and an `oauthState`
+  cookie set — configured correctly.
 - **404** — the server has no credentials; check `.env` and that it restarted.
 
 Then open `http://localhost:3000/api/v1/auth/google` **in a browser** (not
