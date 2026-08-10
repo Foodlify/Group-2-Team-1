@@ -408,7 +408,7 @@ describe("Cancelled Orders by Customers or Restaurants", () => {
     expect(res.status).toBe(200);
   });
 
-  it("403s a customer, who cancels through their own endpoint", async () => {
+  it("stops a customer at the door, not deep inside the handler", async () => {
     const { myOrder } = await twoRestaurants();
     const { token } = await createAccount("CUSTOMER", { suffix: "nosy" });
 
@@ -418,6 +418,13 @@ describe("Cancelled Orders by Customers or Restaurants", () => {
       .send({ status: "CANCELLED" });
 
     expect(res.status).toBe(403);
+    // The message distinguishes WHERE the refusal happened: "Not authorized"
+    // is `authorize` on the route; the service's own refusal reads "This order
+    // does not belong to you". A customer has no business on this endpoint at
+    // all, so they are turned away before an order is ever loaded — and
+    // asserting only the status code cannot tell the two apart. Customers
+    // cancel through DELETE /orders/{id}.
+    expect(res.body.message).toBe("Not authorized");
   });
 });
 
