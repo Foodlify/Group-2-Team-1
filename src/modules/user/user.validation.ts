@@ -4,9 +4,49 @@ import {
   PaginationMetaSchema,
   PaginationQuerySchema,
 } from "../../shared/schemas/pagination.schema";
+import { MAX_PASSWORD_BYTES } from "../../shared/auth/password.helper";
 
 // Role values kept as a tuple for z.enum (mirrors the Prisma `Role` enum).
 export const ROLES = ["CUSTOMER", "ADMIN"] as const;
+
+/**
+ * A password the hasher will actually read in full.
+ *
+ * bcrypt reads at most 72 **bytes** and discards the rest without error, so a
+ * longer password silently authenticates on its prefix alone — the tail is
+ * decoration. The cap has to live here because nothing downstream can report
+ * the problem.
+ *
+ * Bytes, not characters: an Arabic letter costs two bytes and an emoji four, so
+ * a `.max(72)` on string length would wave through a 72-character password
+ * weighing 144 bytes and hand back the same silent truncation. The `.max()`
+ * below is documentation for the OpenAPI schema — every string over 72
+ * characters is already over 72 bytes, so it never rejects anything the byte
+ * check would accept.
+ */
+const passwordSchema = (minLength: number) =>
+  z
+    .string()
+    .min(minLength)
+    .max(MAX_PASSWORD_BYTES)
+    .refine((value) => Buffer.byteLength(value, "utf8") <= MAX_PASSWORD_BYTES, {
+      message: `Password must be at most ${MAX_PASSWORD_BYTES} bytes`,
+    });
+
+/** For every endpoint that *sets* a password. */
+const newPasswordSchema = () => passwordSchema(8);
+
+/**
+ * For the two login endpoints.
+ *
+ * The cap applies here too. Every path that sets a password now enforces it, so
+ * a stored password longer than 72 bytes cannot exist — which makes rejecting
+ * one at the door free, and closes the case where such a password is submitted
+ * and quietly matched on its prefix. The minimum stays at 1: login must not
+ * restate the registration policy, or it tells an attacker which passwords are
+ * worth trying.
+ */
+const loginPasswordSchema = () => passwordSchema(1);
 
 // ═══════════════════════════════════════════════════════════════
 // Request Schemas (inputs)
@@ -21,10 +61,10 @@ export const RegisterRequestSchema = z
     email: z
       .email()
       .meta({ description: "Unique email", example: "jane@example.com" }),
-    password: z
-      .string()
-      .min(8)
-      .meta({ description: "Min 8 characters", example: "Password123!" }),
+    password: newPasswordSchema().meta({
+      description: "8 characters minimum, 72 bytes maximum",
+      example: "Password123!",
+    }),
     phone: z
       .string()
       .min(6)
@@ -38,14 +78,14 @@ export const RegisterRequestSchema = z
 export const LoginRequestSchema = z
   .object({
     email: z.email().meta({ example: "jane@example.com" }),
-    password: z.string().min(1).meta({ example: "Password123!" }),
+    password: loginPasswordSchema().meta({ example: "Password123!" }),
   })
   .meta({ id: "LoginRequest", description: "Customer login payload" });
 
 export const AdminLoginRequestSchema = z
   .object({
     email: z.email().meta({ example: "admin@example.com" }),
-    password: z.string().min(1).meta({ example: "Admin123!" }),
+    password: loginPasswordSchema().meta({ example: "Admin123!" }),
   })
   .meta({
     id: "AdminLoginRequest",
@@ -56,7 +96,7 @@ export const CreateUserRequestSchema = z
   .object({
     name: z.string().min(2),
     email: z.email(),
-    password: z.string().min(8),
+    password: newPasswordSchema(),
     role: z.enum(ROLES).meta({ description: "Account role", example: "ADMIN" }),
     phone: z.string().min(6).optional().meta({
       description:
@@ -178,10 +218,10 @@ export const ResetPasswordRequestSchema = z
         description: "The 6-digit code from the email",
         example: "123456",
       }),
-    newPassword: z
-      .string()
-      .min(8)
-      .meta({ description: "Min 8 characters", example: "NewPassword123!" }),
+    newPassword: newPasswordSchema().meta({
+      description: "8 characters minimum, 72 bytes maximum",
+      example: "NewPassword123!",
+    }),
   })
   .meta({
     id: "ResetPasswordRequest",

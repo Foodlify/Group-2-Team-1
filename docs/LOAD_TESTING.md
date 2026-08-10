@@ -15,11 +15,15 @@ plans, the seed and the analyser are in [`perf/`](../perf) and re-runnable.
 | Order flow, 500 concurrent            | **1000/1000 succeeded**, p95 249 ms, ~102 req/s |
 | Stock contention, 500 racing for 50   | **exactly 50 sold**, 450 clean 409s, 0 × 5xx    |
 | Reproduced on a second fresh database | identical correctness, same order of magnitude  |
-| **Login, 500 concurrent**             | **collapsed — 23.6% success, p50 35.5 s**       |
+| Login, 500 concurrent — **before**    | collapsed — 23.6% success, p50 35.5 s           |
+| Login, 500 concurrent — **after**     | **500/500 succeeded**, p50 786 ms, ~46 logins/s |
 
-The headline is the last row: the order path is comfortably fast, and **login
-is the system's ceiling**, by roughly two orders of magnitude. The cause is
-measured below.
+Login used to be the system's ceiling by roughly two orders of magnitude, and
+the last two rows are the same test either side of the fix. Diagnosing it is
+Finding 1; the short version is that hashing ran on the event loop, so every
+other request queued behind it. The 23.6% row is kept because it is the
+measurement that found the problem — deleting it would hide the only evidence
+that any of this mattered.
 
 ---
 
@@ -93,17 +97,104 @@ that looks like.
 
 This is a capacity limit, not a bug. Login is **CPU-bound by design**, so the
 honest conclusion is a number rather than a fix: **one instance sustains roughly
-4 logins per second per core.** Options, in order of preference:
+4 logins per second per core.**
 
-1. **Scale horizontally.** Login cost is CPU, and CPU is what more instances
-   buy. This is the standard answer and needs no code change.
-2. **Move hashing off the event loop** — the native `bcrypt` binding runs in
-   libuv's thread pool and produces hashes compatible with the existing ones,
-   so stored passwords keep working. It adds a native build step, which is why
-   it is a recommendation here and not a change made in passing.
-3. **Do not lower the cost factor** to make a graph look better. 12 is a
+But there were two problems tangled together, and only one of them is capacity:
+
+- **Login costs CPU.** Unavoidable — that is what a password hash is for.
+- **Login froze everything else.** Avoidable, and the real damage. The 35-second
+  p50 was not slow hashing; it was every other request queueing behind it.
+
+### The fix applied — `bcryptjs` → `bcrypt` (2026-08-09)
+
+Hashing now runs in libuv's thread pool instead of on the event loop. Measured
+on the same machine, cost 12:
+
+|                          | `bcryptjs`  | `bcrypt` (native) |
+| ------------------------ | ----------- | ----------------- |
+| One compare              | 246 ms      | 217 ms            |
+| Ten concurrent compares  | 2443 ms     | **657 ms**        |
+| **Max event-loop stall** | **1000 ms** | **6 ms**          |
+
+The last row is the point. A single login still costs the same CPU; it no longer
+takes the process down with it while it spends it.
+
+### Re-measured under JMeter — the same 500 concurrent logins
+
+`perf/plans/03-login.jmx`, 500 threads, same machine, same seed. The plan is new:
+the original login-included plan was replaced when the order plans were
+redesigned, so login had no re-runnable plan of its own until now.
+
+| Run                                  | ok %      | p50        | max       | req/s    |
+| ------------------------------------ | --------- | ---------- | --------- | -------- |
+| **Before** (`bcryptjs`, on the loop) | **23.6%** | 35 556 ms  | 46 329 ms | —        |
+| After (`bcrypt`, default 4 threads)  | **100%**  | 9 106 ms   | 17 907 ms | 18.1     |
+| Reproduced                           | 100%      | 9 025 ms   | 17 730 ms | 18.2     |
+| After, `UV_THREADPOOL_SIZE=12`       | **100%**  | **786 ms** | 1 131 ms  | **46.0** |
+| Same, 1-second ramp-up               | 100%      | 5 289 ms   | 10 039 ms | 46.5     |
+
+And in the server's own log, across 2000 logins: **0 pool timeouts, 0 transaction
+failures, 0 errors.** The earlier run logged 499 pool timeouts and had 181
+requests refused at the socket before they reached the application at all.
+
+**`UV_THREADPOOL_SIZE` is the second half of the fix and costs nothing.** libuv
+defaults its thread pool to 4 threads regardless of the machine, so on the
+12-core host used here the native binding was hashing on a third of the
+available cores. Raising it to the core count took throughput from 18 to 46
+logins/second and the p50 from 9 seconds to under one.
+
+That 46/s is the real ceiling, not the test's arrival rate: a 1-second ramp-up
+delivers all 500 at once and produces the same 46.5 req/s, with the p50 rising
+to 5.3 s purely because everything queues at the start. It also lands almost
+exactly where the arithmetic predicts — ~4 logins/second/core × 12 cores.
+
+Set it as a real environment variable on the container or service, alongside
+`NODE_ENV`; libuv reads it as the process starts, which is earlier than any
+`.env` file is loaded.
+
+**No password migration was needed.** Both libraries emit `$2b$` hashes and each
+verifies the other's — checked in both directions, and pinned by a committed
+`bcryptjs` hash in `tests/auth/password.helper.unit.test.ts` so a future upgrade
+cannot break it silently.
+
+**It needs no build step**, contrary to the caution in the earlier version of
+this document. `bcrypt@6` ships N-API prebuilds inside its own npm tarball,
+including a musl build for the Alpine image. Verified here: it installs in about
+a second with no compiler, resolves the binary at `require` time even under
+`npm ci --ignore-scripts` (which the Dockerfile's production stage uses), and
+being N-API it does not need rebuilding across Node versions.
+
+### Still true
+
+1. **Scale horizontally** for capacity. CPU is what more instances buy, and
+   ~4 logins/second/core is still the number per core.
+2. **Do not lower the cost factor** to make a graph look better. 12 is a
    security decision; trading it for throughput should be a deliberate,
-   separate conversation.
+   separate conversation. For reference, both sibling teams hash at cost 10 —
+   a quarter of the work per attempt.
+
+### A separate problem the same investigation found
+
+bcrypt reads at most **72 bytes** of a password and discards the rest without
+error. Registration had no maximum, so a longer password was accepted and then
+authenticated on its first 72 bytes alone — verified against this codebase: a
+92-character password matched both its own 72-byte prefix and a completely
+different 20-character tail.
+
+This is a property of the algorithm, not of either library — the native binding
+truncates identically — so the move above did not fix it. It is now capped at
+the validation layer, in **bytes rather than characters**: 40 Arabic letters are
+under any character limit and over 72 bytes, which is exactly the case a
+`.max(72)` on string length would wave through.
+
+The cap covers **every** path, login included. Leaving login open is the usual
+choice, because rejecting a long password there would lock out an account
+created before the rule existed. That trade-off does not apply here: there is no
+production data, the accounts were rebuilt under the new rules, and every path
+that sets a password now enforces the limit — so a stored password longer than
+72 bytes cannot exist, and refusing one at the door costs nobody an account.
+Login keeps a minimum of 1 character rather than 8: restating the registration
+policy there would tell an attacker which candidates are not worth trying.
 
 ### Why the plans were then redesigned
 
