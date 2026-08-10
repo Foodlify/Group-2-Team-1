@@ -45,12 +45,6 @@ interface AuthResult {
 }
 
 class UserService {
-  // ─── Customer auth ────────────────────────────────────
-  /**
-   * Creates the account and emails a verification code. Deliberately returns
-   * NO tokens — the account only becomes usable once `verifyEmail` proves the
-   * customer owns the address.
-   */
   async register(input: RegisterInput): Promise<{ user: UserResponse }> {
     if (await userRepository.findByEmail(input.email)) {
       throw appError(userErrors.EMAIL_ALREADY_EXISTS);
@@ -70,7 +64,6 @@ class UserService {
         phone: input.phone,
       });
     } catch (e) {
-      // Fallback for a concurrent insert racing the pre-checks above.
       if (isUniqueViolation(e)) {
         throw uniqueViolationIncludes(e, "phone")
           ? appError(userErrors.PHONE_ALREADY_EXISTS)
@@ -79,17 +72,10 @@ class UserService {
       throw e;
     }
 
-    // No tokens yet: the account is unusable until the emailed code proves
-    // ownership of the address (see `verifyEmail`).
     await otpService.sendOtp(user.email, "registration");
     return { user: this.toUserResponse(user) };
   }
 
-  /**
-   * Completes registration: verifies the emailed single-use code, stamps
-   * `emailVerifiedAt`, and logs the account in — so the customer never has to
-   * type the password again right after registering.
-   */
   async verifyEmail(input: VerifyEmailInput): Promise<AuthResult> {
     const existing = await userRepository.findByEmail(input.email);
     if (!existing) throw appError(otpErrors.INVALID_OTP);
@@ -109,33 +95,13 @@ class UserService {
     if (!user || !(await comparePassword(input.password, user.password))) {
       throw appError(userErrors.INVALID_CREDENTIALS);
     }
-    // Checked only AFTER the password matched, so neither response reveals
-    // whether an unverified/disabled address is registered.
+
     this.assertUsable(user);
     const tokens = await this.issueTokens(user);
     return { user: this.toUserResponse(user), tokens };
   }
 
-  // ─── Social Media Authentication (Google) ─────────────
-  /**
-   * Signs in — or signs up — the person behind a verified Google identity.
-   *
-   * Three cases, in the order they are checked, and the order matters:
-   *
-   * 1. **We have seen this Google id before.** Matched on `sub`, not on email,
-   *    because Google lets people change their address and matching on it
-   *    would hand the account to whoever holds that address next.
-   * 2. **An account already exists with this email.** The Google identity is
-   *    linked to it. Safe *only* because the caller has already established
-   *    that Google verified the address — see below.
-   * 3. **Nobody has this email.** A new customer account, with no password and
-   *    no phone.
-   */
   async loginWithGoogle(profile: GoogleProfile): Promise<AuthResult> {
-    // The single check the whole linking rule rests on. Google will issue a
-    // token for an address the account has not proven it owns; linking on one
-    // would let anyone who registers such an account walk straight into the
-    // password account that already holds that address.
     if (!profile.emailVerified) {
       throw appError(userErrors.GOOGLE_EMAIL_UNVERIFIED);
     }
@@ -150,9 +116,6 @@ class UserService {
 
     const existingByEmail = await userRepository.findByEmail(profile.email);
     if (existingByEmail) {
-      // Deliberately checked before linking: a disabled account must not be
-      // reachable through a second door, and writing the link first would
-      // leave it attached to an account that then refuses to sign in.
       this.assertUsable(existingByEmail);
       const linked = await userRepository.linkGoogleId(
         existingByEmail.id,
@@ -174,7 +137,6 @@ class UserService {
     return { user: this.toUserResponse(user), tokens };
   }
 
-  // ─── Admin auth ───────────────────────────────────────
   async adminLogin(input: AdminLoginInput): Promise<AuthResult> {
     const user = await userRepository.findByEmail(input.email);
     if (
@@ -189,11 +151,6 @@ class UserService {
     return { user: this.toUserResponse(user), tokens };
   }
 
-  // ─── Account status (enable / disable) ────────────────
-  /**
-   * Admin flips any account's status. Disabling revokes every refresh session
-   * so the account is locked out as soon as its access token expires.
-   */
   async setActive(id: string, isActive: boolean): Promise<UserResponse> {
     await this.assertExists(id);
     const user = await userRepository.setActive(id, isActive);
@@ -201,14 +158,12 @@ class UserService {
     return this.toUserResponse(user);
   }
 
-  /** Self-service "Account Deactivate" — same revocation as an admin disable. */
   async deactivateSelf(id: string): Promise<void> {
     await this.assertExists(id);
     await userRepository.setActive(id, false);
     await refreshTokenRepository.revokeAllForUser(id);
   }
 
-  // ─── Refresh / Logout ─────────────────────────────────
   async refresh(refreshToken: string | undefined): Promise<AuthResult> {
     if (!refreshToken) throw appError(userErrors.INVALID_REFRESH_TOKEN);
 
@@ -219,9 +174,6 @@ class UserService {
       throw appError(userErrors.INVALID_REFRESH_TOKEN);
     }
 
-    // Sessions live in the RefreshToken table (one row per device) — look the
-    // presented token up by its SHA-256 hash and validate the row, then rotate:
-    // revoke this row and issue a fresh token as its successor.
     const tokenHash = hashToken(refreshToken);
     const stored = await refreshTokenRepository.findByTokenHash(tokenHash);
     if (!stored || stored.revoked || stored.expiresAt < new Date()) {
@@ -232,7 +184,7 @@ class UserService {
     if (!user || stored.userId !== user.id) {
       throw appError(userErrors.INVALID_REFRESH_TOKEN);
     }
-    // An account disabled mid-session can't rotate into a fresh token.
+
     this.assertUsable(user);
 
     await refreshTokenRepository.revokeByTokenHash(tokenHash);
@@ -240,11 +192,6 @@ class UserService {
     return { user: this.toUserResponse(user), tokens };
   }
 
-  /**
-   * Revokes the session identified by the refresh cookie. Works even when the
-   * access token has expired (logout no longer depends on `authenticate`).
-   * Invalid/absent tokens are a no-op — the caller still clears the cookies.
-   */
   async logout(refreshToken: string | undefined): Promise<void> {
     if (!refreshToken) return;
     try {
@@ -252,32 +199,20 @@ class UserService {
     } catch {
       return;
     }
-    // Revokes ONLY this session's row — other devices stay logged in.
+
     await refreshTokenRepository.revokeByTokenHash(hashToken(refreshToken));
   }
 
-  // ─── Password reset (forgot password) ─────────────────
-  /**
-   * Starts the forgot-password flow. The response is identical whether or
-   * not the email has an account (no user enumeration) — the OTP is only
-   * actually sent when a user exists.
-   */
   async forgotPassword(email: string): Promise<void> {
     const user = await userRepository.findByEmail(email);
     if (!user) return;
     await otpService.sendOtp(email, "password_reset");
   }
 
-  /**
-   * Completes the flow: verifies the emailed single-use code, sets the new
-   * password, and revokes every refresh session — a password reset logs the
-   * account out of all devices.
-   */
   async resetPassword(input: ResetPasswordInput): Promise<void> {
     await otpService.verifyOtp(input.email, input.code, "password_reset");
     const user = await userRepository.findByEmail(input.email);
-    // Unreachable in practice (codes are only sent to existing accounts),
-    // kept so a deleted-account race yields the same generic error.
+
     if (!user) throw appError(otpErrors.INVALID_OTP);
 
     await userRepository.update({
@@ -287,16 +222,12 @@ class UserService {
     await refreshTokenRepository.revokeAllForUser(user.id);
   }
 
-  // ─── Admin user management (CRUD) ─────────────────────
   async create(input: CreateUserInput): Promise<UserResponse> {
     const existing = await userRepository.findByEmail(input.email);
     if (existing) throw appError(userErrors.EMAIL_ALREADY_EXISTS);
 
     const password = await hashPassword(input.password);
 
-    // A CUSTOMER account is only usable with a matching Customer profile (cart/
-    // order flows require it). Create both atomically so an admin can't mint a
-    // half-provisioned customer that 403s everywhere. `phone` is mandatory here.
     if (input.role === "CUSTOMER") {
       if (!input.phone) throw appError(userErrors.PHONE_REQUIRED);
       if (await userRepository.phoneExists(input.phone)) {
@@ -349,8 +280,7 @@ class UserService {
 
   async update(id: string, input: UpdateUserInput): Promise<UserResponse> {
     await this.assertExists(id);
-    // Promoting an account to CUSTOMER without a Customer profile would create
-    // the same half-provisioned state `create` guards against — block it.
+
     if (input.role === "CUSTOMER") {
       const customer = await customerService.findByUserId(id);
       if (!customer) throw appError(userErrors.CUSTOMER_PROFILE_REQUIRED);
@@ -369,14 +299,12 @@ class UserService {
     await userRepository.delete({ where: { id } });
   }
 
-  // ─── Private helpers ──────────────────────────────────
   private async assertExists(id: string): Promise<UserModel> {
     const user = await userRepository.findById(id);
     if (!user) throw appError(userErrors.USER_NOT_FOUND);
     return user;
   }
 
-  /** Gate shared by login, admin login, and refresh. */
   private assertUsable(user: UserModel): void {
     if (!user.isActive) throw appError(userErrors.ACCOUNT_DISABLED);
     if (!user.emailVerifiedAt) throw appError(userErrors.EMAIL_NOT_VERIFIED);
@@ -389,9 +317,7 @@ class UserService {
       role: user.role,
     });
     const refreshToken = signRefreshToken({ id: user.id });
-    // One RefreshToken row per session (multi-device). Only the hash is
-    // persisted so a DB leak can't expose usable refresh tokens. Expired and
-    // revoked rows are swept here instead of by a scheduled job.
+
     await refreshTokenRepository.deleteInactiveForUser(user.id);
     await refreshTokenRepository.createForUser(
       user.id,

@@ -16,12 +16,7 @@ import {
 
 const router: Router = Router();
 
-// Cart routes serve both signed-in customers and anonymous visitors: with a
-// token the cart is the customer's, without one it's the guest cart named by
-// the X-Cart-Token header.
 router.use(optionalAuthenticate);
-
-// ─── Handlers ────────────────────────────────────────────
 
 router.get("/", controller.getMyCart);
 
@@ -31,7 +26,6 @@ router.post(
   controller.addItem,
 );
 
-// Merging is the one cart operation that always needs a signed-in customer.
 router.post(
   "/merge",
   authenticate,
@@ -39,7 +33,6 @@ router.post(
   controller.mergeGuestCart,
 );
 
-// On-demand run of the same sweep the background job performs.
 router.post(
   "/housekeeping",
   authenticate,
@@ -64,8 +57,6 @@ router.delete(
 
 router.delete("/", controller.clearCart);
 
-// ─── OpenAPI Documentation ───────────────────────────────
-
 const tag = "Cart";
 const errorRef = {
   $ref: "#/components/schemas/ErrorResponse",
@@ -77,7 +68,7 @@ const security: Record<string, string[]>[] = [
   { cookieAuth: [] },
   { BearerAuth: [] },
 ];
-// Guest carts are addressed by this header instead of an auth token.
+
 const cartTokenParam = {
   name: "X-Cart-Token",
   in: "header",

@@ -1,16 +1,3 @@
-/**
- * Overselling — integration.
- *
- * This is the test the whole stock design exists for, and the one a unit test
- * can only pretend to run: two checkouts genuinely racing in separate database
- * transactions for the last unit on the shelf.
- *
- * A read-then-write check ("is there stock? yes → decrement") passes every unit
- * test and still oversells here, because both readers see the same stock before
- * either writes. What makes it safe is the single conditional UPDATE
- * (`WHERE id = ? AND stock >= ?`), whose row lock forces the second transaction
- * to wait and then match zero rows. Only Postgres can demonstrate that.
- */
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import prisma from "../../src/config/prisma";
 import { orderService } from "../../src/modules/order/order.service";
@@ -31,7 +18,6 @@ afterAll(async () => {
   await disconnect();
 });
 
-/** `count` customers, each with a cart holding `quantity` of the same item. */
 const setUpRivals = async (count: number, stock: number, quantity = 1) => {
   const { restaurant, menuItem } = await createCatalog({ stock });
   const buyers = [];
@@ -88,7 +74,6 @@ describe("concurrent checkout for the last unit", () => {
   });
 
   it("counts units, not orders — a buyer taking two can shut out two singles", async () => {
-    // 3 units, buyers wanting 2 each: exactly one succeeds and 1 unit is left.
     const { menuItem, buyers } = await setUpRivals(3, 3, 2);
 
     const results = await checkoutAll(buyers);
@@ -105,8 +90,6 @@ describe("concurrent checkout for the last unit", () => {
 
     await checkoutAll(buyers);
 
-    // One order, one set of items, one payment — the two failures rolled back
-    // completely, and their carts survived for a retry.
     expect(await prisma.order.count()).toBe(1);
     expect(await prisma.transaction.count()).toBe(1);
     const orders = await prisma.order.findMany({
@@ -117,8 +100,6 @@ describe("concurrent checkout for the last unit", () => {
   });
 
   it("does not serialise untracked items — everyone gets one", async () => {
-    // stock null means the restaurant doesn't track it: no reservation, no
-    // contention, and no accidental 409 for the slower customers.
     const { restaurant, menuItem } = await createCatalog({ stock: null });
     const buyers = [];
     for (let i = 0; i < 3; i++) {

@@ -1,12 +1,3 @@
-/**
- * Runs a JMeter plan with the item id from the last seed.
- *
- * The plans can't hard-code the menu item: `perf/seed-load.ts` truncates and
- * recreates everything, so the cuids change on every seed. This reads
- * `perf/data/items.csv` and passes the right one through as a JMeter property.
- *
- * Usage: node perf/run-plan.js <1|2|3> [--users 500] [--rampup 10] [--run 1]
- */
 const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -14,10 +5,9 @@ const path = require("node:path");
 const PLANS = {
   1: { file: "01-baseline-order-flow.jmx", item: "regularItemId", rampup: 10 },
   2: { file: "02-stock-contention.jmx", item: "scarceItemId", rampup: 5 },
-  // Login needs no menu item — it never reaches the catalog.
+
   3: { file: "03-login.jmx", item: null, rampup: 10 },
-  // Reports read across the catalog; the restaurant id comes from
-  // dashboard.csv, written by the dashboard seed.
+
   4: { file: "04-dashboard.jmx", item: null, rampup: 5 },
 };
 
@@ -55,8 +45,6 @@ fs.mkdirSync(resultsDir, { recursive: true });
 const out = path.join(resultsDir, `plan${which}-run${runNo}.jtl`);
 fs.rmSync(out, { force: true });
 
-// Forward slashes: JMeter reads this as a property, and a Windows path with
-// backslashes would be mangled by its variable syntax.
 const posix = (p) => p.split(path.sep).join("/");
 
 const args = [

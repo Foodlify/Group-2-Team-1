@@ -95,8 +95,6 @@ export const MenuItemListSuccessResponseSchema = z
   })
   .meta({ id: "MenuItemListSuccessResponse" });
 
-// ─── Catalog-wide search (official "Search Menu Items") ──
-
 export const MenuItemSearchQuerySchema = PaginationQuerySchema.extend({
   search: z.string().min(1).optional().meta({
     description: "Case-insensitive item-name search",

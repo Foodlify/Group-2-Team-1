@@ -6,7 +6,6 @@ on:
   pull_request:
     branches: [main, develop]
 
-# A new push to the same branch supersedes the previous run.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -20,10 +19,6 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      # `prisma.config.ts` resolves env("DATABASE_URL") eagerly, and npm's
-      # postinstall runs `prisma generate` — so the variable has to exist for
-      # `npm ci` itself to succeed. Nothing here connects to a database: these
-      # are placeholders that only need to parse.
       DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
       JWT_SECRET: ci-jwt-secret
       JWT_REFRESH_SECRET: ci-jwt-refresh-secret
@@ -36,12 +31,9 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          # Read from .nvmrc so CI, Docker and every checkout cannot drift apart.
           node-version-file: ".nvmrc"
           cache: npm
 
-      # Also generates the Prisma client via postinstall — `src/generated` is
-      # gitignored, so every later step depends on this.
       - name: Install dependencies
         run: npm ci
 
@@ -60,8 +52,6 @@ jobs:
       - name: Build
         run: npm run build
 
-      # Routes register themselves as an import side effect, so a broken route
-      # module or a dangling $ref only surfaces when the document is built.
       - name: Verify OpenAPI document
         run: npm run verify:openapi
 
@@ -69,9 +59,6 @@ jobs:
     name: Integration tests (PostgreSQL)
     runs-on: ubuntu-latest
 
-    # A real database, because these cover what mocks structurally can't:
-    # concurrent checkouts racing for the last unit, the hand-written CHECK
-    # constraints, the raw jsonb timeline UPDATE, and Decimal round-tripping.
     services:
       postgres:
         image: postgres:17-alpine
@@ -81,7 +68,6 @@ jobs:
           POSTGRES_DB: foodlify_test
         ports:
           - 5432:5432
-        # Without this the job races the container's startup.
         options: >-
           --health-cmd "pg_isready -U postgres"
           --health-interval 10s
@@ -109,13 +95,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # `migrate diff --from-migrations` replays the migration folder into this
-      # scratch database to compare it against schema.prisma.
       - name: Create shadow database
         run: psql "$DATABASE_URL" -c 'CREATE DATABASE foodlify_shadow'
 
-      # Catches a schema.prisma edited without a matching migration — the
-      # failure that otherwise only shows up when someone deploys.
       - name: Check for migration drift
         run: |
           npx prisma migrate diff \
@@ -123,7 +105,5 @@ jobs:
             --to-schema prisma/schema.prisma \
             --exit-code
 
-      # `globalSetup` runs `prisma migrate deploy` first, so this also proves
-      # the committed migrations build the schema the code expects.
       - name: Integration tests
         run: npm run test:integration

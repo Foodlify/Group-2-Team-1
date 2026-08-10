@@ -1,12 +1,3 @@
-/**
- * The push service — fan-out to a customer's devices, and pruning.
- *
- * The behaviour worth defending is what happens to a subscription the push
- * service says is gone. Nothing visible breaks if it is kept: the customer's
- * other devices still buzz, no error surfaces, and the row simply sits there
- * being retried on every order for the rest of its life. That is exactly the
- * kind of fault a test has to catch, because operating it never will.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/modules/push/push.repository", () => ({
@@ -59,7 +50,6 @@ beforeEach(() => {
   mockedTransport.send.mockResolvedValue("sent");
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("notifying a customer", () => {
   it("pushes to every browser they have registered", async () => {
     mockedRepo.findByCustomerId.mockResolvedValue([
@@ -69,7 +59,6 @@ describe("notifying a customer", () => {
 
     await pushService.notifyCustomer("cust_1", MESSAGE);
 
-    // The same person on a phone and a laptop expects both to buzz.
     expect(mockedTransport.send).toHaveBeenCalledTimes(2);
   });
 
@@ -97,8 +86,6 @@ describe("notifying a customer", () => {
 
     await pushService.notifyCustomer("cust_1", MESSAGE);
 
-    // Not even the read: an unconfigured deployment must not pay for a query
-    // on every order status change to discover it has nothing to do.
     expect(mockedRepo.findByCustomerId).not.toHaveBeenCalled();
     expect(mockedTransport.send).not.toHaveBeenCalled();
   });
@@ -112,7 +99,6 @@ describe("notifying a customer", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("subscriptions the push service says are gone", () => {
   it("deletes them", async () => {
     mockedRepo.findByCustomerId.mockResolvedValue([
@@ -151,9 +137,6 @@ describe("subscriptions the push service says are gone", () => {
 
     await pushService.notifyCustomer("cust_1", MESSAGE);
 
-    // The push service being down says nothing about whether this browser
-    // still exists. Deleting here would unsubscribe every customer during an
-    // outage — silently, and permanently.
     expect(mockedRepo.deleteByEndpoints).not.toHaveBeenCalled();
   });
 
@@ -184,7 +167,6 @@ describe("subscriptions the push service says are gone", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("registering and removing a browser", () => {
   it("upserts, so a browser re-subscribing does not double up", async () => {
     mockedRepo.upsertSubscription.mockResolvedValue(
@@ -230,8 +212,6 @@ describe("registering and removing a browser", () => {
   it("404s an unsubscribe that removed nothing", async () => {
     mockedRepo.deleteForCustomer.mockResolvedValue(false);
 
-    // Same answer whether the endpoint does not exist or belongs to somebody
-    // else, so an endpoint cannot be probed for who owns it.
     await expect(
       pushService.unsubscribe("cust_1", "https://push.example/theirs"),
     ).rejects.toMatchObject({
@@ -252,7 +232,6 @@ describe("registering and removing a browser", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("the public key endpoint", () => {
   it("returns the key when push is on", () => {
     expect(pushService.publicKey()).toBe("test-public-key");

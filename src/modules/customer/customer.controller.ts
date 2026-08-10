@@ -10,8 +10,6 @@ import type {
   PaymentSettingIdParams,
 } from "./customer.validation";
 
-// ─── Profile (me) ─────────────────────────────────────────
-
 export const getMe = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const customer = await customerService.getMe(req.user!.id);
@@ -25,8 +23,6 @@ export const updateMe = asyncHandler(
     sendSuccess(res, customer, "Profile updated");
   },
 );
-
-// ─── Addresses ────────────────────────────────────────────
 
 export const listAddresses = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
@@ -84,8 +80,6 @@ export const setDefaultAddress = asyncHandler(
     sendSuccess(res, address, "Default address set");
   },
 );
-
-// ─── Preferred payment settings ───────────────────────────
 
 export const listPaymentSettings = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {

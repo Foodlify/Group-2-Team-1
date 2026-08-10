@@ -17,13 +17,12 @@ import {
 
 const router: Router = Router();
 
-// ─── Public catalog reads ────────────────────────────────
 router.get(
   "/:menuId",
   validate({ params: MenuIdParamsSchema }),
   controller.getMenu,
 );
-// Open to everyone; an ADMIN token unlocks `includeDeleted`.
+
 router.get(
   "/:menuId/items",
   optionalAuthenticate,
@@ -31,7 +30,6 @@ router.get(
   controller.getMenuItems,
 );
 
-// ─── Admin management (ADMIN only) ───────────────────────
 router.post(
   "/",
   authenticate,
@@ -68,7 +66,6 @@ router.get(
   controller.getMenuHistory,
 );
 
-// ─── OpenAPI ─────────────────────────────────────────────
 const tag = "Catalog";
 const errorRef = { $ref: "#/components/schemas/ErrorResponse" };
 const validationErrorRef = {
@@ -152,7 +149,6 @@ routeRegistry.push({
   },
 });
 
-// ─── Admin management docs ───────────────────────────────
 routeRegistry.push({
   path: "/api/v1/menus",
   pathItem: {

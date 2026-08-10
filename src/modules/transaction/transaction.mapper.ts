@@ -3,24 +3,6 @@ import type { TransactionResponse } from "../payment/payment.validation";
 import type { TransactionWithDetails } from "./transaction.service";
 import type { AdminTransactionResponse } from "./transaction.validation";
 
-/**
- * Ledger row → API shape. `error` is lifted out of the metadata blob because
- * "why is this refund still owed" is the whole reason an admin opens the
- * outstanding list, and making them dig through JSON for it helps nobody.
- *
- * Lives in the transaction module rather than in payment.service so the
- * listing endpoints can use it without importing the payment service — that
- * import would be a cycle, since payment.service already depends on
- * transaction.service.
- */
-/**
- * The admin shape: the ledger row plus the gateway's own facts.
- *
- * Separate from `toTransactionResponse` rather than an optional field on it,
- * so the customer listing cannot grow these by accident. Null details is a
- * real answer — a cash payment has no gateway, and neither does a transaction
- * settled before `TransactionDetails` existed.
- */
 export const toAdminTransactionResponse = (
   t: TransactionWithDetails,
 ): AdminTransactionResponse => ({

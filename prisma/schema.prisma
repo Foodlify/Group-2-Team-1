@@ -3,19 +3,6 @@ generator client {
   output       = "../src/generated/prisma"
   moduleFormat = "cjs"
 
-  /// Extensionless imports inside the generated client, stated rather than
-  /// inferred.
-  ///
-  /// Left unset, Prisma picks a default by looking at the surrounding project
-  /// — and picks a different one when it cannot see a tsconfig.json. That is
-  /// exactly the situation in the Docker build, where dependencies install
-  /// (and `prisma generate` runs) a stage before the tsconfig is copied. The
-  /// result was a client importing `./internal/class.ts` next to a compiled
-  /// `class.js`: fine through ts-node, `MODULE_NOT_FOUND` the moment it ran
-  /// from dist/, so the image built cleanly and died on boot.
-  ///
-  /// No extension is the one form that resolves in both places — `.ts` under
-  /// ts-node in development, `.js` after tsc in production.
   importFileExtension = ""
 }
 
@@ -23,20 +10,10 @@ datasource db {
   provider = "postgresql"
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Users & Access Control
-// ═══════════════════════════════════════════════════════════════
 
-/// The official ERD lists `Role` and `User Type` as tables. They are an enum
-/// here because these three are fixed at build time: each one is named in an
-/// `authorize()` call somewhere in this codebase, so a role that exists only as
-/// a row would be a role no route can name. A table earns its place when roles
-/// are defined at runtime, which is a different system than this one.
 enum Role {
   CUSTOMER
   ADMIN
-  /// Runs one or more restaurants. Sees and acts on their orders, and nothing
-  /// else — the scope comes from `Restaurant.ownerId`, not from the role.
   RESTAURANT
 }
 
@@ -44,46 +21,22 @@ model User {
   id    String @id @default(cuid())
   name  String
   email String @unique
-  /// Hashed password (bcrypt). Never returned in any API response.
-  ///
-  /// Null for an account created through Google sign-in, which genuinely has
-  /// no password — storing a random unusable hash instead would have the data
-  /// model claim one exists. `comparePassword` treats null as "no".
   password String?
-  /// Google's `sub` claim, for an account linked to a Google identity.
-  ///
-  /// The subject, not the email: Google lets a user change their address, and
-  /// an account matched on email alone would silently become a different
-  /// person's. Unique, so one Google identity cannot claim two accounts.
   googleId String? @unique
-  /// Account role — CUSTOMER for storefront users, ADMIN for dashboard,
-  /// RESTAURANT for someone who runs a restaurant on the platform.
   role     Role   @default(CUSTOMER)
-  /// When email ownership was proven via the registration OTP. Null until
-  /// verified — login stays blocked while it is null.
   emailVerifiedAt DateTime?
-  /// Enable/Disable account: admins flip it for any account, customers can
-  /// deactivate their own. A disabled account can't log in and its existing
-  /// sessions are revoked.
   isActive        Boolean   @default(true)
 
   customer      Customer?
   refreshTokens RefreshToken[]
-  /// Restaurants this account runs. The ERD puts `Restaurant` among the user
-  /// module's tables next to `Customer`, and this is that edge: `Customer` is
-  /// what a User is to the storefront, this is what a User is to the catalog.
   ownedRestaurants Restaurant[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-/// One row per issued refresh token (multi-device sessions). Only the SHA-256
-/// hash is stored — a DB leak never exposes usable tokens. Rotation revokes the
-/// presented token and inserts its successor; logout revokes just that session.
 model RefreshToken {
   id        String   @id @default(cuid())
-  /// SHA-256 hash of the refresh JWT (see jwt.helper `hashToken`).
   tokenHash String   @unique
   userId    String
   expiresAt DateTime
@@ -96,14 +49,10 @@ model RefreshToken {
   @@index([userId])
 }
 
-/// Email verification codes. Only the bcrypt hash of the 6-digit code is
-/// stored; codes expire after a short window and are single-use.
 model Otp {
   id       String @id @default(cuid())
   email    String
-  /// bcrypt hash of the 6-digit code — the plaintext is only ever emailed.
   codeHash String
-  /// What the code proves: "registration" | "password_reset".
   purpose  String
   used     Boolean @default(false)
 
@@ -116,13 +65,6 @@ model Otp {
 model Customer {
   id     String @id @default(cuid())
   userId String @unique
-  /// Contact phone — unique, and required of anyone who registers with a
-  /// password. Null only for an account created through Google sign-in: Google
-  /// returns no phone number, and inventing one would put fabricated data on a
-  /// delivery record. They add it through `PATCH /customers/me`.
-  ///
-  /// PostgreSQL treats NULLs as distinct in a unique index, so any number of
-  /// customers may have none while no two can share one.
   phone  String? @unique
 
   cart              Cart?
@@ -147,11 +89,6 @@ model Address {
   city         String
   postalCode   String
   country      String
-  /// Pre-selected address at checkout — the order still records its own
-  /// addressId, so the customer can always pick a different address per
-  /// order (S12 rule). At most one default per customer, kept consistent
-  /// inside a transaction (first address auto-defaults; deleting the
-  /// default promotes the newest remaining address).
   isDefault    Boolean @default(false)
 
   orders Order[]
@@ -164,11 +101,6 @@ model Address {
   @@index([customerId])
 }
 
-/// Customer's saved payment preference — the official "Preferred Payment
-/// Setting" table of Customer Management. Stores only the METHOD: card and
-/// wallet details live with the payment gateway, never in our DB. Mirrors
-/// the default-address semantics (first saved method auto-defaults, at most
-/// one default per customer, kept consistent inside a transaction).
 model PreferredPaymentSetting {
   id         String        @id @default(cuid())
   customerId String
@@ -184,30 +116,12 @@ model PreferredPaymentSetting {
   @@index([customerId])
 }
 
-/// A browser's Web Push subscription — what `Notify Customer With Order Status`
-/// delivers to.
-///
-/// No third party is involved and nothing here is a credential of ours: the
-/// browser hands us an endpoint on its own vendor's push service plus two keys
-/// that encrypt the payload *to that browser*. We sign with our VAPID key, which
-/// lives in the environment and never in this table.
-///
-/// One row per browser, not per customer: the same person subscribes again from
-/// a phone and a laptop and expects both to buzz.
 model PushSubscription {
   id         String @id @default(cuid())
   customerId String
-  /// The push service URL the browser issued. Unique because it *is* the
-  /// identity of a subscription — a browser re-subscribing hands back the same
-  /// endpoint, and inserting it twice would send every notification twice.
   endpoint   String @unique
-  /// The subscription's public key and auth secret, used to encrypt each
-  /// payload for this browser. Useless to anyone else, and unusable for
-  /// sending — they are the recipient's half, not ours.
   p256dh     String
   auth       String
-  /// Whatever the browser called itself when it subscribed. Purely so a
-  /// customer clearing out old devices can tell them apart.
   userAgent  String?
 
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
@@ -218,32 +132,13 @@ model PushSubscription {
   @@index([customerId])
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Restaurants & Menus
-// ═══════════════════════════════════════════════════════════════
 
 model Restaurant {
   id   String @id @default(cuid())
   name String
-  /// Soft delete — a deleted restaurant disappears from every read (listing,
-  /// search, discovery) but its rows stay put so past orders keep resolving.
-  /// Deleting cascades the flag down to menus and items; restoring reverses it.
   isDeleted Boolean @default(false)
-  /// Auditing — the id of the User behind the last create / update. Nullable:
-  /// rows created before auditing existed have no actor to attribute.
   createdBy String?
   updatedBy String?
-  /// The account that runs this restaurant, assigned by an admin. This is the
-  /// whole of the ownership model: "may I act on this order?" is answered by
-  /// walking the order's restaurant to here, never by the role alone.
-  ///
-  /// Nullable because a restaurant with no owner is a real state — every one
-  /// that predates this column has none, and an admin runs those. Not unique:
-  /// one account may run several restaurants, and the order history reads
-  /// across all of them.
-  ///
-  /// `SetNull` on delete: losing the account must not take the restaurant, its
-  /// menus and its order history down with it. It goes back to being unowned.
   ownerId String?
   owner   User?   @relation(fields: [ownerId], references: [id], onDelete: SetNull)
 
@@ -256,38 +151,16 @@ model Restaurant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  /// Every owner-scoped read starts here: "which restaurants are mine".
   @@index([ownerId])
 }
 
-/// The official ERD's `restaurantDetails` — how to reach a restaurant and where
-/// it is, kept out of `Restaurant` itself.
-///
-/// A separate table rather than more columns, for the reason the ERD splits
-/// them: `Restaurant` is joined on nearly every read in the system — listings,
-/// search, carts, orders, ratings, dashboard — while these fields are wanted on
-/// exactly one screen. Widening the hot row to carry them would make every one
-/// of those reads move bytes nobody asked for.
-///
-/// Optional (`Restaurant.details` is nullable): restaurants registered before
-/// this existed genuinely have no details, and inventing a phone number for
-/// them would be worse than an empty field.
-///
-/// No `isDeleted` of its own. The row is only ever reachable through its
-/// restaurant, which is already filtered, and a second flag would be a second
-/// source of truth about the same fact.
 model RestaurantDetails {
   id           String @id @default(cuid())
   restaurantId String @unique
-  /// Kept required: a restaurant nobody can call is not operationally real.
   phone        String
   email        String?
   description  String?
 
-  /// Its own columns rather than a row in `Address`. `Address` belongs to a
-  /// customer — `customerId` is required and cascades from them — and making
-  /// that optional to fit a restaurant in would weaken a constraint that is
-  /// doing real work, for the sake of sharing five field names.
   addressLine1 String
   addressLine2 String?
   city         String
@@ -304,7 +177,6 @@ model Menu {
   id           String @id @default(cuid())
   name         String
   restaurantId String
-  /// Soft delete — see `Restaurant.isDeleted`.
   isDeleted Boolean @default(false)
   createdBy String?
   updatedBy String?
@@ -332,9 +204,6 @@ enum MenuChangeAction {
   RESTORED
 }
 
-/// Append-only audit of catalog changes per menu — powers the official
-/// "View History List of Menu" endpoint. The snapshot carries the row state
-/// after the change (for deletes: the last state before removal).
 model MenuChangeLog {
   id       String           @id @default(cuid())
   menuId   String
@@ -342,8 +211,6 @@ model MenuChangeLog {
   entityId String
   action   MenuChangeAction
   snapshot Json
-  /// Id of the User who made the change — the "who" the snapshot alone can't
-  /// answer. Nullable for entries written before auditing existed.
   changedBy String?
 
   menu Menu @relation(fields: [menuId], references: [id], onDelete: Cascade)
@@ -358,14 +225,7 @@ model MenuItem {
   menuId String
   name   String
   price  Decimal
-  /// Units available. NULL means the restaurant doesn't track stock for this
-  /// item (always orderable). When set, checkout decrements it with a
-  /// conditional UPDATE so concurrent orders can never oversell it.
   stock  Int?
-  /// Soft delete — this is the one that matters most: an item referenced by a
-  /// past order could never be hard-deleted (`onDelete: Restrict`), so menus
-  /// accumulated dead items forever. The flag hides it while the order history
-  /// keeps resolving. Checkout also refuses to reserve stock for a deleted item.
   isDeleted Boolean @default(false)
   createdBy String?
   updatedBy String?
@@ -380,20 +240,10 @@ model MenuItem {
   @@index([menuId])
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Cart
-// ═══════════════════════════════════════════════════════════════
 
-/// A cart belongs to EITHER a signed-in customer (`customerId`) or an
-/// anonymous visitor (`guestToken`) — never both, never neither. The
-/// migration adds a CHECK constraint that enforces that at the DB level.
-/// On login the guest cart is merged into the customer's (see cart.service
-/// `mergeGuestCart`).
 model Cart {
   id           String  @id @default(cuid())
   customerId   String? @unique
-  /// Opaque token handed to an anonymous visitor and sent back as the
-  /// `X-Cart-Token` header. Null once the cart belongs to a customer.
   guestToken   String? @unique
   restaurantId String
 
@@ -406,7 +256,6 @@ model Cart {
   updatedAt DateTime @updatedAt
 
   @@index([restaurantId])
-  // Supports the abandoned-cart sweep, which scans by last activity.
   @@index([updatedAt])
 }
 
@@ -429,9 +278,6 @@ model CartItem {
   @@index([menuItemId])
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Orders
-// ═══════════════════════════════════════════════════════════════
 
 enum OrderStatus {
   PENDING
@@ -448,15 +294,8 @@ model Order {
   addressId    String
   restaurantId String
   orderDate    DateTime    @default(now())
-  /// Current effective status — mirrors the latest entry in `timeline` for
-  /// fast indexed queries (e.g. "list all PENDING orders").
   status       OrderStatus @default(PENDING)
-  /// Snapshot of the order total at checkout time — frozen at order creation
-  /// and never recomputed from OrderItems. Survives later price changes.
   totalAmount  Decimal
-  /// Append-only event log capturing status transitions and delivery tracking
-  /// updates as a single chronological stream. Each entry shape:
-  /// { status, changedAt, changedBy?, location?, estimatedDeliveryTime? }
   timeline     Json        @default("[]")
 
   orderItems     OrderItems[]
@@ -483,9 +322,7 @@ model OrderItems {
   orderId    String
   menuItemId String
   quantity   Int
-  /// Snapshot of menu item price at order time — never updated even if MenuItem.price changes later
   price      Decimal
-  /// Snapshot of menu item name at order time — never updated even if MenuItem.name changes later
   name       String
 
   order    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -498,20 +335,12 @@ model OrderItems {
   @@index([menuItemId])
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Ratings
-// ═══════════════════════════════════════════════════════════════
 
-/// Customer rating of a restaurant, tied to one DELIVERED order.
-/// "One rating per order" is enforced by the DB itself (unique orderId) —
-/// no racy pre-check in application code. The restaurantId is derived from
-/// the order at insert time, never accepted from the client.
 model RestaurantRate {
   id           String  @id @default(cuid())
   restaurantId String
   orderId      String  @unique
   customerId   String
-  /// 1–5 stars. Range enforced in validation; kept Int for SQL aggregates.
   rating       Int
   comment      String?
 
@@ -526,9 +355,6 @@ model RestaurantRate {
   @@index([customerId])
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Customer Support
-// ═══════════════════════════════════════════════════════════════
 
 enum TicketStatus {
   OPEN
@@ -555,10 +381,6 @@ enum TicketCategory {
   OTHERS
 }
 
-/// Customer-service agent. `assignedTickets` counts currently-assigned open
-/// tickets and is kept accurate inside the same transaction that assigns or
-/// resolves a ticket — new tickets go to the least-loaded agent of the
-/// matching section.
 model CustomerServiceEmployee {
   id              String         @id @default(cuid())
   name            String
@@ -571,9 +393,6 @@ model CustomerServiceEmployee {
   updatedAt DateTime @updatedAt
 }
 
-/// One-shot support ticket ("Raise a Complain" / "Need Help"). `requestId`
-/// is the opaque public reference quoted by support — separate from the PK
-/// so ticket ids can't be enumerated. Reads are always ownership-scoped.
 model SupportTicket {
   id              String         @id @default(cuid())
   requestId       String         @unique
@@ -599,9 +418,6 @@ model SupportTicket {
   @@index([status])
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Payments / Transactions
-// ═══════════════════════════════════════════════════════════════
 
 enum TransactionType {
   ORDER_PAYMENT
@@ -622,9 +438,6 @@ enum PaymentMethod {
   WALLET
 }
 
-/// Generic financial transaction record. Supports order payments, refunds,
-/// and external gateway integrations (Stripe, PayPal, etc.). The optional
-/// orderId allows future non-order transactions (wallet top-ups, etc.).
 model Transaction {
   id             String          @id @default(cuid())
   type           TransactionType
@@ -632,7 +445,6 @@ model Transaction {
   currency       String          @default("EGP")
   status         TransactionStatus
   paymentMethod  PaymentMethod
-  /// Internal system financial reference number, separate from external gateway IDs
   internalTxNumber String       @unique
   externalRef    String?
   orderId        String?
@@ -648,51 +460,18 @@ model Transaction {
   @@index([externalRef])
 }
 
-/// The official ERD's `transactionDetails` — the gateway's own facts about a
-/// transaction, as typed columns.
-///
-/// NOT a line-item breakdown. That already exists as `OrderItems`, which the
-/// receipt is built from, and a second copy of it would be a second version of
-/// the truth about what somebody bought.
-///
-/// What this replaces is the `Transaction.metadata` blob. Those facts were
-/// real but untyped, and the cost showed: `resolvePaymentIntentId` dug the
-/// refund reference out of JSON with a `typeof` check and paid an extra round
-/// trip to Stripe whenever the key was missing or misspelled. A column cannot
-/// be misspelled.
-///
-/// Every field is nullable and the row itself is optional, because every fact
-/// here belongs to a gateway and cash payments have none. Only fields the
-/// payment paths actually populate are present — a column nothing ever writes
-/// is decoration that reads as data.
-///
-/// `metadata` stays on `Transaction` as the raw, unstructured record of what
-/// the provider said. This table is what code reads; that blob is what a human
-/// reads when something inexplicable happened.
 model TransactionDetails {
   id            String @id @default(cuid())
   transactionId String @unique
 
-  /// Which provider, e.g. "stripe". Null for cash.
   gateway String?
-  /// Where in the gateway's flow this row got to — "checkout_created",
-  /// "paid", "verification_failed".
   stage   String?
 
-  /// The Checkout Session. Also on `Transaction.externalRef`, kept here too
-  /// because that column holds whichever reference came first and this one
-  /// says which kind it is.
   sessionId       String?
-  /// What Stripe will actually accept a refund against. The session id is not
-  /// it, which is the whole reason this column exists.
   paymentIntentId String?
   refundId        String?
 
-  /// The provider's own status word, unmapped — "succeeded", "requires_action".
-  /// Our three-state `TransactionStatus` is the mapped version; this is what it
-  /// was mapped from, which is what you need when the mapping looks wrong.
   gatewayStatus String?
-  /// Why it failed, in the provider's words.
   failureReason String?
 
   transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
@@ -703,20 +482,10 @@ model TransactionDetails {
   @@index([paymentIntentId])
 }
 
-/// The official ERD's `paymentIntegrationType` — the catalogue of payment
-/// integrations this deployment knows about, one row each.
-///
-/// `isEnabled` is the point of putting this in a table at all: turning card
-/// payments off is currently a matter of removing an environment variable and
-/// restarting, which is not something anyone wants to do at the moment a
-/// gateway starts misbehaving. This flag is checked when a payment is taken,
-/// so flipping it takes effect on the next request.
 model PaymentIntegrationType {
   id String @id @default(cuid())
-  /// Stable machine name — "stripe", "cash". What code and the admin API use.
   code        String        @unique
   displayName String
-  /// Which of our payment methods this integration serves.
   paymentMethod PaymentMethod
   isEnabled     Boolean       @default(true)
 
@@ -726,27 +495,15 @@ model PaymentIntegrationType {
   updatedAt DateTime @updatedAt
 }
 
-/// The official ERD's `paymentIntegrationConfiguration` — how one integration
-/// is set up.
-///
-/// **No secrets live here, ever.** A database is dumped, backed up, replicated
-/// and readable by anyone with a connection string; an API key in a table is an
-/// API key in every one of those places. What is stored instead is the NAME of
-/// the environment variable holding each secret, so this table can say how the
-/// integration is wired without being able to leak it.
 model PaymentIntegrationConfiguration {
   id     String @id @default(cuid())
   typeId String @unique
 
-  /// Currency the integration charges in, as an ISO code.
   currency   String  @default("EGP")
   successUrl String?
   cancelUrl  String?
-  /// Whether this points at the provider's sandbox. Recorded rather than
-  /// inferred: "are we live?" should not be answered by squinting at a key.
   isTestMode Boolean @default(true)
 
-  /// Names, never values. `STRIPE_SECRET_KEY`, not `sk_live_...`.
   secretKeyEnvVar     String?
   webhookSecretEnvVar String?
 
@@ -756,69 +513,27 @@ model PaymentIntegrationConfiguration {
   updatedAt DateTime @updatedAt
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Auditing
-// ═══════════════════════════════════════════════════════════════
 
 enum AuditAction {
   CREATED
   UPDATED
-  /// Split out from UPDATED on purpose. On a financial row the status is the
-  /// field that says whether money moved, so "PENDING → SUCCESS" is the entry
-  /// an auditor actually looks for; burying it among ordinary updates would
-  /// make it findable only by reading every `changes` payload.
   STATUS_CHANGED
 }
 
-/// The official ERD's generic `auditingEvent`, tied to transactions.
-///
-/// Append-only: nothing in the codebase updates or deletes a row here, and the
-/// service exposes no method that could. A trail that can be rewritten is not
-/// evidence of anything.
-///
-/// The entry is written inside the SAME database transaction as the change it
-/// describes (see `TransactionRepository`), so the two commit or roll back
-/// together. Best-effort auditing — write the row, then log the audit — leaves
-/// exactly the gap an audit exists to close: money that moved with no record.
-///
-/// Distinct from the `createdBy` / `updatedBy` columns on the catalog tables.
-/// Those answer "who last touched this row"; this answers "what happened to it,
-/// in what order, and from where" — the columns keep one answer, this keeps
-/// every one.
 model AuditingEvent {
   id String @id @default(cuid())
-  /// Model name, e.g. "Transaction". A plain string rather than an enum: the
-  /// table is generic by design, and a new audited entity should not require a
-  /// migration.
   entity   String
-  /// Id of the audited row. Deliberately NOT a foreign key — an audit entry has
-  /// to outlive the row it describes, and a cascade would erase the trail at
-  /// precisely the moment it matters.
   entityId String
   action   AuditAction
-  /// What changed, as `{ field: { from, to } }` for updates, or the row's
-  /// meaningful fields for a create. Curated field by field, never a blind dump
-  /// of the write payload: gateway metadata is arbitrary provider JSON, and an
-  /// append-only table nobody ever prunes is the worst possible place for it.
-  /// Money is recorded as a string so JSON can't round it.
   changes  Json?
-  /// Who. Null for anything with no human behind it — a gateway webhook, a
-  /// scheduled sweep. Not a foreign key for the same reason as `entityId`, and
-  /// consistent with the `createdBy` / `updatedBy` columns elsewhere: deleting
-  /// an account must not quietly delete what that account did.
   actorId   String?
   actorRole String?
-  /// Where from, and through which endpoint — the request context, captured
-  /// ambiently so no call site has to remember to pass it.
   ip    String?
   route String?
 
   createdAt DateTime @default(now())
 
-  // The per-row trail: "everything that happened to this transaction, newest
-  // first" — the query the admin endpoint runs.
   @@index([entity, entityId, createdAt(sort: Desc)])
-  // The unfiltered feed, and the same index the `entity`-only filter uses.
   @@index([entity, createdAt(sort: Desc)])
   @@index([actorId])
 }

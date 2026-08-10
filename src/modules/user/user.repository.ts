@@ -19,24 +19,10 @@ export class UserRepository extends BaseRepository<PrismaClient["user"]> {
     return prisma.user.findUnique({ where: { googleId } });
   }
 
-  /** Attaches a Google identity to an account that already exists. */
   async linkGoogleId(id: string, googleId: string) {
     return prisma.user.update({ where: { id }, data: { googleId } });
   }
 
-  /**
-   * Creates a customer account from a Google identity.
-   *
-   * No password and no phone — Google supplies neither, and inventing either
-   * would put made-up data in a place that matters (an unusable hash claiming
-   * to be a password; a fabricated number on a delivery record). The customer
-   * adds a phone through `PATCH /customers/me`.
-   *
-   * `emailVerifiedAt` is set here rather than left for an OTP: Google has
-   * already proved the address belongs to them, and the caller only reaches
-   * this after checking the `email_verified` claim. Mailing a code to confirm
-   * what is already confirmed would be theatre.
-   */
   async createGoogleCustomerUser(data: {
     name: string;
     email: string;
@@ -57,7 +43,6 @@ export class UserRepository extends BaseRepository<PrismaClient["user"]> {
     });
   }
 
-  /** True if a customer already uses this (unique) phone. */
   async phoneExists(phone: string): Promise<boolean> {
     const found = await prisma.customer.findUnique({
       where: { phone },
@@ -66,7 +51,6 @@ export class UserRepository extends BaseRepository<PrismaClient["user"]> {
     return found !== null;
   }
 
-  /** Stamps email ownership as proven (idempotent by the caller's check). */
   async markEmailVerified(id: string) {
     return this.update({
       where: { id },
@@ -74,12 +58,10 @@ export class UserRepository extends BaseRepository<PrismaClient["user"]> {
     });
   }
 
-  /** Enable / disable an account (admin) or self-deactivate (customer). */
   async setActive(id: string, isActive: boolean) {
     return this.update({ where: { id }, data: { isActive } });
   }
 
-  /** Newest-first paginated list with total count. */
   async listPaginated(page: number, limit: number) {
     const skip = (page - 1) * limit;
     const [data, total] = await Promise.all([
@@ -96,10 +78,6 @@ export class UserRepository extends BaseRepository<PrismaClient["user"]> {
     };
   }
 
-  /**
-   * Creates a CUSTOMER user together with its 1:1 Customer row in a single
-   * transaction — both succeed or both roll back.
-   */
   async createCustomerUser(data: {
     name: string;
     email: string;

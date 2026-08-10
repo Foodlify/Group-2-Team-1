@@ -17,7 +17,6 @@ import {
   VerifyEmailRequestSchema,
 } from "./user.validation";
 
-// ─── Auth router (mounted at /api/v1/auth) ───────────────
 export const authRouter: Router = Router();
 
 authRouter.post(
@@ -30,24 +29,22 @@ authRouter.post(
   validate({ body: LoginRequestSchema }),
   controller.login,
 );
-// Completes registration and logs the account in.
+
 authRouter.post(
   "/verify-email",
   validate({ body: VerifyEmailRequestSchema }),
   controller.verifyEmail,
 );
-// ─── Social Media Authentication (Google) ────────────────
-// GET, not POST: these are browser navigations — one out to the consent
-// screen, one back from it — not API calls a client makes.
+
 authRouter.get("/google", controller.googleRedirect);
 authRouter.get("/google/callback", controller.googleCallback);
 
 authRouter.post("/refresh-token", controller.refresh);
-// Logout revokes via the refresh cookie — no valid access token required.
+
 authRouter.post("/logout", controller.logout);
-// Self-service "Account Deactivate".
+
 authRouter.post("/deactivate", authenticate, controller.deactivateMyAccount);
-// Forgot-password flow — both behind the same strict auth limiter.
+
 authRouter.post(
   "/forgot-password",
   validate({ body: ForgotPasswordRequestSchema }),
@@ -67,7 +64,6 @@ authRouter.post(
 authRouter.post("/admin/refresh-token", controller.refresh);
 authRouter.post("/admin/logout", controller.logout);
 
-// ─── Users router (mounted at /api/v1/users, ADMIN only) ──
 export const usersRouter: Router = Router();
 
 usersRouter.use(authenticate, authorize("ADMIN"));
@@ -103,7 +99,6 @@ usersRouter.patch(
   controller.setUserStatus,
 );
 
-// ─── OpenAPI Documentation ───────────────────────────────
 const authTag = "Auth";
 const usersTag = "Users";
 const errorRef = { $ref: "#/components/schemas/ErrorResponse" };

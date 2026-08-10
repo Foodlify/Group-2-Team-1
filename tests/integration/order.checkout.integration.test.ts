@@ -1,12 +1,3 @@
-/**
- * Order & Payment — integration (mentor requirement, S17).
- *
- * Nothing is mocked: a real PostgreSQL, real migrations, the real Prisma
- * client. These cover what unit tests structurally cannot — that the checkout
- * transaction commits as one unit across five tables, that money survives the
- * round trip through `Decimal` columns, and that a mid-transaction failure
- * leaves nothing behind.
- */
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import prisma from "../../src/config/prisma";
 import { orderService } from "../../src/modules/order/order.service";
@@ -19,9 +10,6 @@ import {
   resetDatabase,
 } from "./helpers/db";
 
-// These tests drive orders through their lifecycle to reach the money; the
-// actor is incidental, so they act as an admin, whose reach is not scoped to
-// any restaurant. Scoped access is covered in the owner integration suite.
 const ADMIN = { userId: "user_admin", role: "ADMIN" };
 
 beforeEach(async () => {
@@ -55,9 +43,9 @@ describe("placeOrder against a real database", () => {
     expect(items).toHaveLength(1);
     expect(items[0]!.quantity).toBe(2);
     expect(transactions).toHaveLength(1);
-    expect(transactions[0]!.status).toBe("PENDING"); // cash: collected later
+    expect(transactions[0]!.status).toBe("PENDING");
     expect(transactions[0]!.type).toBe("ORDER_PAYMENT");
-    // The cart row itself is gone, and its items with it via the cascade.
+
     expect(carts).toHaveLength(0);
     expect(await prisma.cartItem.count()).toBe(0);
   });
@@ -73,8 +61,7 @@ describe("placeOrder against a real database", () => {
     });
 
     const order = await prisma.order.findUnique({ where: { id: result.id } });
-    // 8.15 * 3 is 24.450000000000003 in float. Stored and read back as a
-    // Decimal it is exactly 24.45 — this is the round trip, not just the maths.
+
     expect(order!.totalAmount.toString()).toBe("24.45");
     expect(result.totalPrice).toBe(24.45);
     expect(result.items[0]!.subtotal).toBe(24.45);
@@ -126,8 +113,6 @@ describe("placeOrder against a real database", () => {
       statusCode: orderErrors.OUT_OF_STOCK.statusCode,
     });
 
-    // The real test of atomicity: nothing at all was left behind, and the
-    // customer still has their cart to try again with.
     expect(await prisma.order.count()).toBe(0);
     expect(await prisma.orderItems.count()).toBe(0);
     expect(await prisma.transaction.count()).toBe(0);
@@ -142,7 +127,7 @@ describe("placeOrder against a real database", () => {
     const { customer, address } = await createCustomer();
     const { restaurant, menuItem } = await createCatalog({ price: "30.00" });
     await createCartWithItem(customer.id, restaurant.id, menuItem, 1);
-    // The restaurant raises the price after the item was added to the cart.
+
     await prisma.menuItem.update({
       where: { id: menuItem.id },
       data: { price: "35.00" },
@@ -211,9 +196,6 @@ describe("order lifecycle against a real database", () => {
       ADMIN,
     );
 
-    // `appendTimelineEntry` is raw SQL (`timeline || ...::jsonb`) — this path
-    // has no unit coverage at all, and it has to both append and mirror the
-    // status column in one statement.
     expect(after.timeline.map((e) => e.status)).toEqual([
       "PENDING",
       "CONFIRMED",
@@ -231,9 +213,6 @@ describe("order lifecycle against a real database", () => {
       ADMIN,
     );
 
-    // The service check would pass for PENDING -> CONFIRMED, but the row is
-    // already CONFIRMED, so the UPDATE's `AND status = 'PENDING'` matches
-    // nothing. That is the guard against two admins racing.
     await expect(
       orderService.cancelOrder(order.customerId, order.id),
     ).rejects.toMatchObject({
@@ -273,15 +252,15 @@ describe("order lifecycle against a real database", () => {
       prisma.menuItem.findUnique({ where: { id: menuItem.id } }),
       prisma.transaction.findMany({ where: { orderId: order.id } }),
     ]);
-    expect(item!.stock).toBe(10); // the 2 reserved units came back
-    // The cash payment was still PENDING, so it is failed rather than refunded.
+    expect(item!.stock).toBe(10);
+
     expect(transactions).toHaveLength(1);
     expect(transactions[0]!.status).toBe("FAILED");
   });
 
   it("issues a matching REFUND when a settled order is cancelled", async () => {
     const { order, customer } = await place();
-    // Force the payment to SUCCESS the way delivery would.
+
     await prisma.transaction.updateMany({
       where: { orderId: order.id },
       data: { status: "SUCCESS" },

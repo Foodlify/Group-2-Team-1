@@ -8,9 +8,6 @@ import type { AuditListQueryInput } from "./auditing.validation";
 
 export const listAuditEvents = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
-    // `validate` has already parsed and coerced this; the cast is the same one
-    // every other list controller in the project uses, because Express types
-    // `req.query` as ParsedQs regardless of what middleware put there.
     const query = req.query as unknown as AuditListQueryInput;
     const { rows, total } = await auditingService.list(query);
     sendSuccess(

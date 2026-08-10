@@ -5,17 +5,6 @@ import { routeRegistry } from "../../openapi/registry";
 import * as controller from "./auditing.controller";
 import { AuditListQuerySchema } from "./auditing.validation";
 
-/**
- * The audit trail, admins only.
- *
- * One route with an `entityId` filter rather than a separate
- * `/transactions/{id}/audit`: "the trail for this transaction" and "the trail
- * for everything" are the same query with one clause, and two endpoints over
- * one query is two places for the ADMIN guard to be got wrong.
- *
- * Read-only. There is deliberately no POST, PATCH or DELETE here — an audit
- * trail with a write endpoint is a suggestion box.
- */
 const auditRouter: Router = Router();
 
 auditRouter.use(authenticate, authorize("ADMIN"));
@@ -27,8 +16,6 @@ auditRouter.get(
 );
 
 export default auditRouter;
-
-// ─── OpenAPI Documentation ───────────────────────────────
 
 const tag = "Auditing";
 const errorRef = { $ref: "#/components/schemas/ErrorResponse" };

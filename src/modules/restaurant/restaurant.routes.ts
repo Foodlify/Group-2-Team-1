@@ -22,13 +22,6 @@ import {
 
 const router: Router = Router();
 
-// ─── Restaurant owner (RESTAURANT only) ──────────────────
-// Declared first. Nothing collides with these today — "/:restaurantId" is one
-// segment and these are two, and no "/:restaurantId/orders" route exists — so
-// moving them below changes nothing, which a mutation confirmed. The order is
-// insurance against the route that would collide: an admin-facing
-// "/:restaurantId/orders" is an obvious next endpoint, and declared above these
-// it would swallow "/me/orders" and turn it into a 400 on an invalid cuid2.
 router.get(
   "/me/orders",
   authenticate,
@@ -44,10 +37,6 @@ router.get(
   controller.getMyRestaurantOrder,
 );
 
-// ─── Public catalog reads ────────────────────────────────
-// `optionalAuthenticate` on the two list endpoints: they stay open to everyone,
-// but an ADMIN token unlocks `includeDeleted` (the only way to find a
-// soft-deleted id to restore).
 router.get(
   "/",
   optionalAuthenticate,
@@ -69,7 +58,6 @@ router.get(
   controller.getRestaurantMenus,
 );
 
-// ─── Admin management (ADMIN only) ───────────────────────
 router.post(
   "/",
   authenticate,
@@ -112,7 +100,6 @@ router.patch(
   controller.assignRestaurantOwner,
 );
 
-// ─── OpenAPI ─────────────────────────────────────────────
 const tag = "Catalog";
 const errorRef = { $ref: "#/components/schemas/ErrorResponse" };
 const validationErrorRef = {
@@ -243,7 +230,6 @@ routeRegistry.push({
   },
 });
 
-// ─── Admin management docs ───────────────────────────────
 routeRegistry.push({
   path: "/api/v1/restaurants",
   pathItem: {
@@ -409,7 +395,6 @@ routeRegistry.push({
   },
 });
 
-// ─── Restaurant owner docs ───────────────────────────────
 const ordersTag = "Orders";
 
 routeRegistry.push({

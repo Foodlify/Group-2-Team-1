@@ -1,11 +1,3 @@
-/**
- * `Payment Integration Type` and `Payment Integration Configuration`.
- *
- * Two things are worth proving here and neither can be proved without a real
- * database. The tables are seeded by the migration, so a fresh deployment must
- * already know about its integrations; and no secret may ever come back out of
- * them, however the row is read.
- */
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import prisma from "../../src/config/prisma";
 import { paymentIntegrationService } from "../../src/modules/payment/integration.service";
@@ -17,11 +9,6 @@ import {
 } from "./helpers/db";
 import { api, asCookie, createAccount } from "./helpers/http";
 
-/**
- * `resetDatabase` truncates everything, including the migration's seed. These
- * rows are what the seed inserts, restored so each test starts from the state a
- * freshly migrated deployment is really in.
- */
 const seedIntegrations = async () => {
   const cash = await prisma.paymentIntegrationType.create({
     data: {
@@ -49,7 +36,6 @@ const seedIntegrations = async () => {
   return { cash, stripe };
 };
 
-/** A customer with an address and a cart, ready to check out over HTTP. */
 const readyToCheckout = async () => {
   const { customer, token } = await createAccount("CUSTOMER", {
     suffix: "buyer",
@@ -81,7 +67,6 @@ afterAll(async () => {
   await disconnect();
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("the migration's seed", () => {
   it("gives a fresh deployment both integrations, enabled", async () => {
     const res = await api()
@@ -93,8 +78,7 @@ describe("the migration's seed", () => {
       "cash",
       "stripe",
     ]);
-    // Enabled by default, so the migration changes no behaviour on the day it
-    // runs — the system took payments before this table existed.
+
     expect(
       res.body.data.every((i: { isEnabled: boolean }) => i.isEnabled),
     ).toBe(true);
@@ -115,7 +99,6 @@ describe("the migration's seed", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("what a secret is allowed to do here", () => {
   it("never stores one, whatever the payload calls it", async () => {
     await api()
@@ -127,18 +110,11 @@ describe("what a secret is allowed to do here", () => {
         apiKey: "sk_live_either",
       });
 
-    // Zod strips unknown keys, and there is no column for them regardless.
-    // Asserted against the whole table because a leak does not care which
-    // column it landed in.
     const rows = await prisma.paymentIntegrationConfiguration.findMany();
     expect(JSON.stringify(rows)).not.toContain("sk_live");
   });
 
   it("does not return the key even when one is really set", async () => {
-    // The suite blanks STRIPE_SECRET_KEY, so "no secret appeared in the
-    // response" would be true no matter what the code did. A canary value is
-    // the only way this assertion can fail — and it did, against a version
-    // that returned the key alongside the flag.
     const CANARY = "sk_test_canary_must_never_be_returned";
     const previous = process.env.STRIPE_SECRET_KEY;
     process.env.STRIPE_SECRET_KEY = CANARY;
@@ -150,7 +126,7 @@ describe("what a secret is allowed to do here", () => {
       const stripe = res.body.data.find(
         (i: { code: string }) => i.code === "stripe",
       );
-      // The flag says it is wired up; the value stays where it lives.
+
       expect(stripe.configuration.secretConfigured).toBe(true);
       expect(JSON.stringify(res.body)).not.toContain(CANARY);
     } finally {
@@ -159,9 +135,6 @@ describe("what a secret is allowed to do here", () => {
   });
 
   it("reports whether the named variable is set, without its value", async () => {
-    // The integration suite blanks STRIPE_SECRET_KEY, so this deployment has
-    // the variable named but not configured — exactly the state an admin needs
-    // to be able to see.
     const res = await api()
       .get("/api/v1/payments/integrations")
       .set("Cookie", asCookie(adminToken));
@@ -174,7 +147,6 @@ describe("what a secret is allowed to do here", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("the kill switch", () => {
   it("refuses a payment once the integration is switched off", async () => {
     await api()
@@ -182,7 +154,6 @@ describe("the kill switch", () => {
       .set("Cookie", asCookie(adminToken))
       .send({ isEnabled: false });
 
-    // Read at payment time, so no restart or redeploy is involved.
     expect(await paymentIntegrationService.isMethodEnabled("CASH")).toBe(false);
     await expect(
       paymentIntegrationService.assertMethodEnabled("CASH"),
@@ -202,9 +173,6 @@ describe("the kill switch", () => {
       .set("Cookie", asCookie(buyer.token))
       .send({ addressId: buyer.address.id, paymentMethod: "CASH" });
 
-    // Driven through HTTP on purpose. Asserting on the service alone cannot
-    // tell whether the payment path ever consults it — a version with the
-    // check deleted from `processPayment` passed every other test here.
     expect(res.status).toBe(400);
     expect(await prisma.order.count()).toBe(0);
   });
@@ -239,15 +207,12 @@ describe("the kill switch", () => {
   it("keeps taking payments when the table is empty", async () => {
     await prisma.paymentIntegrationType.deleteMany();
 
-    // A deployment whose seed never ran must not silently refuse every
-    // payment. Absence of a rule is not a rule.
     await expect(
       paymentIntegrationService.assertMethodEnabled("CASH"),
     ).resolves.toBeUndefined();
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("configuring an integration", () => {
   it("changes only the fields the request carried", async () => {
     await api()
@@ -258,8 +223,7 @@ describe("configuring an integration", () => {
     const row = await prisma.paymentIntegrationConfiguration.findFirstOrThrow({
       where: { type: { code: "stripe" } },
     });
-    // An admin flipping test mode has said nothing about the currency or where
-    // the key lives.
+
     expect(row.isTestMode).toBe(false);
     expect(row.currency).toBe("EGP");
     expect(row.secretKeyEnvVar).toBe("STRIPE_SECRET_KEY");
@@ -300,9 +264,6 @@ describe("configuring an integration", () => {
   });
 
   it("exposes no way to create or delete an integration", async () => {
-    // One exists when a strategy is written for it in code, not when a row is
-    // inserted. A row for a gateway with no strategy would advertise a payment
-    // method that fails the moment somebody tries to pay.
     const post = await api()
       .post("/api/v1/payments/integrations")
       .set("Cookie", asCookie(adminToken))

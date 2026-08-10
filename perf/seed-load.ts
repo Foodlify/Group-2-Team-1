@@ -1,15 +1,3 @@
-/**
- * Seeds the database for the JMeter load tests and writes the CSV files the
- * test plans read.
- *
- * Every virtual user needs its own account: replaying one login 500 times
- * measures a cache, not the system. So this creates N independent customers,
- * each with an address, and emits `perf/data/users.csv` for JMeter's CSV Data
- * Set Config to hand one row to each thread.
- *
- * Run with the load database selected:
- *   DATABASE_URL=... npx ts-node perf/seed-load.ts
- */
 import fs from "node:fs";
 import path from "node:path";
 import prisma from "../src/config/prisma";
@@ -18,9 +6,9 @@ import { signAccessToken } from "../src/shared/auth/jwt.helper";
 
 const USER_COUNT = Number(process.env.LOAD_USERS ?? 500);
 const PASSWORD = "LoadTest123!";
-/** Effectively unlimited — the baseline plan must not hit stock limits. */
+
 const AMPLE_STOCK = 1_000_000;
-/** Deliberately scarce, for the contention plan. */
+
 const SCARCE_STOCK = Number(process.env.LOAD_SCARCE_STOCK ?? 50);
 
 const dataDir = path.join(__dirname, "data");
@@ -29,8 +17,6 @@ async function main(): Promise<void> {
   const started = Date.now();
   console.log(`Seeding ${USER_COUNT} load-test customers...`);
 
-  // Wipe first: the plans assume a known starting stock, and a re-run against
-  // leftover rows would silently change what the numbers mean.
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE "Transaction", "OrderItems", "Order", "CartItem", "Cart",
       "RestaurantRate", "SupportTicket", "Address", "PreferredPaymentSetting",
@@ -63,21 +49,8 @@ async function main(): Promise<void> {
     }),
   ]);
 
-  // bcrypt is intentionally slow — hashing 500 times would dominate this
-  // script's runtime for no benefit, since every account shares one password.
   const passwordHash = await hashPassword(PASSWORD);
 
-  // Tokens are minted here rather than obtained by logging in from JMeter.
-  // That is a deliberate test-design decision, not a shortcut: bcrypt at cost
-  // 12 costs ~250ms of CPU per login, so 500 simultaneous logins demand ~125
-  // seconds of it. A plan that logs in first measures bcrypt and tells you
-  // nothing about the cart or the order path. Login capacity is measured
-  // separately — see docs/LOAD_TESTING.md.
-  //
-  // The hashing now runs in libuv's thread pool rather than on the event loop
-  // (the move from `bcryptjs` to `bcrypt`), so those logins no longer freeze
-  // everything else — but they still cost the same CPU, and this plan still
-  // exists to measure the endpoints rather than the hash.
   const rows: string[] = ["email,password,addressId,token"];
   const BATCH = 50;
   for (let start = 0; start < USER_COUNT; start += BATCH) {
@@ -93,8 +66,7 @@ async function main(): Promise<void> {
             name: `Load User ${i}`,
             email,
             password: passwordHash,
-            // Login is blocked until the email is verified, so these are
-            // pre-verified rather than driving the OTP flow under load.
+
             emailVerifiedAt: new Date(),
           },
         });
@@ -126,8 +98,7 @@ async function main(): Promise<void> {
 
   fs.mkdirSync(dataDir, { recursive: true });
   fs.writeFileSync(path.join(dataDir, "users.csv"), rows.join("\n") + "\n");
-  // The plans read the item ids from here rather than hard-coding cuids that
-  // change on every seed.
+
   fs.writeFileSync(
     path.join(dataDir, "items.csv"),
     `regularItemId,scarceItemId,restaurantId\n${regular.id},${scarce.id},${restaurant.id}\n`,

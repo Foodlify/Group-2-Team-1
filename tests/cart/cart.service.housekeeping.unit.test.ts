@@ -1,9 +1,3 @@
-/**
- * Cart Service — abandoned-cart housekeeping unit tests.
- *
- * The repository is mocked and the clock is frozen, so the cutoffs the
- * service computes from the TTL config can be asserted exactly.
- */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/modules/cart/cart.repository", () => ({
@@ -44,9 +38,8 @@ describe("sweepAbandoned", () => {
     const result = await cartService.sweepAbandoned();
 
     expect(mockedCarts.deleteAbandoned).toHaveBeenCalledWith({
-      // 24 hours before now
       guestBefore: new Date("2026-08-05T12:00:00.000Z"),
-      // 30 days before now
+
       customerBefore: new Date("2026-07-07T12:00:00.000Z"),
     });
     expect(result).toEqual({ deleted: 3 });

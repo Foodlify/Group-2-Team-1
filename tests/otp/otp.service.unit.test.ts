@@ -1,11 +1,3 @@
-/**
- * OTP Service — unit tests.
- *
- * The repository, mailer, and hashing helper are mocked: these tests pin the
- * ported flow's guarantees — per-email rate limiting, single active code,
- * hashed-at-rest storage, email-only delivery (the code must never appear in
- * the return value), and single-use verification.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/modules/otp/otp.repository", () => ({
@@ -24,8 +16,6 @@ vi.mock("../../src/shared/mail/mailer", () => ({
   },
 }));
 
-// Deterministic, instant "hashing" — the service must store/compare through
-// this helper, never the plaintext.
 vi.mock("../../src/shared/auth/password.helper", () => ({
   hashPassword: vi.fn(async (value: string) => `hashed:${value}`),
   comparePassword: vi.fn(
@@ -53,7 +43,6 @@ describe("sendOtp", () => {
 
     const result = await otpService.sendOtp(EMAIL, "registration");
 
-    // A single pending code per email+purpose: older ones are invalidated.
     expect(mockedRepo.deleteUnused).toHaveBeenCalledWith(EMAIL, "registration");
 
     const createArg = mockedRepo.create.mock.calls[0]?.[0] as {
@@ -61,14 +50,13 @@ describe("sendOtp", () => {
     };
     expect(createArg.data.email).toBe(EMAIL);
     expect(createArg.data.purpose).toBe("registration");
-    // Stored value is the hash of a 6-digit code, not the code itself.
+
     expect(createArg.data.codeHash).toMatch(/^hashed:\d{6}$/);
 
     const emailedCode = mockedMailer.sendOtp.mock.calls[0]?.[1];
     expect(emailedCode).toMatch(/^\d{6}$/);
     expect(createArg.data.codeHash).toBe(`hashed:${emailedCode}`);
 
-    // The response exposes the expiry ONLY — never the code.
     expect(Object.keys(result)).toEqual(["expiresAt"]);
     expect(new Date(result.expiresAt).getTime()).toBeGreaterThan(Date.now());
   });

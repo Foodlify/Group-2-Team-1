@@ -1,11 +1,3 @@
-/**
- * What the audit trail records about a transaction.
- *
- * Two things can go wrong here and neither shows up as a failing request. The
- * payload can quietly carry the gateway's metadata blob into a table nothing
- * ever prunes, and money can go in as a JavaScript number and come back out
- * slightly different. Both look fine in a response body.
- */
 import { describe, expect, it } from "vitest";
 import { Prisma } from "../../src/generated/prisma/client";
 import {
@@ -48,9 +40,6 @@ describe("the payload for a newly created transaction", () => {
   it("never copies the gateway's metadata blob", () => {
     const changes = auditCreated(transaction());
 
-    // The provider decides that JSON's shape, not us. Spreading the write
-    // payload — the obvious implementation — puts card details and whatever
-    // else the gateway sends into permanent, append-only storage.
     expect(changes).not.toHaveProperty("metadata");
     expect(JSON.stringify(changes)).not.toContain("4242");
   });
@@ -60,9 +49,6 @@ describe("the payload for a newly created transaction", () => {
       transaction({ amount: new Prisma.Decimal("12345678901234567.89") }),
     );
 
-    // Through a JS number this becomes 12345678901234568 — a different sum of
-    // money, recorded permanently, in the one table that is supposed to settle
-    // arguments about sums of money.
     expect(changes).toMatchObject({ amount: "12345678901234567.89" });
   });
 });
@@ -75,8 +61,6 @@ describe("the payload for a status transition", () => {
   });
 
   it("distinguishes a real settlement from a redelivered one", () => {
-    // Stripe redelivers webhooks. `to: SUCCESS` alone reads identically in
-    // both cases; only the `from` says whether money actually moved this time.
     expect(auditStatusChange("SUCCESS", "SUCCESS")).toEqual({
       status: { from: "SUCCESS", to: "SUCCESS" },
     });
@@ -106,8 +90,6 @@ describe("the payload for a gateway reference", () => {
   });
 
   it("omits a field the write never touched", () => {
-    // An entry that reports `externalRef: { from: "pi_123", to: undefined }`
-    // claims a change that did not happen.
     expect(
       auditGatewayReference("pi_123", { metadata: {} }),
     ).not.toHaveProperty("externalRef");

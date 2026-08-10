@@ -1,12 +1,3 @@
-/**
- * The refund ledger — what `refundOrderTransactions` writes when an order is
- * cancelled.
- *
- * This runs inside the cancelling database transaction, so it must not touch a
- * gateway. Its job is to record intent honestly and hand back the work: a
- * gateway refund is written PENDING because no money has moved yet, and the
- * row is returned so the caller can execute it after the commit.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/modules/transaction/transaction.repository", async () => {
@@ -20,8 +11,7 @@ vi.mock("../../src/modules/transaction/transaction.repository", async () => {
       updateStatus: vi.fn(),
       findMany: vi.fn(),
     },
-    // The class is kept real: `generateRefundTxNumber` is a pure static used
-    // by the code under test.
+
     TransactionRepository: actual.TransactionRepository,
   };
 });
@@ -59,8 +49,6 @@ describe("a card payment produces a refund that is not yet money returned", () =
   it("writes the REFUND row as PENDING, never SUCCESS", async () => {
     await transactionService.refundOrderTransactions("order_1", tx);
 
-    // The gateway has not been called yet — it cannot be, this is inside the
-    // database transaction. A SUCCESS here is a ledger that lies.
     expect(mockedRepo.createTransaction).toHaveBeenCalledWith(
       expect.objectContaining({ type: "REFUND", status: "PENDING" }),
       tx,
@@ -108,7 +96,6 @@ describe("cash needs no gateway, so nothing is handed back", () => {
       tx,
     );
 
-    // There is no provider to call, so the ledger entry IS the whole action.
     expect(mockedRepo.createTransaction).toHaveBeenCalledWith(
       expect.objectContaining({ status: "SUCCESS" }),
       tx,
@@ -128,7 +115,6 @@ describe("a payment that never succeeded is failed, not refunded", () => {
       tx,
     );
 
-    // Refunding money that was never taken would invent a credit.
     expect(mockedRepo.updateStatus).toHaveBeenCalledWith("txn_1", "FAILED", tx);
     expect(mockedRepo.createTransaction).not.toHaveBeenCalled();
     expect(pending).toEqual([]);
@@ -143,9 +129,6 @@ describe("finding refunds that are still owed", () => {
   it("looks for FAILED *and* PENDING refunds", async () => {
     await transactionService.findOutstandingRefunds();
 
-    // A refund stuck PENDING for days is an unpaid obligation just as much as
-    // a failed one. Listing only failures hides it from whoever is chasing
-    // money the business owes.
     expect(mockedRepo.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { type: "REFUND", status: { in: ["FAILED", "PENDING"] } },
@@ -156,7 +139,6 @@ describe("finding refunds that are still owed", () => {
   it("returns the oldest first", async () => {
     await transactionService.findOutstandingRefunds();
 
-    // Whatever has been owed longest is what needs chasing first.
     expect(mockedRepo.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ orderBy: { createdAt: "asc" } }),
     );
@@ -182,8 +164,6 @@ describe("finding the payment a refund draws on", () => {
       orderId: "order_1",
     } as never);
 
-    // Refunding against a failed payment would try to return money that never
-    // arrived.
     expect(payment?.id).toBe("the_real_one");
   });
 

@@ -3,12 +3,6 @@ import type { Prisma } from "../../generated/prisma/client";
 import { BaseRepository } from "../../shared/repositories/base.repository";
 import prisma from "../../config/prisma";
 
-/**
- * Every read here filters out soft-deleted rows. `findUnique` can't express
- * that (its `where` only takes unique fields), which is why the lookups below
- * use `findFirst` — dropping back to `findUnique` would silently resurrect
- * deleted items.
- */
 const notDeleted = { isDeleted: false } as const;
 
 export class MenuItemRepository extends BaseRepository<
@@ -18,15 +12,10 @@ export class MenuItemRepository extends BaseRepository<
     super(prisma.menuItem);
   }
 
-  /**
-   * Convenience method — find by primary key id.
-   * Entity-specific query methods should be added here as the application grows.
-   */
   async findById(id: string) {
     return prisma.menuItem.findFirst({ where: { id, ...notDeleted } });
   }
 
-  /** Restore is the only caller that legitimately wants a deleted row. */
   async findByIdIncludingDeleted(id: string) {
     return this.findUnique({ where: { id } });
   }
@@ -44,19 +33,6 @@ export class MenuItemRepository extends BaseRepository<
     });
   }
 
-  /**
-   * Reserves `quantity` units in a single conditional UPDATE:
-   * `WHERE id = ? AND stock >= quantity`. Postgres takes the row lock for the
-   * duration, so two concurrent checkouts can never both pass the check —
-   * the loser matches zero rows and gets `false`. This is what prevents
-   * overselling; a read-then-write check could not.
-   *
-   * Untracked items (stock IS NULL) never match the filter, so callers must
-   * skip them rather than treat `false` as "out of stock".
-   *
-   * `isDeleted` is part of the filter: an item removed from the menu after it
-   * landed in someone's cart must not be sellable at checkout.
-   */
   async reserveStock(
     menuItemId: string,
     quantity: number,
@@ -69,13 +45,6 @@ export class MenuItemRepository extends BaseRepository<
     return count > 0;
   }
 
-  /**
-   * Puts reserved units back (order cancelled). No-op for untracked items.
-   *
-   * Deliberately does NOT filter on `isDeleted`: if the item was removed from
-   * the menu between the order and its cancellation, those units still have to
-   * go back so the count stays honest for a later restore.
-   */
   async releaseStock(
     menuItemId: string,
     quantity: number,
@@ -87,7 +56,6 @@ export class MenuItemRepository extends BaseRepository<
     });
   }
 
-  /** All items belonging to a menu, oldest first. */
   async findByMenuId(menuId: string, includeDeleted = false) {
     return prisma.menuItem.findMany({
       where: { menuId, ...(includeDeleted ? {} : notDeleted) },
@@ -95,8 +63,6 @@ export class MenuItemRepository extends BaseRepository<
     });
   }
 
-  // ─── Soft delete ──────────────────────────────────────
-  /** Flags one item as deleted, recording who did it. */
   async softDeleteById(
     id: string,
     actorId: string,
@@ -108,10 +74,6 @@ export class MenuItemRepository extends BaseRepository<
     });
   }
 
-  /**
-   * Cascade step — flags every live item of the given menus. Runs inside the
-   * caller's transaction so a menu/restaurant delete is all-or-nothing.
-   */
   async softDeleteByMenuIds(
     menuIds: string[],
     actorId: string,
@@ -135,7 +97,6 @@ export class MenuItemRepository extends BaseRepository<
     });
   }
 
-  /** Cascade step for restoring a menu or a whole restaurant. */
   async restoreByMenuIds(
     menuIds: string[],
     actorId: string,
@@ -148,13 +109,7 @@ export class MenuItemRepository extends BaseRepository<
     return count;
   }
 
-  /**
-   * Paginated case-insensitive name search across the whole catalog, with the
-   * owning menu + restaurant joined in so each hit is actionable on its own.
-   */
   async searchPaginated(page: number, limit: number, search?: string) {
-    // Filtering on the item's own flag is enough because deleting a menu or a
-    // restaurant cascades the flag down — see `menuService.remove`.
     const where: Prisma.MenuItemWhereInput = search
       ? { name: { contains: search, mode: "insensitive" }, ...notDeleted }
       : { ...notDeleted };

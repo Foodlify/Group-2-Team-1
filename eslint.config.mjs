@@ -4,12 +4,6 @@ import prettier from "eslint-config-prettier";
 
 export default tseslint.config(
   {
-    // Build output, deps, generated Prisma client and logs are not linted.
-    // `scripts/` and `perf/*.js` are plain CommonJS Node tooling run directly
-    // by npm scripts, not application source — they legitimately use
-    // `require`, `__dirname` and `process`, none of which this config's
-    // browser-neutral globals allow. `perf/seed-load.ts` is NOT excluded: it
-    // imports from `src/` and is held to the same standard as the app.
     ignores: [
       "dist/**",
       "node_modules/**",
@@ -21,19 +15,14 @@ export default tseslint.config(
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
-  // Disables stylistic rules that conflict with Prettier (must come last).
+
   prettier,
   {
-    // The demo page's scripts run in a browser, not in Node. Linted rather
-    // than ignored — both are real code a browser executes, and a typo in the
-    // service worker in particular fails silently in the background where
-    // nobody is watching.
     files: ["public/demo/*.js"],
     languageOptions: {
       globals: {
-        // Service worker scope: `self` is the registration itself.
         self: "readonly",
-        // Page scope.
+
         window: "readonly",
         document: "readonly",
         navigator: "readonly",
@@ -45,11 +34,10 @@ export default tseslint.config(
   },
   {
     rules: {
-      // `any` is discouraged but allowed at typed boundaries (flagged, not fatal).
       "@typescript-eslint/no-explicit-any": "warn",
-      // Allow `declare global { namespace Express { ... } }` module augmentation.
+
       "@typescript-eslint/no-namespace": ["error", { allowDeclarations: true }],
-      // Allow intentionally-unused names prefixed with `_` (e.g. middleware next).
+
       "@typescript-eslint/no-unused-vars": [
         "warn",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },

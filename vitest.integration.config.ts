@@ -2,8 +2,6 @@ import { defineConfig } from "vitest/config";
 import dotenv from "dotenv";
 import webpush from "web-push";
 
-// `.env.test` first (a developer's local test database), falling back to
-// whatever is already exported — which is how CI supplies it.
 dotenv.config({ path: ".env.test", quiet: true });
 
 const url = process.env.DATABASE_URL_TEST;
@@ -15,8 +13,6 @@ if (!url) {
   );
 }
 
-// The suite TRUNCATEs every table between tests. Pointing it at a development
-// database would wipe it, so the database name must say what it is.
 const database = url.split("/").pop()?.split("?")[0] ?? "";
 if (!/test/i.test(database)) {
   throw new Error(
@@ -25,16 +21,6 @@ if (!/test/i.test(database)) {
   );
 }
 
-/**
- * A throwaway VAPID pair, generated fresh on every run.
- *
- * Push has to be *on* for these tests — an unconfigured deployment short-
- * circuits every send, so a suite that inherited the blank keys below would
- * assert nothing. Generated rather than committed because a key called
- * "private" does not belong in a repository even when it signs nothing, and
- * nothing here ever reaches a real push service: the transport is stubbed
- * wherever delivery matters.
- */
 const vapid = webpush.generateVAPIDKeys();
 
 export default defineConfig({
@@ -42,30 +28,22 @@ export default defineConfig({
     environment: "node",
     include: ["tests/integration/**/*.test.ts"],
     globalSetup: ["tests/integration/globalSetup.ts"],
-    // One database, one connection pool: files sharing it in parallel would
-    // truncate each other's rows mid-test. Sequential is the correct
-    // trade-off here — the suite is small and the isolation is absolute.
+
     fileParallelism: false,
-    // Migrations run once up front; the first file also pays connection setup.
+
     hookTimeout: 60_000,
     testTimeout: 20_000,
     env: {
       NODE_ENV: "test",
       DATABASE_URL: url,
       JWT_SECRET: "integration-secret",
-      // Blanked for the same reason the unit config blanks them: whether a
-      // developer happens to have Stripe or SMTP keys in `.env` must not
-      // change what the suite asserts. A test that passes only on the machine
-      // that configured a provider is worse than no test.
+
       STRIPE_SECRET_KEY: "",
       STRIPE_WEBHOOK_SECRET: "",
       SMTP_HOST: "",
       VAPID_PUBLIC_KEY: vapid.publicKey,
       VAPID_PRIVATE_KEY: vapid.privateKey,
-      // Google sign-in has to be *on* for its routes to exist, but nothing
-      // here ever reaches Google: the code exchange is stubbed in the one
-      // suite that covers it. These only decide `isConfigured` and what goes
-      // into the consent-screen URL.
+
       GOOGLE_CLIENT_ID: "integration-client-id.apps.googleusercontent.com",
       GOOGLE_CLIENT_SECRET: "integration-client-secret",
     },

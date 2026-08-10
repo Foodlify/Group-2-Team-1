@@ -1,14 +1,3 @@
-/**
- * Web Push subscriptions over real HTTP.
- *
- * Two things need a real database here. The unique index on `endpoint` is what
- * actually stops a browser being registered twice — no application check does
- * — and the cascade from `Customer` is what stops a deleted account's devices
- * being pushed to forever. Neither can be proved with a mock.
- *
- * Delivery itself is stubbed: these tests must never reach a real push service,
- * and what they are about is the rows, not the encryption.
- */
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import prisma from "../../src/config/prisma";
 import { notificationService } from "../../src/modules/notification/notification.service";
@@ -39,7 +28,6 @@ afterAll(async () => {
   await disconnect();
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("the VAPID public key", () => {
   it("is served without a token, because a page needs it before login", async () => {
     const res = await api().get("/api/v1/push/public-key");
@@ -51,13 +39,10 @@ describe("the VAPID public key", () => {
   it("is the key this deployment actually signs with", async () => {
     const res = await api().get("/api/v1/push/public-key");
 
-    // A key that did not match the private half would let browsers subscribe
-    // and then have every push rejected by the push service.
     expect(res.body.data.publicKey).toBe(pushTransport.publicKey);
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("registering a browser", () => {
   it("stores the subscription and reports it back without the keys", async () => {
     const res = await api()
@@ -69,8 +54,7 @@ describe("registering a browser", () => {
     expect(res.status).toBe(201);
     expect(res.body.data.endpoint).toBe(PHONE);
     expect(res.body.data.userAgent).toBe("IntegrationBrowser/1.0");
-    // The keys are the browser's half of the payload encryption. Only somebody
-    // copying the subscription elsewhere would want them back.
+
     expect(JSON.stringify(res.body)).not.toContain("p256dh-public-key");
     expect(JSON.stringify(res.body)).not.toContain("auth-secret-value");
   });
@@ -85,9 +69,6 @@ describe("registering a browser", () => {
     await send();
     const second = await send();
 
-    // Browsers re-issue the same subscription on every page load. Inserting it
-    // twice would mean every notification arriving twice on one device — and
-    // the unique index would 500 the request instead.
     expect(second.status).toBe(201);
     expect(await prisma.pushSubscription.count()).toBe(1);
   });
@@ -119,8 +100,6 @@ describe("registering a browser", () => {
       .set("Cookie", asCookie(other.token))
       .send(subscriptionBody(PHONE));
 
-    // One browser, one subscription — and it must not keep pushing the
-    // previous person's orders to whoever is holding the device now.
     const row = await prisma.pushSubscription.findUniqueOrThrow({
       where: { endpoint: PHONE },
     });
@@ -140,7 +119,7 @@ describe("registering a browser", () => {
       .send(subscriptionBody(PHONE));
 
     expect(anonymous.status).toBe(401);
-    // These are order notifications; an admin has no orders of their own.
+
     expect(admin.status).toBe(403);
   });
 
@@ -155,7 +134,6 @@ describe("registering a browser", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("removing a browser", () => {
   beforeEach(async () => {
     await api()
@@ -182,9 +160,6 @@ describe("removing a browser", () => {
       .set("Cookie", asCookie(other.token))
       .send({ endpoint: PHONE });
 
-    // Same answer as an endpoint that does not exist, so knowing one is not
-    // enough to silence another customer's notifications or to learn who
-    // registered it.
     expect(res.status).toBe(404);
     expect(await prisma.pushSubscription.count()).toBe(1);
   });
@@ -201,13 +176,10 @@ describe("removing a browser", () => {
   it("goes with the customer when the account is deleted", async () => {
     await prisma.customer.delete({ where: { id: customerId } });
 
-    // ON DELETE CASCADE. A row left behind is an address we would keep pushing
-    // to on behalf of an account that no longer exists.
     expect(await prisma.pushSubscription.count()).toBe(0);
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("an order status change reaches the registered browsers", () => {
   beforeEach(async () => {
     for (const endpoint of [PHONE, LAPTOP]) {
@@ -230,7 +202,7 @@ describe("an order status change reaches the registered browsers", () => {
     );
 
     expect(send).toHaveBeenCalledTimes(2);
-    // The enum is a database value; "OUT_FOR_DELIVERY" is not a sentence.
+
     expect(send.mock.calls[0]![1]).toMatchObject({
       body: "Your order is now out for delivery.",
       orderId: "order_1",
@@ -249,8 +221,6 @@ describe("an order status change reaches the registered browsers", () => {
       "DELIVERED",
     );
 
-    // The dead one goes; the live one stays. Keeping it would mean retrying an
-    // address that can never receive anything, on every future order.
     const remaining = await prisma.pushSubscription.findMany();
     expect(remaining.map((row) => row.endpoint)).toEqual([LAPTOP]);
   });
@@ -264,7 +234,6 @@ describe("an order status change reaches the registered browsers", () => {
       "DELIVERED",
     );
 
-    // An outage must not silently unsubscribe every customer.
     expect(await prisma.pushSubscription.count()).toBe(2);
   });
 
@@ -273,8 +242,6 @@ describe("an order status change reaches the registered browsers", () => {
       new Error("push service unreachable"),
     );
 
-    // This runs after the order has already committed. Throwing here would
-    // turn a delivered order into a 500.
     await expect(
       notificationService.notifyOrderStatusChanged(
         customerId,

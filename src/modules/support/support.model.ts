@@ -4,7 +4,6 @@ export {
   TicketCategory,
 } from "../../generated/prisma/enums";
 
-// Arrays kept for Zod schema definitions (z.enum requires a tuple)
 export const TICKET_STATUSES = [
   "OPEN",
   "IN_PROGRESS",

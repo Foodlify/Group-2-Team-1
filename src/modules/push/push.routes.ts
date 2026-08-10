@@ -10,13 +10,8 @@ import {
 
 const router: Router = Router();
 
-// The VAPID public key is public by definition — it is what a browser needs
-// before it can subscribe, and it can only be used to verify our sends. Left
-// unauthenticated so a page can fetch it before anyone has signed in.
 router.get("/public-key", controller.getPublicKey);
 
-// Subscriptions belong to a customer: these are order notifications, and an
-// admin has no orders of their own to be told about.
 router.use(authenticate, authorize("CUSTOMER"));
 
 router.get("/subscriptions", controller.listMine);
@@ -30,8 +25,6 @@ router.delete(
   validate({ body: UnsubscribeRequestSchema }),
   controller.unsubscribe,
 );
-
-// ─── OpenAPI ─────────────────────────────────────────────
 
 const tag = "Notifications";
 const errorRef = { $ref: "#/components/schemas/ErrorResponse" };

@@ -1,17 +1,3 @@
-/**
- * Google sign-in — matching, linking, and creating.
- *
- * This is the one place in the system where an identity established somewhere
- * else is allowed to open one of our accounts, so the rules are worth stating
- * as tests rather than as comments:
- *
- *   - a returning user is matched on Google's `sub`, never on their email,
- *     because Google lets people change the address;
- *   - an existing account is linked by email ONLY when Google says that
- *     address is verified — otherwise anyone who registers a Google account
- *     claiming somebody else's address walks into their account;
- *   - a disabled account stays shut, whichever door is tried.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/modules/user/user.repository", () => ({
@@ -76,7 +62,6 @@ beforeEach(() => {
   );
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("a returning Google user", () => {
   it("is matched on the Google subject", async () => {
     mockedUsers.findByGoogleId.mockResolvedValue(
@@ -99,9 +84,6 @@ describe("a returning Google user", () => {
       email: "brand-new@example.com",
     });
 
-    // Matching on email would have missed this account and created a second
-    // one — and worse, would hand the first account to whoever registers
-    // `old@example.com` next.
     expect(result.user.id).toBe("user_1");
     expect(mockedUsers.createGoogleCustomerUser).not.toHaveBeenCalled();
     expect(mockedUsers.findByEmail).not.toHaveBeenCalled();
@@ -118,7 +100,6 @@ describe("a returning Google user", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("linking to an account that already exists", () => {
   it("links when the email matches and Google verified it", async () => {
     mockedUsers.findByEmail.mockResolvedValue(account());
@@ -150,16 +131,11 @@ describe("linking to an account that already exists", () => {
       userService.loginWithGoogle({ ...PROFILE, emailVerified: false }),
     ).rejects.toThrow();
 
-    // The whole account-takeover path: register a Google account claiming
-    // somebody else's address, sign in, own their account.
     expect(mockedUsers.linkGoogleId).not.toHaveBeenCalled();
     expect(mockedUsers.createGoogleCustomerUser).not.toHaveBeenCalled();
   });
 
   it("refuses an unverified email even for a brand-new address", async () => {
-    // Nobody to take over here — but an unverified address is not proof of
-    // anything, and letting it create an account means the account's email
-    // could belong to someone else from the moment it exists.
     await expect(
       userService.loginWithGoogle({
         ...PROFILE,
@@ -175,8 +151,7 @@ describe("linking to an account that already exists", () => {
     await expect(userService.loginWithGoogle(PROFILE)).rejects.toMatchObject({
       message: userErrors.ACCOUNT_DISABLED.message,
     });
-    // A link written first would leave a Google identity attached to an
-    // account that then refuses to sign in — reachable, and useless.
+
     expect(mockedUsers.linkGoogleId).not.toHaveBeenCalled();
   });
 
@@ -191,7 +166,6 @@ describe("linking to an account that already exists", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("a Google identity nobody has registered", () => {
   it("creates a customer account", async () => {
     const result = await userService.loginWithGoogle(PROFILE);
@@ -207,8 +181,6 @@ describe("a Google identity nobody has registered", () => {
   it("issues our own session, not Google's", async () => {
     const result = await userService.loginWithGoogle(PROFILE);
 
-    // The Google tokens are dropped; from here on this is an ordinary session
-    // of ours, refreshable and revocable like any other.
     expect(result.tokens.accessToken).toBeTruthy();
     expect(result.tokens.refreshToken).toBeTruthy();
   });

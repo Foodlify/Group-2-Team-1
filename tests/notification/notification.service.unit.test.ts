@@ -1,10 +1,3 @@
-/**
- * Notification Service — unit tests.
- *
- * The mailer and customer repository are mocked. The point of these tests is
- * the contract the order flow relies on: notifications address the right
- * customer, and they NEVER throw.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/shared/mail/mailer", () => ({

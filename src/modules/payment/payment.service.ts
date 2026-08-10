@@ -26,10 +26,7 @@ class PaymentService {
 
   constructor() {
     this.register(cashOnDeliveryStrategy);
-    // Registered only when Stripe is actually configured, which is the same
-    // condition `SUPPORTED_PAYMENT_METHODS` uses to decide whether CREDIT_CARD
-    // is a valid request value. Keeping both on one condition means the API
-    // cannot advertise a method that has no strategy behind it.
+
     if (isStripeConfigured()) {
       this.register(stripeCardStrategy);
       logger.info("Stripe card payments enabled");
@@ -40,11 +37,6 @@ class PaymentService {
     this.strategies.set(strategy.method, strategy);
   }
 
-  /**
-   * Routes a payment to the strategy matching the given method, then
-   * persists a Transaction record (PENDING/SUCCESS/FAILED) and returns it.
-   * Pass `tx` to participate in the caller's database transaction.
-   */
   async processPayment(
     method: PaymentMethod,
     amount: number,
@@ -52,9 +44,7 @@ class PaymentService {
     tx?: Prisma.TransactionClient,
   ) {
     const strategy = this.requireStrategy(method);
-    // Checked per payment, not at boot, which is the whole point of the
-    // integration table: switching a gateway off has to take effect on the
-    // next request rather than on the next deploy.
+
     await paymentIntegrationService.assertMethodEnabled(method);
 
     const result = await strategy.pay(amount, context);
@@ -74,14 +64,6 @@ class PaymentService {
     );
   }
 
-  /**
-   * Second phase for gateway-backed methods: hands the payment off to the
-   * provider and records the reference it returns.
-   *
-   * MUST be called after the checkout transaction has committed — see the note
-   * on `PaymentStrategy.initiate`. Methods without a gateway return an empty
-   * initiation, so the caller needs no branching.
-   */
   async initiatePayment(
     method: PaymentMethod,
     transaction: TransactionModel,
@@ -93,8 +75,6 @@ class PaymentService {
 
     const initiation = await strategy.initiate(transaction, amount, context);
 
-    // Persisted immediately: the reference is what reconciles our ledger
-    // against the provider's, and losing it means a payment we cannot trace.
     if (initiation.externalRef || initiation.metadata) {
       await transactionService.attachGatewayReference(transaction.id, {
         externalRef: initiation.externalRef,
@@ -105,23 +85,10 @@ class PaymentService {
     return initiation;
   }
 
-  /**
-   * Executes refunds against the gateway that took the money, and records what
-   * came back. MUST be called after the cancelling transaction has committed.
-   *
-   * A refund that fails is marked FAILED and logged rather than thrown: the
-   * cancellation itself already succeeded and is correct — the order is gone
-   * and the stock is back — so failing the customer's request now would report
-   * something untrue. What must never happen is the failure going unrecorded,
-   * because a FAILED REFUND row is money this business still owes someone.
-   */
   async refundPayments(refunds: PendingGatewayRefund[]): Promise<void> {
     for (const { refund, payment } of refunds) {
       const strategy = this.strategies.get(payment.paymentMethod);
       if (!strategy?.refund) {
-        // The method that took the money no longer has a strategy — the key
-        // was removed, or the payment predates it. Nobody can return this
-        // automatically, so say so loudly instead of leaving it PENDING.
         logger.error("No refund strategy for a settled payment", {
           transactionId: refund.id,
           orderId: refund.orderId,
@@ -167,9 +134,6 @@ class PaymentService {
             },
           });
         } catch (writeError) {
-          // Last resort. If even this write fails the row stays PENDING, which
-          // still reads as "unfinished" rather than "done" — the safe way to
-          // be wrong.
           logger.error("Could not record the failed refund", {
             transactionId: refund.id,
             ...describeError(writeError),
@@ -179,33 +143,17 @@ class PaymentService {
     }
   }
 
-  /**
-   * Retries one unsettled refund against its gateway.
-   *
-   * Deliberately manual — there is no timer that does this. Sending customers'
-   * money back automatically, on a schedule, with nobody looking, is not a
-   * decision a cron job should be making; a failed refund usually means
-   * something is wrong that a retry alone will not fix.
-   *
-   * Safe to call repeatedly: the strategy first asks the gateway whether it
-   * already holds a refund for this ledger row, so a retry reconciles rather
-   * than sends the money twice.
-   */
   async retryRefund(transactionId: string): Promise<TransactionResponse> {
     const refund = await transactionService.findById(transactionId);
     if (!refund || refund.type !== "REFUND") {
       throw appError(paymentErrors.REFUND_NOT_FOUND);
     }
     if (refund.status === "SUCCESS") {
-      // Already settled. Re-running would be a no-op at best, so say plainly
-      // that there is nothing owed rather than pretending work was done.
       throw appError(paymentErrors.REFUND_ALREADY_SETTLED);
     }
 
     const payment = await transactionService.findPaymentForRefund(refund);
     if (!payment) {
-      // Nothing succeeded on this order, so there is no money to give back and
-      // no gateway reference to give it back through.
       await transactionService.recordGatewayOutcome(refund.id, "FAILED", {
         metadata: { error: "no successful payment found for this order" },
       });
@@ -214,20 +162,15 @@ class PaymentService {
 
     await this.refundPayments([{ refund, payment }]);
 
-    // Re-read: `refundPayments` records the outcome, so the row in hand is
-    // stale by the time it returns. Reporting the pre-retry state would tell
-    // the admin the retry did nothing.
     const settled = await transactionService.findById(transactionId);
     return toTransactionResponse(settled ?? refund);
   }
 
-  /** Refunds that have not reached the customer yet. */
   async outstandingRefunds(limit?: number): Promise<TransactionResponse[]> {
     const refunds = await transactionService.findOutstandingRefunds(limit);
     return refunds.map(toTransactionResponse);
   }
 
-  /** Methods with a registered strategy — the honest list of what works. */
   supportedMethods(): PaymentMethod[] {
     return [...this.strategies.keys()];
   }

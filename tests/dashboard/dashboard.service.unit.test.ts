@@ -1,17 +1,3 @@
-/**
- * Dashboard reporting.
- *
- * A report is trusted precisely because nobody checks it by hand, which makes
- * a quietly wrong number worse here than almost anywhere else. Three things
- * decide whether these figures are true:
- *
- *   1. refunds are SUBTRACTED, not added — the ledger stores what moved, not
- *      which direction, so a refund row carries a positive amount;
- *   2. only SUCCESS counts — a pending card payment is a customer looking at a
- *      checkout page, not money in the account;
- *   3. money is summed as Decimal — the order module already had to be fixed
- *      once for `8.15 x 3` coming out as 24.450000000000003.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/modules/dashboard/dashboard.repository", () => ({
@@ -64,7 +50,6 @@ beforeEach(() => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("refunds are subtracted from revenue, never added", () => {
   it("nets a refund off the payments in the same bucket", async () => {
     mockedRepo.transactionSeries.mockResolvedValue([
@@ -76,7 +61,7 @@ describe("refunds are subtracted from revenue, never added", () => {
 
     expect(report.series[0]!.payments).toBe(500);
     expect(report.series[0]!.refunds).toBe(120);
-    // Adding them would report 620 — a day of refunds becoming a record day.
+
     expect(report.series[0]!.net).toBe(380);
   });
 
@@ -88,7 +73,6 @@ describe("refunds are subtracted from revenue, never added", () => {
 
     const report = await dashboardService.getTransactionReport(query);
 
-    // A `type === "REFUND"` check would silently miss this and overstate net.
     expect(report.series[0]!.refunds).toBe(30);
     expect(report.series[0]!.net).toBe(70);
   });
@@ -101,8 +85,6 @@ describe("refunds are subtracted from revenue, never added", () => {
 
     const report = await dashboardService.getTransactionReport(query);
 
-    // Refunding yesterday's orders today is a real negative day. Hiding it
-    // would make the books stop adding up across periods.
     expect(report.series[0]!.net).toBe(-150);
   });
 
@@ -120,10 +102,8 @@ describe("refunds are subtracted from revenue, never added", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("money is exact", () => {
   it("sums prices that float arithmetic gets wrong", async () => {
-    // 8.15 + 29.99 ... the values the order module was fixed for.
     mockedRepo.transactionSeries.mockResolvedValue([
       bucket("2026-08-01T00:00:00.000Z", "ORDER_PAYMENT", "24.45"),
       bucket("2026-08-02T00:00:00.000Z", "ORDER_PAYMENT", "209.93"),
@@ -131,12 +111,10 @@ describe("money is exact", () => {
 
     const report = await dashboardService.getTransactionReport(query);
 
-    // 24.45 + 209.93 is 234.38000000000002 added as floats.
     expect(report.totals.payments).toBe(234.38);
   });
 
   it("keeps a long series drift-free", async () => {
-    // 11 x 0.07 — float summation drifts to 0.7699999999999999.
     mockedRepo.transactionSeries.mockResolvedValue(
       Array.from({ length: 11 }, (_, i) =>
         bucket(
@@ -160,19 +138,15 @@ describe("money is exact", () => {
 
     const report = await dashboardService.getTransactionReport(query);
 
-    // 0.3 - 0.1 is 0.19999999999999998 in floats.
     expect(report.series[0]!.net).toBe(0.2);
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("only settled money is reported", () => {
   it("asks the database for SUCCESS transactions only", async () => {
     await dashboardService.getOverview();
 
     for (const [where] of mockedRepo.sumByType.mock.calls) {
-      // A PENDING card payment is a checkout page the customer was shown.
-      // Counting it as revenue invents money.
       expect(where).toMatchObject({ status: "SUCCESS" });
     }
   });
@@ -180,8 +154,6 @@ describe("only settled money is reported", () => {
   it("scopes a restaurant's revenue through its orders", async () => {
     await dashboardService.getRestaurantReport("rest_1", query);
 
-    // Transactions carry no restaurantId — reaching it any other way would
-    // report the whole platform's revenue under one restaurant.
     expect(mockedRepo.sumByType).toHaveBeenCalledWith({
       status: "SUCCESS",
       order: { restaurantId: "rest_1" },
@@ -189,7 +161,6 @@ describe("only settled money is reported", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("the header always agrees with the rows", () => {
   it("totals are the sum of the series, not a separate query", async () => {
     mockedRepo.transactionSeries.mockResolvedValue([
@@ -227,9 +198,6 @@ describe("the header always agrees with the rows", () => {
   });
 
   it("merges rows in one bucket without float drift", async () => {
-    // Same bucket, two payment rows. 0.1 + 0.2 is 0.30000000000000004 as
-    // floats — the accumulation INSIDE a bucket needs Decimal just as much as
-    // the total across buckets, and only same-bucket rows exercise it.
     mockedRepo.transactionSeries.mockResolvedValue([
       bucket("2026-08-01T00:00:00.000Z", "ORDER_PAYMENT", "0.10"),
       bucket("2026-08-01T00:00:00.000Z", "ORDER_PAYMENT", "0.20"),
@@ -254,7 +222,6 @@ describe("the header always agrees with the rows", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("the reporting window", () => {
   it("defaults to the last 30 days", async () => {
     await dashboardService.getTransactionReport(query);
@@ -284,14 +251,12 @@ describe("the reporting window", () => {
       to: "2026-05-08T00:00:00.000Z",
     });
 
-    // Without this a caller cannot tell which period the numbers describe.
     expect(report.from).toBe("2026-05-01T00:00:00.000Z");
     expect(report.to).toBe("2026-05-08T00:00:00.000Z");
     expect(report.granularity).toBe("day");
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("counters", () => {
   it("reports cancelled and delivered orders from the status breakdown", async () => {
     mockedRepo.countOrdersByStatus.mockResolvedValue(
@@ -318,8 +283,6 @@ describe("counters", () => {
 
     const overview = await dashboardService.getOverview();
 
-    // `groupBy` omits empty statuses entirely; leaking that as undefined would
-    // serialise the field away and break any client reading it.
     expect(overview.counters.cancelledOrders).toBe(0);
     expect(overview.counters.deliveredOrders).toBe(0);
   });
@@ -331,14 +294,8 @@ describe("counters", () => {
       .map(([where]) => (where as { orderDate?: { gte: Date } }).orderDate?.gte)
       .filter((d): d is Date => d instanceof Date);
 
-    // Four windows now: orders today and this month, plus cancelled orders
-    // over the same two. Asserted as a property of every window rather than by
-    // position, so adding a fifth counter cannot break this test without
-    // breaking the rule it is really about.
     expect(windows.length).toBeGreaterThanOrEqual(2);
     for (const start of windows) {
-      // Anything else means the boundary was taken from the server's local
-      // clock, and the same request would answer differently on another host.
       expect(start.getUTCHours()).toBe(0);
       expect(start.getUTCMinutes()).toBe(0);
       expect(start.getUTCSeconds()).toBe(0);
@@ -353,7 +310,6 @@ describe("counters", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("per-restaurant reports", () => {
   it("404s an unknown or soft-deleted restaurant", async () => {
     mockedRepo.findRestaurant.mockResolvedValue(null);
@@ -372,8 +328,6 @@ describe("per-restaurant reports", () => {
       dashboardService.getRestaurantReport("gone", query),
     ).rejects.toThrow();
 
-    // An unknown id must not silently return an all-zero report that reads
-    // like a real restaurant with no business.
     expect(mockedRepo.transactionSeries).not.toHaveBeenCalled();
   });
 
@@ -396,21 +350,11 @@ describe("per-restaurant reports", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
-/**
- * The counters the scope map names by the day and by the month.
- *
- * Every one of these is a `countOrders` call with a different filter, so the
- * mistake to guard against is not arithmetic — it is a counter wired to the
- * wrong window, or to no window at all, which reads as a plausible number
- * forever. Each assertion pins the filter rather than the result.
- */
 const wheres = () =>
   mockedRepo.countOrders.mock.calls.map(
     ([where]) => where as Record<string, unknown>,
   );
 
-/** Filters whose `orderDate.gte` is a UTC midnight (the day boundary). */
 const isUtcDayStart = (d: Date): boolean =>
   d.getUTCHours() === 0 &&
   d.getUTCMinutes() === 0 &&
@@ -420,11 +364,9 @@ const isUtcDayStart = (d: Date): boolean =>
 const isUtcMonthStart = (d: Date): boolean =>
   isUtcDayStart(d) && d.getUTCDate() === 1;
 
-/** The window a filter carries, or undefined for an unwindowed count. */
 const gteOf = (w: Record<string, unknown>): Date | undefined =>
   (w.orderDate as { gte?: Date } | undefined)?.gte;
 
-/** True only for `status: { notIn: [...] }`, never for a plain string status. */
 const isNotIn = (status: unknown): status is { notIn: string[] } =>
   typeof status === "object" && status !== null && "notIn" in status;
 
@@ -436,8 +378,7 @@ describe("Daily / Monthly Cancelled Orders — system overview", () => {
     expect(cancelled).toHaveLength(2);
     for (const w of cancelled) {
       const gte = gteOf(w);
-      // A boundary taken from the server's local clock would answer
-      // differently on another host for the same request.
+
       expect(gte && isUtcDayStart(gte)).toBe(true);
     }
     expect(cancelled.some((w) => isUtcMonthStart(gteOf(w)!))).toBe(true);
@@ -447,9 +388,7 @@ describe("Daily / Monthly Cancelled Orders — system overview", () => {
     mockedRepo.countOrdersByStatus.mockResolvedValue(
       new Map([["CANCELLED", 900]]),
     );
-    // Routed by call order, not by the date: on the first of the month the day
-    // and month boundaries are the same instant, and a test that told them
-    // apart by value would pass for 30 days and fail on the 31st.
+
     const cancelledCalls: number[] = [4, 30];
     let seen = 0;
     mockedRepo.countOrders.mockImplementation(async (where) => {
@@ -460,8 +399,6 @@ describe("Daily / Monthly Cancelled Orders — system overview", () => {
 
     const overview = await dashboardService.getOverview();
 
-    // Three different questions, three different numbers. The failure this
-    // catches is a daily counter quietly reading the all-time total.
     expect(overview.counters.cancelledOrders).toBe(900);
     expect(overview.counters.cancelledOrdersToday).toBe(4);
     expect(overview.counters.cancelledOrdersThisMonth).toBe(30);
@@ -469,7 +406,6 @@ describe("Daily / Monthly Cancelled Orders — system overview", () => {
 });
 
 describe("the restaurant counters the map names", () => {
-  /** A window deliberately nowhere near today. */
   const farWindow = {
     granularity: "day" as const,
     from: "2020-01-05T00:00:00.000Z",
@@ -479,8 +415,6 @@ describe("the restaurant counters the map names", () => {
   it("fixes the day and month counters instead of following the query window", async () => {
     await dashboardService.getRestaurantReport("rest_1", farWindow);
 
-    // Exactly one counter may move with `from`/`to` — `ordersInRange`. If a
-    // second one did, "today" would mean whatever the caller asked for.
     const windowed = wheres().filter(
       (w) => gteOf(w)?.getUTCFullYear() === 2020,
     );
@@ -492,10 +426,7 @@ describe("the restaurant counters the map names", () => {
 
     const notDelivered = wheres().filter((w) => isNotIn(w.status));
     expect(notDelivered).toHaveLength(1);
-    // The judgement call, pinned. The map lists cancelled orders as their own
-    // counter next to this one, so an order that was called off is not an
-    // order still owed to anybody — the two are a partition, not overlapping
-    // sets.
+
     expect((notDelivered[0]!.status as { notIn: string[] }).notIn).toEqual([
       "DELIVERED",
       "CANCELLED",
@@ -504,9 +435,6 @@ describe("the restaurant counters the map names", () => {
   });
 
   it("routes each counter to its own response field", async () => {
-    // One distinct number per call, in the order the service issues them, so
-    // any pair swapped in the destructuring shows up as two wrong fields —
-    // the failure mode of assembling seven counters from one Promise.all.
     const byCallOrder = [500, 99, 20, 60, 3, 12, 7];
     let seen = 0;
     mockedRepo.countOrders.mockImplementation(

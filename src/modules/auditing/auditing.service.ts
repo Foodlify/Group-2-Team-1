@@ -11,14 +11,6 @@ export interface AuditListQuery {
   actorId?: string;
 }
 
-/**
- * Reading the audit trail.
- *
- * Read-only by design. Recording happens at the repository layer, inside the
- * transaction that makes the change — routing it through here would mean the
- * service could be called on its own, and an audit entry written independently
- * of the change it describes is a claim, not a record.
- */
 class AuditingService {
   async list(query: AuditListQuery) {
     const where: Prisma.AuditingEventWhereInput = {

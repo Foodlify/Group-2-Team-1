@@ -3,7 +3,6 @@ export {
   MenuChangeEntity,
 } from "../../generated/prisma/enums";
 
-// Arrays kept for Zod schema definitions (z.enum requires a tuple)
 export const MENU_CHANGE_ENTITIES = ["MENU", "MENU_ITEM"] as const;
 export const MENU_CHANGE_ACTIONS = [
   "CREATED",

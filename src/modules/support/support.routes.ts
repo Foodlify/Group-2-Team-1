@@ -11,7 +11,6 @@ import {
   UpdateTicketStatusRequestSchema,
 } from "./support.validation";
 
-// ─── My tickets (mounted at /customers/me/support-tickets) ───
 export const mySupportRouter: Router = Router();
 mySupportRouter.use(authenticate);
 mySupportRouter.post(
@@ -26,9 +25,6 @@ mySupportRouter.get(
   controller.getMyTicket,
 );
 
-// ─── Admin ticket management (mounted at /support-tickets) ───
-// Status changes and resolution are agent actions — ADMIN only (G1T1 gated
-// these behind customer auth by mistake).
 export const adminSupportRouter: Router = Router();
 adminSupportRouter.use(authenticate, authorize("ADMIN"));
 adminSupportRouter.get(
@@ -53,7 +49,6 @@ adminSupportRouter.patch(
   controller.resolveTicket,
 );
 
-// ─── OpenAPI Documentation ───────────────────────────────
 const tag = "Support";
 const errorRef = { $ref: "#/components/schemas/ErrorResponse" };
 const validationErrorRef = {

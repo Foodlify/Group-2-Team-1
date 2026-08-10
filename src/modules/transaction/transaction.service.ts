@@ -13,18 +13,15 @@ import type {
   PaymentMethod,
 } from "./transaction.model";
 
-/** A transaction with its gateway details joined — the admin listing's shape. */
 export type TransactionWithDetails = TransactionModel & {
   details: TransactionDetailsModel | null;
 };
 
-/** A REFUND row awaiting execution against the gateway that took the money. */
 export interface PendingGatewayRefund {
   refund: TransactionModel;
   payment: TransactionModel;
 }
 
-/** Filters shared by the customer and admin listings. */
 export interface TransactionListQuery {
   page: number;
   limit: number;
@@ -38,26 +35,10 @@ class TransactionService {
     return transactionRepository.findById(id);
   }
 
-  /**
-   * A customer's own transactions.
-   *
-   * Ownership runs through the order — a transaction has no customer of its
-   * own — so this filters on `order.customerId` rather than trusting anything
-   * from the request. A row with no order (the schema allows it, for future
-   * wallet top-ups) belongs to nobody and is correctly invisible here.
-   */
   async listForCustomer(customerId: string, query: TransactionListQuery) {
     return this.list({ ...query, customerId });
   }
 
-  /**
-   * Every transaction, for the admin view — with the gateway's own details.
-   *
-   * Those are deliberately absent from the customer listing above: session and
-   * PaymentIntent ids, the provider's raw status and its failure text are
-   * operational facts about our integration, not information a customer is
-   * owed about their own payment.
-   */
   async listAll(query: TransactionListQuery) {
     return this.list(query, true) as Promise<{
       rows: TransactionWithDetails[];
@@ -83,14 +64,6 @@ class TransactionService {
     );
   }
 
-  /**
-   * The row a receipt is built from, or null if this customer may not see it.
-   *
-   * `customerId` is undefined for an admin. For anyone else a mismatch returns
-   * null rather than a distinct error: telling an unauthorised caller that the
-   * id exists is itself a leak, and "not found" is the honest answer to
-   * "show me a transaction that is not yours".
-   */
   async findReceiptSource(id: string, customerId?: string) {
     const transaction = await transactionRepository.findForReceipt(id);
     if (!transaction) return null;
@@ -139,14 +112,6 @@ class TransactionService {
     return transactionRepository.attachGatewayReference(id, data, tx);
   }
 
-  /**
-   * The one still-open gateway payment for an order, or null.
-   *
-   * `CASH` is excluded because it has no gateway to hear back from — its
-   * PENDING row is settled by delivery, not by a callback. Returning null when
-   * nothing is pending is what makes webhook handling idempotent: a redelivered
-   * event finds the payment already settled and stops.
-   */
   async findPendingGatewayPayment(
     orderId: string,
     tx?: Prisma.TransactionClient,
@@ -162,16 +127,6 @@ class TransactionService {
     );
   }
 
-  /**
-   * Settles cash-on-delivery payments for a delivered order — marks their
-   * PENDING transaction SUCCESS once the courier has collected the money.
-   * Called when order status transitions to DELIVERED.
-   *
-   * Scoped to CASH on purpose: gateway-backed payments (card, wallet) settle
-   * via their own success/webhook flow, never by a delivery status change —
-   * marking a stuck-PENDING online payment SUCCESS here would claim funds
-   * that were never actually received.
-   */
   async settleOrderTransactions(
     orderId: string,
     tx: Prisma.TransactionClient,
@@ -184,20 +139,6 @@ class TransactionService {
     }
   }
 
-  /**
-   * Reconciles an order's transactions when it is cancelled: issues a
-   * matching REFUND for every successful payment, and marks any
-   * still-pending payment as FAILED. Runs inside the caller's transaction.
-   *
-   * A gateway-backed refund is written as **PENDING**, not SUCCESS: the money
-   * has not moved until the provider says so, and a ledger that claims
-   * otherwise is simply wrong. Returns those rows so the caller can execute
-   * them against the gateway once the transaction has committed — the network
-   * call must not happen in here.
-   *
-   * Cash refunds stay SUCCESS: there is no gateway to call, so the ledger
-   * entry is the whole of the action.
-   */
   async refundOrderTransactions(
     orderId: string,
     tx: Prisma.TransactionClient,
@@ -232,14 +173,6 @@ class TransactionService {
     return pending;
   }
 
-  /**
-   * Refunds that have not reached the customer: `FAILED` ones the gateway
-   * rejected, and `PENDING` ones we never heard back about.
-   *
-   * Both are unsettled obligations, which is why they are returned together —
-   * a PENDING refund that has been sitting for days is as much a problem as a
-   * failed one, and listing only failures would hide it.
-   */
   async findOutstandingRefunds(limit = 100) {
     return transactionRepository.findMany({
       where: { type: "REFUND", status: { in: ["FAILED", "PENDING"] } },
@@ -248,11 +181,6 @@ class TransactionService {
     });
   }
 
-  /**
-   * The payment a refund is returning money from — the SUCCESS `ORDER_PAYMENT`
-   * on the same order. Needed to reach the gateway reference, which lives on
-   * the payment and not on the refund.
-   */
   async findPaymentForRefund(refund: TransactionModel) {
     if (!refund.orderId) return null;
     const txs = await transactionRepository.findByOrderId(refund.orderId);
@@ -262,10 +190,6 @@ class TransactionService {
     );
   }
 
-  /**
-   * Records a gateway's answer on a payment or a refund: the resulting state
-   * plus the provider's own reference and metadata, in a single write.
-   */
   async recordGatewayOutcome(
     id: string,
     status: TransactionStatus,

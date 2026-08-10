@@ -1,10 +1,6 @@
 import { z } from "zod";
 import { schemaRegistry } from "../../openapi/registry";
 
-/**
- * Query parameters for paginated list endpoints.
- * `z.coerce.number()` converts query string values (which are always strings) to numbers.
- */
 export const PaginationQuerySchema = z
   .object({
     page: z.coerce.number().int().positive().default(1).meta({
@@ -21,9 +17,6 @@ export const PaginationQuerySchema = z
     description: "Pagination query parameters",
   });
 
-/**
- * Metadata returned in paginated responses.
- */
 export const PaginationMetaSchema = z
   .object({
     page: z.number().int().positive(),
@@ -38,10 +31,6 @@ export const PaginationMetaSchema = z
     description: "Pagination metadata",
   });
 
-/**
- * Helper to build a paginated response schema for a given item type.
- * Usage: `PaginatedResponseSchema(UserSchema)` → `{ data: User[], meta: PaginationMeta }`
- */
 export const PaginatedResponseSchema = <T extends z.ZodType>(itemSchema: T) =>
   z.object({
     success: z.literal(true),
@@ -49,10 +38,8 @@ export const PaginatedResponseSchema = <T extends z.ZodType>(itemSchema: T) =>
     meta: PaginationMetaSchema,
   });
 
-// Register with OpenAPI components
 schemaRegistry.register("PaginationQuery", PaginationQuerySchema);
 schemaRegistry.register("PaginationMeta", PaginationMetaSchema);
 
-// TypeScript types
 export type PaginationQuery = z.infer<typeof PaginationQuerySchema>;
 export type PaginationMeta = z.infer<typeof PaginationMetaSchema>;

@@ -9,7 +9,6 @@ import { cartService } from "./cart.service";
 import type { CartOwner } from "./cart.model";
 import type { CartItemIdParams } from "./cart.validation";
 
-/** Header the guest cart's opaque token travels in, both ways. */
 export const CART_TOKEN_HEADER = "x-cart-token";
 
 const readGuestToken = (req: Request): string | undefined => {
@@ -17,16 +16,6 @@ const readGuestToken = (req: Request): string | undefined => {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 };
 
-/**
- * Resolves who the cart belongs to: the signed-in customer (403 if the
- * account has no customer profile) or the anonymous visitor identified by
- * `X-Cart-Token`.
- *
- * `createIfMissing` is only true for add-item — the one operation that may
- * legitimately start a brand-new guest cart. Reads and mutations of an
- * existing cart require the caller to already hold a token, so a missing
- * header can't silently create an empty cart on every request.
- */
 const resolveOwner = async (
   req: Request,
   createIfMissing = false,
@@ -47,12 +36,9 @@ const resolveOwner = async (
   return { guestToken: cartService.newGuestToken() };
 };
 
-/** Echoes the token back so a guest client can keep using its cart. */
 const exposeGuestToken = (res: Response, owner: CartOwner): void => {
   if ("guestToken" in owner) res.setHeader("X-Cart-Token", owner.guestToken);
 };
-
-// ─── Handlers ────────────────────────────────────────────
 
 export const getMyCart = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {

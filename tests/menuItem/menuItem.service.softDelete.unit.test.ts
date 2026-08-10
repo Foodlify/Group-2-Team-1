@@ -1,11 +1,3 @@
-/**
- * MenuItem Service — soft delete + restore unit tests.
- *
- * The case this feature exists for: an item referenced by a past order could
- * never be hard-deleted (`onDelete: Restrict`), so menus accumulated dead
- * items. These assert that removing one now flags it, audits it, and drops the
- * cached menu it belonged to.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/modules/menuItem/menuItem.repository", () => ({
@@ -186,7 +178,7 @@ describe("restore", () => {
 
   it("refuses to restore into a still-deleted menu", async () => {
     mockedItems.findByIdIncludingDeleted.mockResolvedValue(deletedItemRow);
-    // Filtered lookup finds nothing → the menu is itself soft-deleted.
+
     mockedMenus.findById.mockResolvedValue(null);
 
     await expect(

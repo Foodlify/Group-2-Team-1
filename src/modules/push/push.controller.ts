@@ -24,8 +24,7 @@ export const subscribe = asyncHandler(
     const subscription = await pushService.subscribe(
       customerId,
       req.body as PushSubscriptionInput,
-      // Stored only so a customer can tell one device from another in the
-      // list. Truncated: this header is attacker-controlled and unbounded.
+
       req.get("user-agent")?.slice(0, 255),
     );
     sendSuccess(res, subscription, "Subscribed", StatusCodes.CREATED);

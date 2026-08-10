@@ -1,9 +1,3 @@
-/**
- * Preferred Payment Service — unit tests.
- *
- * The repository is mocked so each test asserts pure service logic —
- * "IF the repository returns X, THEN the service does Y" — with no database.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock(
@@ -76,7 +70,7 @@ describe("create", () => {
 
   it("translates the DB unique violation into ALREADY_SAVED (409)", async () => {
     mocked.countByCustomerId.mockResolvedValue(1);
-    // Shape matched by `isUniqueViolation` (Prisma P2002).
+
     mocked.create.mockRejectedValue({ code: "P2002" });
 
     await expect(
@@ -128,7 +122,7 @@ describe("setDefault", () => {
 
 describe("remove", () => {
   it("tells the repository whether the deleted setting was the default", async () => {
-    mocked.findById.mockResolvedValue(settingRow); // isDefault: true
+    mocked.findById.mockResolvedValue(settingRow);
     mocked.deleteAndReassignDefault.mockResolvedValue(undefined);
 
     await preferredPaymentService.remove("cust_1", "set_1");

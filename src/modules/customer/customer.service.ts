@@ -20,18 +20,12 @@ class CustomerService {
     return customerRepository.findByUserId(userId);
   }
 
-  /**
-   * Resolves the Customer id for an authenticated user. Throws 403 if the
-   * account has no customer profile (e.g. an ADMIN account) — used by the
-   * customer-scoped cart/order flows.
-   */
   async requireCustomerIdByUserId(userId: string): Promise<string> {
     const customer = await customerRepository.findByUserId(userId);
     if (!customer) throw appError(customerErrors.NOT_A_CUSTOMER);
     return customer.id;
   }
 
-  // ─── Profile (me) ─────────────────────────────────────
   async getMe(userId: string): Promise<CustomerResponse> {
     const customer = await customerRepository.findByUserIdWithDetails(userId);
     if (!customer) throw appError(customerErrors.NOT_A_CUSTOMER);
@@ -61,7 +55,6 @@ class CustomerService {
     return this.getMe(userId);
   }
 
-  // ─── Private helpers ──────────────────────────────────
   private toCustomerResponse(c: CustomerDetails): CustomerResponse {
     return {
       id: c.id,

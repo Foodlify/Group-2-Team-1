@@ -13,16 +13,8 @@ const OTP_EXPIRY_MINUTES = 10;
 const MAX_OTPS_PER_WINDOW = 3;
 const RATE_LIMIT_WINDOW_MINUTES = 10;
 
-/**
- * Email OTP flow (ported from Kamal's `customer-management` branch).
- * Changes from the original:
- * - the code is EMAILED (nodemailer), never returned in the API response;
- * - pending-code invalidation is scoped to the same purpose;
- * - hashing goes through the shared password helper.
- */
 class OtpService {
   private generateCode(): string {
-    // crypto.randomInt is unbiased — always six digits (100000–999999).
     return crypto.randomInt(100000, 1000000).toString();
   }
 
@@ -30,8 +22,6 @@ class OtpService {
     email: string,
     purpose: OtpPurpose,
   ): Promise<{ expiresAt: string }> {
-    // App-level rate limit per email+purpose, independent of the HTTP limiter
-    // (which is per-IP and can't stop a distributed guesser).
     const windowStart = new Date(
       Date.now() - RATE_LIMIT_WINDOW_MINUTES * 60 * 1000,
     );
@@ -40,7 +30,6 @@ class OtpService {
       throw appError(otpErrors.TOO_MANY_REQUESTS);
     }
 
-    // Single active code per email+purpose — a new request voids older codes.
     await otpRepository.deleteUnused(email, purpose);
 
     const code = this.generateCode();
@@ -50,8 +39,6 @@ class OtpService {
       data: { email, codeHash: await hashPassword(code), purpose, expiresAt },
     });
 
-    // Send AFTER persisting — if the mail transport throws, no orphaned
-    // "sent" state exists and the client simply retries.
     await mailer.sendOtp(email, code, purpose, OTP_EXPIRY_MINUTES);
 
     return { expiresAt: expiresAt.toISOString() };

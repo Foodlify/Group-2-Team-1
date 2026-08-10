@@ -14,10 +14,8 @@ import {
 
 const router: Router = Router();
 
-// All customer routes require an authenticated user.
 router.use(authenticate);
 
-// ─── Profile ─────────────────────────────────────────────
 router.get("/me", controller.getMe);
 router.patch(
   "/me",
@@ -25,7 +23,6 @@ router.patch(
   controller.updateMe,
 );
 
-// ─── Addresses ───────────────────────────────────────────
 router.get("/me/addresses", controller.listAddresses);
 router.post(
   "/me/addresses",
@@ -48,7 +45,6 @@ router.patch(
   controller.setDefaultAddress,
 );
 
-// ─── Preferred payment settings ──────────────────────────
 router.get("/me/payment-settings", controller.listPaymentSettings);
 router.post(
   "/me/payment-settings",
@@ -66,13 +62,12 @@ router.delete(
   controller.deletePaymentSetting,
 );
 
-// ─── OpenAPI Documentation ───────────────────────────────
 const tag = "Customer";
 const errorRef = { $ref: "#/components/schemas/ErrorResponse" };
 const validationErrorRef = {
   $ref: "#/components/schemas/ValidationErrorResponse",
 };
-// Cookie is the primary transport; Bearer header is the documented fallback.
+
 const security: Record<string, string[]>[] = [
   { cookieAuth: [] },
   { BearerAuth: [] },

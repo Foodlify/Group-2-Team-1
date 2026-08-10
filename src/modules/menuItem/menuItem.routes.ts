@@ -12,7 +12,6 @@ import {
 
 const router: Router = Router();
 
-// ─── Public catalog reads ────────────────────────────────
 router.get(
   "/",
   validate({ query: MenuItemSearchQuerySchema }),
@@ -24,7 +23,6 @@ router.get(
   controller.getMenuItem,
 );
 
-// ─── Admin management (ADMIN only) ───────────────────────
 router.post(
   "/",
   authenticate,
@@ -57,7 +55,6 @@ router.patch(
   controller.restoreMenuItem,
 );
 
-// ─── OpenAPI ─────────────────────────────────────────────
 const tag = "Catalog";
 const errorRef = { $ref: "#/components/schemas/ErrorResponse" };
 const validationErrorRef = {

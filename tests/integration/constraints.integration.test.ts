@@ -1,14 +1,3 @@
-/**
- * Database constraints — integration.
- *
- * Every rule here lives in PostgreSQL, not in TypeScript: the two CHECK
- * constraints hand-written into migrations (Prisma can't express them), the
- * unique indexes the services deliberately lean on instead of a racy
- * read-then-insert, and the referential actions.
- *
- * They are worth testing precisely because application code *doesn't* enforce
- * them — a dropped constraint would leave every unit test green.
- */
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import prisma from "../../src/config/prisma";
 import {
@@ -126,8 +115,7 @@ describe("uniqueness the services rely on instead of pre-checking", () => {
     };
 
     await prisma.restaurantRate.create({ data: rate });
-    // The service catches this violation rather than checking first — that is
-    // what makes "one rating per order" race-free.
+
     await expect(
       prisma.restaurantRate.create({ data: { ...rate, rating: 1 } }),
     ).rejects.toThrow();
@@ -197,13 +185,10 @@ describe("referential actions", () => {
       },
     });
 
-    // This `Restrict` is exactly why soft delete exists: the catalog could
-    // never be tidied without it destroying order history.
     await expect(
       prisma.menuItem.delete({ where: { id: menuItem.id } }),
     ).rejects.toThrow();
 
-    // The soft delete the API actually performs always succeeds.
     await expect(
       prisma.menuItem.update({
         where: { id: menuItem.id },

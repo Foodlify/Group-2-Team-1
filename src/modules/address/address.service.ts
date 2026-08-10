@@ -25,7 +25,6 @@ class AddressService {
     customerId: string,
     input: CreateAddressInput,
   ): Promise<AddressResponse> {
-    // The customer's first address becomes the default automatically.
     const existing = await addressRepository.countByCustomerId(customerId);
     const address = await addressRepository.create({
       data: { ...input, customerId, isDefault: existing === 0 },
@@ -64,7 +63,6 @@ class AddressService {
     );
   }
 
-  // ─── Private helpers ──────────────────────────────────
   private async assertOwned(
     addressId: string,
     customerId: string,
