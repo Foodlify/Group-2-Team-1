@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Foodlify — sign-in &amp; notifications demo</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 42rem;
+        margin: 3rem auto;
+        padding: 0 1rem;
+        line-height: 1.6;
+      }
+      h1 {
+        margin-bottom: 0.25rem;
+      }
+      .lede {
+        opacity: 0.75;
+        margin-top: 0;
+      }
+      section {
+        border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+        border-radius: 0.6rem;
+        padding: 1rem 1.25rem;
+        margin: 1.25rem 0;
+      }
+      h2 {
+        font-size: 1rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        opacity: 0.7;
+        margin: 0 0 0.75rem;
+      }
+      button {
+        font: inherit;
+        padding: 0.5rem 1rem;
+        margin: 0 0.5rem 0.5rem 0;
+        border-radius: 0.4rem;
+        cursor: pointer;
+      }
+      button[disabled] {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .who {
+        font-size: 1.1rem;
+      }
+      .muted {
+        opacity: 0.7;
+      }
+      #log {
+        background: color-mix(in srgb, currentColor 8%, transparent);
+        padding: 0.75rem 1rem;
+        white-space: pre-wrap;
+        word-break: break-word;
+        border-radius: 0.4rem;
+        font-size: 0.9rem;
+        min-height: 4rem;
+      }
+      code {
+        background: color-mix(in srgb, currentColor 12%, transparent);
+        padding: 0.1rem 0.3rem;
+        border-radius: 0.2rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Foodlify</h1>
+    <p class="lede">
+      A development page for the two features that cannot be demonstrated from a
+      backend alone — signing in with Google, and receiving a push. Served only
+      when <code>NODE_ENV</code> is not <code>production</code>.
+    </p>
+
+    <section>
+      <h2>Who am I</h2>
+      <p class="who" id="who">Checking…</p>
+      <button id="signin">Sign in with Google</button>
+      <button id="signout" disabled>Sign out</button>
+    </section>
+
+    <section>
+      <h2>Order notifications</h2>
+      <p class="muted" id="push-state">Checking…</p>
+      <button id="subscribe" disabled>Enable notifications</button>
+      <button id="unsubscribe" disabled>Disable</button>
+      <p class="muted">
+        With notifications on, change one of this customer's orders to a new
+        status and it arrives — even with this tab closed.
+      </p>
+    </section>
+
+    <section>
+      <h2>Log</h2>
+      <div id="log">Ready.</div>
+    </section>
+
+    <script>
+      const API = "/api/v1";
+      const $ = (id) => document.getElementById(id);
+      const log = (message) => {
+        $("log").textContent = `${message}\n\n${$("log").textContent}`;
+      };
+
+      /** Same origin, so the session cookie rides along with no CORS setup. */
+      const api = (path, init) =>
+        fetch(API + path, { credentials: "same-origin", ...init });
+
+      let signedIn = false;
+
+      // ─── Who am I ──────────────────────────────────────────
+      /**
+       * The whole point of redirecting here rather than showing the callback's
+       * JSON: this asks the API who the session belongs to, so the page proves
+       * the cookie works rather than echoing what the callback happened to say.
+       */
+      async function refreshIdentity() {
+        try {
+          const res = await api("/customers/me");
+          if (res.status === 401) {
+            signedIn = false;
+            $("who").textContent = "Not signed in.";
+          } else if (res.ok) {
+            signedIn = true;
+            const { data } = await res.json();
+            const phone = data.phone ?? "no phone yet";
+            $("who").innerHTML =
+              `Signed in as <strong>${data.user.name}</strong> ` +
+              `<span class="muted">(${data.user.email} · ${phone})</span>`;
+          } else {
+            // An ADMIN or RESTAURANT token authenticates but has no customer
+            // profile — a real state, not an error.
+            signedIn = false;
+            $("who").textContent =
+              "Signed in, but not as a customer — this page needs a customer account.";
+          }
+        } catch (error) {
+          $("who").textContent = "Could not reach the API.";
+          log(`Identity check failed: ${error.message}`);
+        }
+        $("signout").disabled = !signedIn;
+        $("signin").disabled = signedIn;
+        await refreshPushState();
+      }
+
+      $("signin").addEventListener("click", () => {
+        // A navigation, not a fetch: the consent screen is a page the person
+        // has to see, and fetch cannot follow a cross-origin redirect chain.
+        window.location.href = `${API}/auth/google`;
+      });
+
+      $("signout").addEventListener("click", async () => {
+        await api("/auth/logout", { method: "POST" });
+        log("Signed out.");
+        await refreshIdentity();
+      });
+
+      // ─── Push ──────────────────────────────────────────────
+      const pushSupported =
+        "serviceWorker" in navigator && "PushManager" in window;
+
+      /** The VAPID public key arrives base64url; the browser wants bytes. */
+      const toUint8Array = (base64url) => {
+        const padded = (
+          base64url + "=".repeat((4 - (base64url.length % 4)) % 4)
+        )
+          .replace(/-/g, "+")
+          .replace(/_/g, "/");
+        return Uint8Array.from([...atob(padded)].map((c) => c.charCodeAt(0)));
+      };
+
+      const currentSubscription = async () => {
+        if (!pushSupported) return null;
+        const reg = await navigator.serviceWorker.getRegistration("/demo/");
+        return (await reg?.pushManager.getSubscription()) ?? null;
+      };
+
+      async function refreshPushState() {
+        if (!pushSupported) {
+          $("push-state").textContent = "This browser has no Web Push support.";
+          return;
+        }
+        if (!signedIn) {
+          $("push-state").textContent =
+            "Sign in first — notifications are per customer.";
+          $("subscribe").disabled = true;
+          $("unsubscribe").disabled = true;
+          return;
+        }
+        const sub = await currentSubscription();
+        $("push-state").textContent = sub
+          ? "This browser is registered for notifications."
+          : "This browser is not registered.";
+        $("subscribe").disabled = Boolean(sub);
+        $("unsubscribe").disabled = !sub;
+      }
+
+      $("subscribe").addEventListener("click", async () => {
+        try {
+          const permission = await Notification.requestPermission();
+          if (permission !== "granted") {
+            log(`Notification permission: ${permission}. Nothing to do.`);
+            return;
+          }
+
+          const keyRes = await api("/push/public-key");
+          if (!keyRes.ok) {
+            log("Push is not configured on this deployment (no VAPID keys).");
+            return;
+          }
+          const { data } = await keyRes.json();
+
+          const reg = await navigator.serviceWorker.register("/demo/sw.js", {
+            scope: "/demo/",
+          });
+          await navigator.serviceWorker.ready;
+
+          const subscription = await reg.pushManager.subscribe({
+            // Required by every browser: a push must produce a visible
+            // notification, not act as a silent background channel.
+            userVisibleOnly: true,
+            applicationServerKey: toUint8Array(data.publicKey),
+          });
+
+          const saved = await api("/push/subscriptions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(subscription),
+          });
+          log(
+            saved.ok
+              ? "Notifications enabled."
+              : `Server refused it: ${saved.status}`,
+          );
+        } catch (error) {
+          log(`Failed: ${error.message}`);
+        }
+        await refreshPushState();
+      });
+
+      $("unsubscribe").addEventListener("click", async () => {
+        try {
+          const subscription = await currentSubscription();
+          if (!subscription) return;
+          await api("/push/subscriptions", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ endpoint: subscription.endpoint }),
+          });
+          await subscription.unsubscribe();
+          log("Notifications disabled.");
+        } catch (error) {
+          log(`Failed: ${error.message}`);
+        }
+        await refreshPushState();
+      });
+
+      refreshIdentity();
+    </script>
+  </body>
+</html>

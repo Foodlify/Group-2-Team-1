@@ -124,15 +124,19 @@ mailer always has.
 ## Trying it
 
 Push cannot be demonstrated from a backend alone — something has to subscribe
-and receive. `public/push-demo/` is a page and a service worker that do, served
-at `/push-demo/` **only when `NODE_ENV` is not `production`**.
+and receive. `public/demo/` is a page and a service worker that do, served at
+`/demo/` **only when `NODE_ENV` is not `production`**. It covers Google
+sign-in too, because that is the other feature with the same problem, and one
+page that signs you in and then registers the device is the order you actually
+do it in.
 
 Service workers need a secure origin, and `localhost` counts, which is why the
 page is served by the API itself rather than opened from disk.
 
 1. Set the VAPID keys and start the server.
-2. Log in as a customer (the subscribe endpoint is customer-only).
-3. Open `http://localhost:3000/push-demo/` and press **Subscribe**.
+2. Open `http://localhost:3000/demo/` and sign in (the subscribe endpoint is
+   customer-only).
+3. Press **Enable notifications**.
 4. Change one of that customer's orders to a new status.
 
 The notification arrives with the tab closed. That is the part polling cannot

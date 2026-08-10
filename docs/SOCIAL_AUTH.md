@@ -93,9 +93,23 @@ curl -i http://localhost:3000/api/v1/auth/google
   cookie set — configured correctly.
 - **404** — the server has no credentials; check `.env` and that it restarted.
 
-Then open `http://localhost:3000/api/v1/auth/google` **in a browser** (not
-curl — the flow is a navigation). After the consent screen you land back on the
-callback with the session cookies set, and the JSON body naming the account.
+Then open `http://localhost:3000/demo/` **in a browser** and press **Sign in
+with Google** (not curl — the flow is a navigation). After the consent screen
+you land back with the session cookies set, and the page asks
+`GET /customers/me` who they belong to.
+
+`/api/v1/auth/google` works on its own too, and answers with JSON rather than a
+page. That is the better thing to show when the subject is the API contract;
+the page is the better thing to show when the subject is that sign-in works.
+
+### Landing somewhere after sign-in
+
+`GOOGLE_POST_LOGIN_REDIRECT` is what turns the JSON answer into a redirect. It
+ships **commented out**, pointing at `/demo/`, for a reason worth keeping: with
+it unset the callback describes itself, which is what the integration tests
+assert against and what the OpenAPI document promises. Uncomment it when you
+want the browser to land on something — the session is already in the cookies,
+so nothing sensitive travels in the URL.
 
 ### When it goes wrong
 

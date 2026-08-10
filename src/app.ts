@@ -68,18 +68,22 @@ app.use((req: Request, res: Response, next: NextFunction): void => {
 // ── OpenAPI Documentation ─────────────────────────────
 serveOpenApi(app);
 
-// ── Web Push demo page (non-production) ───────────────
-// A service worker only registers on a secure origin, and localhost counts —
-// so the one place this page can work without TLS is served by the API itself.
-// It exists because push is otherwise unprovable from a backend: there is no
-// way to show a notification arriving without something that subscribes.
+// ── Demo page (non-production) ────────────────────────
+// Google sign-in and Web Push are the two features a backend cannot
+// demonstrate on its own: one needs a browser to visit a consent screen, the
+// other needs something to subscribe and receive. This page is that something.
+//
+// Served by the API rather than opened from disk for two reasons that both
+// stop mattering the moment it moves elsewhere: a service worker only
+// registers on a secure origin (localhost counts), and same-origin means the
+// session cookie is sent with no CORS configuration at all.
 //
 // Never in production: it is a development tool, not part of the product, and
 // nothing should be able to reach it on a real deployment.
 if (env.NODE_ENV !== "production") {
   app.use(
-    "/push-demo",
-    express.static(path.join(__dirname, "..", "public", "push-demo")),
+    "/demo",
+    express.static(path.join(__dirname, "..", "public", "demo")),
   );
 }
 
