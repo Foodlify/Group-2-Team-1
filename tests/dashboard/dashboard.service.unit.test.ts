@@ -331,7 +331,11 @@ describe("counters", () => {
       .map(([where]) => (where as { orderDate?: { gte: Date } }).orderDate?.gte)
       .filter((d): d is Date => d instanceof Date);
 
-    expect(windows).toHaveLength(2);
+    // Four windows now: orders today and this month, plus cancelled orders
+    // over the same two. Asserted as a property of every window rather than by
+    // position, so adding a fifth counter cannot break this test without
+    // breaking the rule it is really about.
+    expect(windows.length).toBeGreaterThanOrEqual(2);
     for (const start of windows) {
       // Anything else means the boundary was taken from the server's local
       // clock, and the same request would answer differently on another host.
@@ -339,7 +343,7 @@ describe("counters", () => {
       expect(start.getUTCMinutes()).toBe(0);
       expect(start.getUTCSeconds()).toBe(0);
     }
-    expect(windows[1]!.getUTCDate()).toBe(1);
+    expect(windows.some((start) => start.getUTCDate() === 1)).toBe(true);
   });
 
   it("says the boundaries are UTC in the response", async () => {
@@ -388,6 +392,140 @@ describe("per-restaurant reports", () => {
     }
     expect(mockedRepo.countOrdersByStatus).toHaveBeenCalledWith({
       restaurantId: "rest_1",
+    });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+/**
+ * The counters the scope map names by the day and by the month.
+ *
+ * Every one of these is a `countOrders` call with a different filter, so the
+ * mistake to guard against is not arithmetic — it is a counter wired to the
+ * wrong window, or to no window at all, which reads as a plausible number
+ * forever. Each assertion pins the filter rather than the result.
+ */
+const wheres = () =>
+  mockedRepo.countOrders.mock.calls.map(
+    ([where]) => where as Record<string, unknown>,
+  );
+
+/** Filters whose `orderDate.gte` is a UTC midnight (the day boundary). */
+const isUtcDayStart = (d: Date): boolean =>
+  d.getUTCHours() === 0 &&
+  d.getUTCMinutes() === 0 &&
+  d.getUTCSeconds() === 0 &&
+  d.getUTCMilliseconds() === 0;
+
+const isUtcMonthStart = (d: Date): boolean =>
+  isUtcDayStart(d) && d.getUTCDate() === 1;
+
+/** The window a filter carries, or undefined for an unwindowed count. */
+const gteOf = (w: Record<string, unknown>): Date | undefined =>
+  (w.orderDate as { gte?: Date } | undefined)?.gte;
+
+/** True only for `status: { notIn: [...] }`, never for a plain string status. */
+const isNotIn = (status: unknown): status is { notIn: string[] } =>
+  typeof status === "object" && status !== null && "notIn" in status;
+
+describe("Daily / Monthly Cancelled Orders — system overview", () => {
+  it("asks over exactly two windows, both UTC boundaries, one a month start", async () => {
+    await dashboardService.getOverview();
+
+    const cancelled = wheres().filter((w) => w.status === "CANCELLED");
+    expect(cancelled).toHaveLength(2);
+    for (const w of cancelled) {
+      const gte = gteOf(w);
+      // A boundary taken from the server's local clock would answer
+      // differently on another host for the same request.
+      expect(gte && isUtcDayStart(gte)).toBe(true);
+    }
+    expect(cancelled.some((w) => isUtcMonthStart(gteOf(w)!))).toBe(true);
+  });
+
+  it("reports them separately from the all-time cancelled total", async () => {
+    mockedRepo.countOrdersByStatus.mockResolvedValue(
+      new Map([["CANCELLED", 900]]),
+    );
+    // Routed by call order, not by the date: on the first of the month the day
+    // and month boundaries are the same instant, and a test that told them
+    // apart by value would pass for 30 days and fail on the 31st.
+    const cancelledCalls: number[] = [4, 30];
+    let seen = 0;
+    mockedRepo.countOrders.mockImplementation(async (where) => {
+      const w = where as Record<string, unknown>;
+      if (w.status !== "CANCELLED") return 0;
+      return cancelledCalls[seen++] ?? 0;
+    });
+
+    const overview = await dashboardService.getOverview();
+
+    // Three different questions, three different numbers. The failure this
+    // catches is a daily counter quietly reading the all-time total.
+    expect(overview.counters.cancelledOrders).toBe(900);
+    expect(overview.counters.cancelledOrdersToday).toBe(4);
+    expect(overview.counters.cancelledOrdersThisMonth).toBe(30);
+  });
+});
+
+describe("the restaurant counters the map names", () => {
+  /** A window deliberately nowhere near today. */
+  const farWindow = {
+    granularity: "day" as const,
+    from: "2020-01-05T00:00:00.000Z",
+    to: "2020-02-05T00:00:00.000Z",
+  };
+
+  it("fixes the day and month counters instead of following the query window", async () => {
+    await dashboardService.getRestaurantReport("rest_1", farWindow);
+
+    // Exactly one counter may move with `from`/`to` — `ordersInRange`. If a
+    // second one did, "today" would mean whatever the caller asked for.
+    const windowed = wheres().filter(
+      (w) => gteOf(w)?.getUTCFullYear() === 2020,
+    );
+    expect(windowed).toHaveLength(1);
+  });
+
+  it("counts today's not-delivered orders, excluding cancelled ones too", async () => {
+    await dashboardService.getRestaurantReport("rest_1", query);
+
+    const notDelivered = wheres().filter((w) => isNotIn(w.status));
+    expect(notDelivered).toHaveLength(1);
+    // The judgement call, pinned. The map lists cancelled orders as their own
+    // counter next to this one, so an order that was called off is not an
+    // order still owed to anybody — the two are a partition, not overlapping
+    // sets.
+    expect((notDelivered[0]!.status as { notIn: string[] }).notIn).toEqual([
+      "DELIVERED",
+      "CANCELLED",
+    ]);
+    expect(isUtcDayStart(gteOf(notDelivered[0]!)!)).toBe(true);
+  });
+
+  it("routes each counter to its own response field", async () => {
+    // One distinct number per call, in the order the service issues them, so
+    // any pair swapped in the destructuring shows up as two wrong fields —
+    // the failure mode of assembling seven counters from one Promise.all.
+    const byCallOrder = [500, 99, 20, 60, 3, 12, 7];
+    let seen = 0;
+    mockedRepo.countOrders.mockImplementation(
+      async () => byCallOrder[seen++] ?? -1,
+    );
+
+    const report = await dashboardService.getRestaurantReport(
+      "rest_1",
+      farWindow,
+    );
+
+    expect(report.counters).toMatchObject({
+      orders: 500,
+      ordersInRange: 99,
+      ordersToday: 20,
+      ordersThisMonth: 60,
+      cancelledOrdersToday: 3,
+      cancelledOrdersThisMonth: 12,
+      notDeliveredToday: 7,
     });
   });
 });

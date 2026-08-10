@@ -2,6 +2,21 @@ generator client {
   provider     = "prisma-client"
   output       = "../src/generated/prisma"
   moduleFormat = "cjs"
+
+  /// Extensionless imports inside the generated client, stated rather than
+  /// inferred.
+  ///
+  /// Left unset, Prisma picks a default by looking at the surrounding project
+  /// — and picks a different one when it cannot see a tsconfig.json. That is
+  /// exactly the situation in the Docker build, where dependencies install
+  /// (and `prisma generate` runs) a stage before the tsconfig is copied. The
+  /// result was a client importing `./internal/class.ts` next to a compiled
+  /// `class.js`: fine through ts-node, `MODULE_NOT_FOUND` the moment it ran
+  /// from dist/, so the image built cleanly and died on boot.
+  ///
+  /// No extension is the one form that resolves in both places — `.ts` under
+  /// ts-node in development, `.js` after tsc in production.
+  importFileExtension = ""
 }
 
 datasource db {
@@ -30,7 +45,17 @@ model User {
   name  String
   email String @unique
   /// Hashed password (bcrypt). Never returned in any API response.
-  password String
+  ///
+  /// Null for an account created through Google sign-in, which genuinely has
+  /// no password — storing a random unusable hash instead would have the data
+  /// model claim one exists. `comparePassword` treats null as "no".
+  password String?
+  /// Google's `sub` claim, for an account linked to a Google identity.
+  ///
+  /// The subject, not the email: Google lets a user change their address, and
+  /// an account matched on email alone would silently become a different
+  /// person's. Unique, so one Google identity cannot claim two accounts.
+  googleId String? @unique
   /// Account role — CUSTOMER for storefront users, ADMIN for dashboard,
   /// RESTAURANT for someone who runs a restaurant on the platform.
   role     Role   @default(CUSTOMER)
@@ -91,8 +116,14 @@ model Otp {
 model Customer {
   id     String @id @default(cuid())
   userId String @unique
-  /// Contact phone — required and unique per customer.
-  phone  String @unique
+  /// Contact phone — unique, and required of anyone who registers with a
+  /// password. Null only for an account created through Google sign-in: Google
+  /// returns no phone number, and inventing one would put fabricated data on a
+  /// delivery record. They add it through `PATCH /customers/me`.
+  ///
+  /// PostgreSQL treats NULLs as distinct in a unique index, so any number of
+  /// customers may have none while no two can share one.
+  phone  String? @unique
 
   cart              Cart?
   addresses         Address[]
@@ -100,6 +131,7 @@ model Customer {
   rates             RestaurantRate[]
   preferredPayments PreferredPaymentSetting[]
   supportTickets    SupportTicket[]
+  pushSubscriptions PushSubscription[]
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -149,6 +181,40 @@ model PreferredPaymentSetting {
   updatedAt DateTime @updatedAt
 
   @@unique([customerId, method])
+  @@index([customerId])
+}
+
+/// A browser's Web Push subscription — what `Notify Customer With Order Status`
+/// delivers to.
+///
+/// No third party is involved and nothing here is a credential of ours: the
+/// browser hands us an endpoint on its own vendor's push service plus two keys
+/// that encrypt the payload *to that browser*. We sign with our VAPID key, which
+/// lives in the environment and never in this table.
+///
+/// One row per browser, not per customer: the same person subscribes again from
+/// a phone and a laptop and expects both to buzz.
+model PushSubscription {
+  id         String @id @default(cuid())
+  customerId String
+  /// The push service URL the browser issued. Unique because it *is* the
+  /// identity of a subscription — a browser re-subscribing hands back the same
+  /// endpoint, and inserting it twice would send every notification twice.
+  endpoint   String @unique
+  /// The subscription's public key and auth secret, used to encrypt each
+  /// payload for this browser. Useless to anyone else, and unusable for
+  /// sending — they are the recipient's half, not ours.
+  p256dh     String
+  auth       String
+  /// Whatever the browser called itself when it subscribed. Purely so a
+  /// customer clearing out old devices can tell them apart.
+  userAgent  String?
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([customerId])
 }
 

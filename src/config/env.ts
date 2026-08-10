@@ -54,6 +54,20 @@ const EnvSchema = z
       (value) => (value === undefined || value === "" ? 0 : value),
       z.coerce.number().int().min(0),
     ),
+    // Where the rotating log files are written. Logs always go to stdout as
+    // well, which is the channel a container platform actually reads, so this
+    // exists for the two cases stdout does not cover: a local checkout, where
+    // grepping yesterday's file beats scrolling a terminal, and a deployment
+    // that mounts a volume to keep logs across a redeploy.
+    //
+    // Set it to an empty string to turn file logging off entirely. That is a
+    // reasonable thing to want in a container: the files are capped at roughly
+    // 560MB by the rotation settings, but they are 560MB of a copy of what the
+    // platform already collected.
+    LOG_DIR: z.preprocess(
+      (value) => (value === undefined ? "logs" : value),
+      z.string(),
+    ),
     // ── SMTP (OTP emails) ── all optional: when SMTP_HOST is unset the mailer
     // logs messages instead of sending (dev/test) and refuses in production.
     SMTP_HOST: z.string().trim().optional(),
@@ -97,6 +111,41 @@ const EnvSchema = z
       (value) => (value === undefined || value === "" ? 300 : value),
       z.coerce.number().int().positive(),
     ),
+    // ── Google sign-in (Social Media Authentication) ── optional, same rule
+    // as everything else: unset means the two routes answer 404 and the API
+    // is honest about not offering it, rather than redirecting people to a
+    // consent screen that cannot come back.
+    GOOGLE_CLIENT_ID: z.string().trim().optional(),
+    GOOGLE_CLIENT_SECRET: z.string().trim().optional(),
+    // Must match a redirect URI registered on the OAuth client, exactly —
+    // Google compares the string, not the resolved URL.
+    GOOGLE_CALLBACK_URL: z.preprocess(
+      (value) =>
+        value === undefined || value === ""
+          ? "http://localhost:3000/api/v1/auth/google/callback"
+          : value,
+      z.url(),
+    ),
+    // Where the browser lands after a successful sign-in. Unset means the
+    // callback answers with JSON instead — which is what makes the flow
+    // demonstrable against a backend with no frontend in front of it.
+    GOOGLE_POST_LOGIN_REDIRECT: z.string().trim().optional(),
+    // ── Web Push (order status notifications) ── optional, same rule as the
+    // mailer and the cache: unset means push is simply off and everything else
+    // works. Nobody is signed up to anything — these are a VAPID key pair you
+    // generate yourself (`npx web-push generate-vapid-keys`), and the push
+    // itself goes straight to the browser vendor's endpoint.
+    VAPID_PUBLIC_KEY: z.string().trim().optional(),
+    VAPID_PRIVATE_KEY: z.string().trim().optional(),
+    // The `sub` claim in the VAPID JWT: how a push service contacts whoever is
+    // sending, if something goes wrong. Must be a mailto: or https: URL.
+    VAPID_SUBJECT: z.preprocess(
+      (value) =>
+        value === undefined || value === ""
+          ? "mailto:support@foodlify.example"
+          : value,
+      z.string().trim(),
+    ),
     // ── Abandoned-cart housekeeping ──
     // A guest cart is disposable; a signed-in customer's cart is saved state,
     // so it gets a much longer grace period.
@@ -124,6 +173,30 @@ const EnvSchema = z
         path: ["STRIPE_WEBHOOK_SECRET"],
         message:
           "STRIPE_WEBHOOK_SECRET is required when STRIPE_SECRET_KEY is set",
+      });
+    }
+
+    // Half-configured Google sign-in sends people to a consent screen whose
+    // callback can never complete the exchange — they authorise, come back,
+    // and get an error. Off is better than that.
+    if (Boolean(data.GOOGLE_CLIENT_ID) !== Boolean(data.GOOGLE_CLIENT_SECRET)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["GOOGLE_CLIENT_SECRET"],
+        message:
+          "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set together, or neither",
+      });
+    }
+
+    // A public key with no private key advertises a subscription endpoint that
+    // can never deliver anything: browsers would subscribe successfully and
+    // then simply never hear from us. Half-configured is worse than off.
+    if (Boolean(data.VAPID_PUBLIC_KEY) !== Boolean(data.VAPID_PRIVATE_KEY)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["VAPID_PRIVATE_KEY"],
+        message:
+          "VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY must be set together, or neither",
       });
     }
 

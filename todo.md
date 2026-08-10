@@ -157,6 +157,11 @@ Still open in this area:
   overview, daily/monthly transaction report, and the same per restaurant.
   No new tables and no migration. See [docs/DASHBOARD.md](docs/DASHBOARD.md).
 - Still the only one of the seven that **no other team has built**.
+- **Completed 2026-08-11** with the day and month counters the map names —
+  cancelled orders daily and monthly on both branches, the restaurant's own
+  daily and monthly order counts, and `Daily Orders not Delivered Count`. Until
+  then those bullets were served only as all-time totals, which cannot be
+  narrowed to a day or a month after the fact.
 
 **Open items it produced:**
 
@@ -325,3 +330,48 @@ Still open, and deliberately so: **demoting an account does not clear the
 actor regardless, so this is not a hole — but an admin who demotes an owner and
 later re-promotes them silently restores their old restaurants. Clearing the
 rows on demotion is a product decision nobody has made.
+
+### ~~Push Notification~~ — done (2026-08-11)
+
+The official `Notify Customer With Order Status` → `Push Notification`, over
+the W3C Web Push standard. See [docs/PUSH.md](docs/PUSH.md).
+
+**No provider and no account.** The VAPID pair is generated locally and the
+push goes straight to the endpoint the browser issued. FCM would also have been
+free — unlimited on the Spark plan, no card — but it needs a Google Cloud
+project and a client SDK to demonstrate, and a single page plus a service
+worker proves Web Push end to end.
+
+**Open items it produced:**
+
+- **No delivery record.** A push that succeeded is not written down anywhere,
+  so "did the customer get told" can only be answered for email. The auditing
+  table exists and could carry it; nobody has asked for it, and doing it would
+  mean a row per device per status change.
+- **The demo page is a dev tool**, served only outside production. It is not a
+  client, and nothing in the product depends on it.
+- **SMS is still not done**, and remains the last notification gap. There is no
+  genuinely free provider: Twilio's trial stamps
+  "Sent from your Twilio trial account" on every message and reaches at most 5
+  pre-verified numbers, and Vonage's sandbox is the same shape. The scope map
+  says `Email / SMS` in both places it appears and the email side works.
+
+### ~~Social Media Authentication~~ — done (2026-08-11)
+
+Google, over the OAuth 2.0 authorization-code flow. Free to set up: an OAuth
+Client ID needs no billing account. See [docs/SOCIAL_AUTH.md](docs/SOCIAL_AUTH.md).
+
+**Open items it produced:**
+
+- **`User.password` and `Customer.phone` are now nullable.** Password
+  registration still requires a phone, and `comparePassword` treats a null hash
+  as "no" in one place — but any new code reading either column has a case to
+  handle that did not exist before.
+- **No unlink endpoint.** An account that linked Google cannot unlink it. For a
+  Google-only account that would lock the owner out entirely (no password to
+  fall back on), so the endpoint has to check for one first. Nobody has asked
+  for it.
+- **Google is the only provider.** The map says "Social Media Authentication"
+  without naming one. Adding a second means generalising `googleId` into a
+  provider/subject pair — a table, most likely — which is not worth doing for a
+  provider nobody has asked for.

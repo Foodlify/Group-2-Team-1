@@ -5,7 +5,7 @@
   "main": "dist/server.js",
   "packageManager": "npm@10.9.2",
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "directories": {
     "test": "tests"
@@ -53,6 +53,7 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.2",
+    "google-auth-library": "^11.0.0",
     "helmet": "^8.2.0",
     "http-status-codes": "^2.3.0",
     "jsonwebtoken": "^9.0.3",
@@ -61,6 +62,7 @@
     "redis": "^6.2.0",
     "stripe": "^22.4.0",
     "swagger-ui-express": "^5.0.1",
+    "web-push": "^3.6.7",
     "winston": "^3.19.0",
     "winston-daily-rotate-file": "^5.0.0",
     "zod": "^4.3.6",
@@ -78,6 +80,7 @@
     "@types/pg": "^8.20.0",
     "@types/supertest": "^7.2.1",
     "@types/swagger-ui-express": "^4.1.8",
+    "@types/web-push": "^3.6.4",
     "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^10.5.0",
     "eslint-config-prettier": "^10.1.8",

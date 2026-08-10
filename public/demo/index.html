@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Foodlify — sign-in &amp; notifications demo</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 42rem;
+        margin: 3rem auto;
+        padding: 0 1rem;
+        line-height: 1.6;
+      }
+      h1 {
+        margin-bottom: 0.25rem;
+      }
+      .lede {
+        opacity: 0.75;
+        margin-top: 0;
+      }
+      section {
+        border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+        border-radius: 0.6rem;
+        padding: 1rem 1.25rem;
+        margin: 1.25rem 0;
+      }
+      h2 {
+        font-size: 1rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        opacity: 0.7;
+        margin: 0 0 0.75rem;
+      }
+      button {
+        font: inherit;
+        padding: 0.5rem 1rem;
+        margin: 0 0.5rem 0.5rem 0;
+        border-radius: 0.4rem;
+        cursor: pointer;
+      }
+      button[disabled] {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .who {
+        font-size: 1.1rem;
+      }
+      .muted {
+        opacity: 0.7;
+      }
+      #log {
+        background: color-mix(in srgb, currentColor 8%, transparent);
+        padding: 0.75rem 1rem;
+        white-space: pre-wrap;
+        word-break: break-word;
+        border-radius: 0.4rem;
+        font-size: 0.9rem;
+        min-height: 4rem;
+      }
+      code {
+        background: color-mix(in srgb, currentColor 12%, transparent);
+        padding: 0.1rem 0.3rem;
+        border-radius: 0.2rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Foodlify</h1>
+    <p class="lede">
+      A development page for the two features that cannot be demonstrated from a
+      backend alone — signing in with Google, and receiving a push. Served only
+      when <code>NODE_ENV</code> is not <code>production</code>.
+    </p>
+
+    <section>
+      <h2>Who am I</h2>
+      <p class="who" id="who">Checking…</p>
+      <button id="signin">Sign in with Google</button>
+      <button id="signout" disabled>Sign out</button>
+    </section>
+
+    <section>
+      <h2>Order notifications</h2>
+      <p class="muted" id="push-state">Checking…</p>
+      <button id="subscribe" disabled>Enable notifications</button>
+      <button id="unsubscribe" disabled>Disable</button>
+      <p class="muted">
+        With notifications on, change one of this customer's orders to a new
+        status and it arrives — even with this tab closed.
+      </p>
+    </section>
+
+    <section>
+      <h2>Log</h2>
+      <div id="log">Ready.</div>
+    </section>
+
+    <script src="app.js"></script>
+  </body>
+</html>

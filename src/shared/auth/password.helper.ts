@@ -31,11 +31,22 @@ const SALT_ROUNDS = 12;
 export const hashPassword = (plain: string): Promise<string> =>
   bcrypt.hash(plain, SALT_ROUNDS);
 
-/** Compares a plaintext password against a bcrypt hash. */
-export const comparePassword = (
+/**
+ * Compares a plaintext password against a bcrypt hash.
+ *
+ * `hash` is nullable because an account created through Google sign-in has no
+ * password at all, and that has to be a definite "no" rather than a crash or —
+ * far worse — a comparison against something empty. Handled here rather than at
+ * each call site so no future caller can forget: this is the single place every
+ * password check in the system goes through.
+ */
+export const comparePassword = async (
   plain: string,
-  hash: string,
-): Promise<boolean> => bcrypt.compare(plain, hash);
+  hash: string | null,
+): Promise<boolean> => {
+  if (!hash) return false;
+  return bcrypt.compare(plain, hash);
+};
 
 /**
  * bcrypt reads at most 72 bytes of the password and discards the rest without

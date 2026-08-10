@@ -125,6 +125,30 @@ can tell what period the numbers describe rather than assuming.
 Totals are re-summed from the returned buckets rather than queried separately —
 the header can never disagree with the rows underneath it.
 
+### The counters that ignore the window
+
+`from`/`to` steer the series and `ordersInRange`, and nothing else. The scope
+map asks for `Daily Cancelled Orders`, `Monthly Cancelled Orders`,
+`Daily Orders Count`, `Monthly Total Orders Count` and
+`Daily Orders not Delivered Count` by name, and those are fixed to the UTC day
+and month — a figure labelled "today" that silently followed whatever window the
+caller last sent would not be the figure that was asked for.
+
+So the two kinds of number sit side by side deliberately, and each says which it
+is in its OpenAPI description.
+
+### What "not delivered" excludes
+
+`notDeliveredToday` leaves out **cancelled** orders as well as delivered ones.
+
+The literal reading is "status is not DELIVERED", which would include the
+cancelled ones — but the map lists `Daily Cancelled Orders` as its own counter
+immediately beside this one. Two adjacent counters that overlap cannot be added
+and neither answers a question cleanly, so they are read as a partition instead:
+cancelled orders are counted there, and this one is what is still owed to a
+customer. That is also the number a kitchen actually wants — outstanding work,
+not "everything that isn't finished".
+
 ---
 
 ## Testing
@@ -138,7 +162,18 @@ the header can never disagree with the rows underneath it.
   restaurant's money, `SUCCESS`-only filtering, and that `count` arrives as a
   number rather than a `BigInt`.
 
+- **Integration** (`tests/integration/dashboard.counters.integration.test.ts`) —
+  the day and month counters, with the clock frozen to a fixed mid-month instant
+  so the boundaries are known. It covers an order at exactly 00:00:00.000, one a
+  millisecond before it, one a millisecond before the month, and that a counter
+  does not move when the caller changes `from`/`to`.
+
 Every assertion was checked against a deliberately broken copy of the source.
 One gap showed up only that way: the float-drift test used amounts in
 _different_ buckets, so mutating the accumulation _inside_ a bucket to floats
 still passed. Two same-bucket cases were added.
+
+The daily counters were mutation-tested the same way — nine mutations, each one
+swapping a counter's window for another rather than breaking it visibly, since
+that is how a wrong figure survives. All nine were caught, with a no-op control
+surviving as designed.

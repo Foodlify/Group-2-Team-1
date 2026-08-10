@@ -24,6 +24,26 @@ export default tseslint.config(
   // Disables stylistic rules that conflict with Prettier (must come last).
   prettier,
   {
+    // The demo page's scripts run in a browser, not in Node. Linted rather
+    // than ignored — both are real code a browser executes, and a typo in the
+    // service worker in particular fails silently in the background where
+    // nobody is watching.
+    files: ["public/demo/*.js"],
+    languageOptions: {
+      globals: {
+        // Service worker scope: `self` is the registration itself.
+        self: "readonly",
+        // Page scope.
+        window: "readonly",
+        document: "readonly",
+        navigator: "readonly",
+        fetch: "readonly",
+        atob: "readonly",
+        Notification: "readonly",
+      },
+    },
+  },
+  {
     rules: {
       // `any` is discouraged but allowed at typed boundaries (flagged, not fatal).
       "@typescript-eslint/no-explicit-any": "warn",

@@ -1,4 +1,5 @@
 import express, { Application, Request, Response, NextFunction } from "express";
+import path from "node:path";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import helmet from "helmet";
@@ -28,6 +29,37 @@ app.set("trust proxy", env.TRUST_PROXY);
 // ── Middlewares ──────────────────────────────────────
 // Security headers first so every response (including errors) carries them.
 app.use(helmet());
+
+// ── Content-Security-Policy for the docs UI only ─────
+// Scalar renders itself from a CDN bundle plus an inline bootstrap call, and
+// helmet's default `script-src 'self'` refuses both — the page loads, the
+// script never runs, and you get a blank screen with nothing in the response
+// to explain it.
+//
+// Relaxed for `/api-docs` alone rather than globally. The strict policy is
+// worth keeping on every route that returns data, and a documentation viewer
+// is a different kind of surface from an API response: it renders a spec this
+// server already publishes at `/openapi.json`.
+//
+// `/api-docs/swagger` needs none of this — swagger-ui-express serves its
+// assets from this origin with no inline script — and it stays available as
+// the fallback whenever the CDN is unreachable.
+app.use(
+  "/api-docs",
+  helmet.contentSecurityPolicy({
+    directives: {
+      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+      "script-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
+      "connect-src": ["'self'", "https://cdn.jsdelivr.net"],
+      // Scalar pulls its icons and web fonts from the same CDN.
+      "img-src": ["'self'", "data:", "https://cdn.jsdelivr.net"],
+      "font-src": ["'self'", "data:", "https://cdn.jsdelivr.net"],
+      // `upgrade-insecure-requests` is in the defaults and would rewrite this
+      // page's own http://localhost assets to https during development.
+      "upgrade-insecure-requests": null,
+    },
+  }),
+);
 // CORS with credentials so browsers send/receive the httpOnly auth cookies.
 // `CORS_ORIGIN` (comma-separated) restricts origins in production; when unset
 // we reflect the request origin (dev convenience).
@@ -66,6 +98,25 @@ app.use((req: Request, res: Response, next: NextFunction): void => {
 
 // ── OpenAPI Documentation ─────────────────────────────
 serveOpenApi(app);
+
+// ── Demo page (non-production) ────────────────────────
+// Google sign-in and Web Push are the two features a backend cannot
+// demonstrate on its own: one needs a browser to visit a consent screen, the
+// other needs something to subscribe and receive. This page is that something.
+//
+// Served by the API rather than opened from disk for two reasons that both
+// stop mattering the moment it moves elsewhere: a service worker only
+// registers on a secure origin (localhost counts), and same-origin means the
+// session cookie is sent with no CORS configuration at all.
+//
+// Never in production: it is a development tool, not part of the product, and
+// nothing should be able to reach it on a real deployment.
+if (env.NODE_ENV !== "production") {
+  app.use(
+    "/demo",
+    express.static(path.join(__dirname, "..", "public", "demo")),
+  );
+}
 
 // ── Routes ───────────────────────────────────────────
 // General-purpose rate limit as a safety net across the whole API.

@@ -69,7 +69,16 @@ export const OverviewResponseSchema = z
       orders: z.number().int(),
       ordersToday: z.number().int(),
       ordersThisMonth: z.number().int(),
-      cancelledOrders: z.number().int(),
+      cancelledOrders: z.number().int().meta({
+        description: "All time",
+      }),
+      cancelledOrdersToday: z.number().int().meta({
+        description: "Official `Daily Cancelled Orders` — cancelled, UTC day",
+      }),
+      cancelledOrdersThisMonth: z.number().int().meta({
+        description:
+          "Official `Monthly Cancelled Orders` — cancelled, UTC month",
+      }),
       deliveredOrders: z.number().int(),
       transactions: z
         .number()
@@ -123,10 +132,34 @@ export const RestaurantReportResponseSchema = z
     restaurantId: z.cuid2(),
     name: z.string(),
     counters: z.object({
-      orders: z.number().int(),
-      ordersInRange: z.number().int(),
-      cancelledOrders: z.number().int(),
-      deliveredOrders: z.number().int(),
+      orders: z.number().int().meta({ description: "All time" }),
+      ordersInRange: z.number().int().meta({
+        description:
+          "Orders inside the `from`/`to` window — moves with the query, unlike the fixed day and month counters below",
+      }),
+      ordersToday: z.number().int().meta({
+        description: "Official `Daily Orders Count` — UTC day",
+      }),
+      ordersThisMonth: z.number().int().meta({
+        description: "Official `Monthly Total Orders Count` — UTC month",
+      }),
+      cancelledOrders: z.number().int().meta({ description: "All time" }),
+      cancelledOrdersToday: z.number().int().meta({
+        description: "Official `Daily Cancelled Orders` — UTC day",
+      }),
+      cancelledOrdersThisMonth: z.number().int().meta({
+        description: "Official `Monthly Cancelled Orders` — UTC month",
+      }),
+      notDeliveredToday: z
+        .number()
+        .int()
+        .meta({
+          description:
+            "Official `Daily Orders not Delivered Count` — today's orders still owed to a customer. " +
+            "Excludes CANCELLED as well as DELIVERED: the map lists cancelled as its own counter next to " +
+            "this one, so the two are read as a partition rather than as overlapping sets.",
+        }),
+      deliveredOrders: z.number().int().meta({ description: "All time" }),
     }),
     ordersByStatus: z.record(z.string(), z.number().int()),
     revenueAllTime: MoneySchema,
