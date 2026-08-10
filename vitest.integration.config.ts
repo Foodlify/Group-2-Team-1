@@ -1,5 +1,6 @@
 import { defineConfig } from "vitest/config";
 import dotenv from "dotenv";
+import webpush from "web-push";
 
 // `.env.test` first (a developer's local test database), falling back to
 // whatever is already exported — which is how CI supplies it.
@@ -24,6 +25,18 @@ if (!/test/i.test(database)) {
   );
 }
 
+/**
+ * A throwaway VAPID pair, generated fresh on every run.
+ *
+ * Push has to be *on* for these tests — an unconfigured deployment short-
+ * circuits every send, so a suite that inherited the blank keys below would
+ * assert nothing. Generated rather than committed because a key called
+ * "private" does not belong in a repository even when it signs nothing, and
+ * nothing here ever reaches a real push service: the transport is stubbed
+ * wherever delivery matters.
+ */
+const vapid = webpush.generateVAPIDKeys();
+
 export default defineConfig({
   test: {
     environment: "node",
@@ -47,6 +60,8 @@ export default defineConfig({
       STRIPE_SECRET_KEY: "",
       STRIPE_WEBHOOK_SECRET: "",
       SMTP_HOST: "",
+      VAPID_PUBLIC_KEY: vapid.publicKey,
+      VAPID_PRIVATE_KEY: vapid.privateKey,
     },
   },
 });

@@ -97,6 +97,22 @@ const EnvSchema = z
       (value) => (value === undefined || value === "" ? 300 : value),
       z.coerce.number().int().positive(),
     ),
+    // ── Web Push (order status notifications) ── optional, same rule as the
+    // mailer and the cache: unset means push is simply off and everything else
+    // works. Nobody is signed up to anything — these are a VAPID key pair you
+    // generate yourself (`npx web-push generate-vapid-keys`), and the push
+    // itself goes straight to the browser vendor's endpoint.
+    VAPID_PUBLIC_KEY: z.string().trim().optional(),
+    VAPID_PRIVATE_KEY: z.string().trim().optional(),
+    // The `sub` claim in the VAPID JWT: how a push service contacts whoever is
+    // sending, if something goes wrong. Must be a mailto: or https: URL.
+    VAPID_SUBJECT: z.preprocess(
+      (value) =>
+        value === undefined || value === ""
+          ? "mailto:support@foodlify.example"
+          : value,
+      z.string().trim(),
+    ),
     // ── Abandoned-cart housekeeping ──
     // A guest cart is disposable; a signed-in customer's cart is saved state,
     // so it gets a much longer grace period.
@@ -124,6 +140,18 @@ const EnvSchema = z
         path: ["STRIPE_WEBHOOK_SECRET"],
         message:
           "STRIPE_WEBHOOK_SECRET is required when STRIPE_SECRET_KEY is set",
+      });
+    }
+
+    // A public key with no private key advertises a subscription endpoint that
+    // can never deliver anything: browsers would subscribe successfully and
+    // then simply never hear from us. Half-configured is worse than off.
+    if (Boolean(data.VAPID_PUBLIC_KEY) !== Boolean(data.VAPID_PRIVATE_KEY)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["VAPID_PRIVATE_KEY"],
+        message:
+          "VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY must be set together, or neither",
       });
     }
 

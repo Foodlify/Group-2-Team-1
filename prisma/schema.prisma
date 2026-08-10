@@ -100,6 +100,7 @@ model Customer {
   rates             RestaurantRate[]
   preferredPayments PreferredPaymentSetting[]
   supportTickets    SupportTicket[]
+  pushSubscriptions PushSubscription[]
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -149,6 +150,40 @@ model PreferredPaymentSetting {
   updatedAt DateTime @updatedAt
 
   @@unique([customerId, method])
+  @@index([customerId])
+}
+
+/// A browser's Web Push subscription — what `Notify Customer With Order Status`
+/// delivers to.
+///
+/// No third party is involved and nothing here is a credential of ours: the
+/// browser hands us an endpoint on its own vendor's push service plus two keys
+/// that encrypt the payload *to that browser*. We sign with our VAPID key, which
+/// lives in the environment and never in this table.
+///
+/// One row per browser, not per customer: the same person subscribes again from
+/// a phone and a laptop and expects both to buzz.
+model PushSubscription {
+  id         String @id @default(cuid())
+  customerId String
+  /// The push service URL the browser issued. Unique because it *is* the
+  /// identity of a subscription — a browser re-subscribing hands back the same
+  /// endpoint, and inserting it twice would send every notification twice.
+  endpoint   String @unique
+  /// The subscription's public key and auth secret, used to encrypt each
+  /// payload for this browser. Useless to anyone else, and unusable for
+  /// sending — they are the recipient's half, not ours.
+  p256dh     String
+  auth       String
+  /// Whatever the browser called itself when it subscribed. Purely so a
+  /// customer clearing out old devices can tell them apart.
+  userAgent  String?
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([customerId])
 }
 

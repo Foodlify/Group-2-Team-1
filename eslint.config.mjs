@@ -24,6 +24,16 @@ export default tseslint.config(
   // Disables stylistic rules that conflict with Prettier (must come last).
   prettier,
   {
+    // The push demo's service worker runs in a worker global scope, where
+    // `self` is the registration itself. Linted rather than ignored — it is
+    // real code a browser executes, and a typo in it fails silently in the
+    // background where nobody is watching.
+    files: ["public/push-demo/sw.js"],
+    languageOptions: {
+      globals: { self: "readonly" },
+    },
+  },
+  {
     rules: {
       // `any` is discouraged but allowed at typed boundaries (flagged, not fatal).
       "@typescript-eslint/no-explicit-any": "warn",

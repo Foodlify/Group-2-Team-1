@@ -20,6 +20,7 @@ import "../modules/transaction/transaction.validation";
 import "../modules/payment/payment.validation";
 import "../modules/payment/integration.validation";
 import "../modules/auditing/auditing.validation";
+import "../modules/push/push.validation";
 
 // Ensure every route's OpenAPI path is registered too. Routes push into
 // `routeRegistry` as a side effect of being imported; importing them here (not
@@ -39,6 +40,7 @@ import "../modules/order/order.routes";
 import "../modules/dashboard/dashboard.routes";
 import "../modules/transaction/transaction.routes";
 import "../modules/auditing/auditing.routes";
+import "../modules/push/push.routes";
 // Mounted straight onto the app rather than the `/api/v1` router (it needs the
 // raw body), so it would otherwise be missing from the spec entirely.
 import "../modules/payment/payment.routes";

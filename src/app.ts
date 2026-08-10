@@ -1,4 +1,5 @@
 import express, { Application, Request, Response, NextFunction } from "express";
+import path from "node:path";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import helmet from "helmet";
@@ -66,6 +67,21 @@ app.use((req: Request, res: Response, next: NextFunction): void => {
 
 // ── OpenAPI Documentation ─────────────────────────────
 serveOpenApi(app);
+
+// ── Web Push demo page (non-production) ───────────────
+// A service worker only registers on a secure origin, and localhost counts —
+// so the one place this page can work without TLS is served by the API itself.
+// It exists because push is otherwise unprovable from a backend: there is no
+// way to show a notification arriving without something that subscribes.
+//
+// Never in production: it is a development tool, not part of the product, and
+// nothing should be able to reach it on a real deployment.
+if (env.NODE_ENV !== "production") {
+  app.use(
+    "/push-demo",
+    express.static(path.join(__dirname, "..", "public", "push-demo")),
+  );
+}
 
 // ── Routes ───────────────────────────────────────────
 // General-purpose rate limit as a safety net across the whole API.
