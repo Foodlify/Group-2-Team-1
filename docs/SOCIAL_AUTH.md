@@ -5,23 +5,106 @@
 
 ---
 
-## Setting it up
+## What goes in `.env`
 
-Free, and no card: create an **OAuth 2.0 Client ID** of type _Web application_
-at [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials),
-then put the id and secret in `.env`.
+Two values, both from Google. The other two have working defaults:
 
-Register the callback as an **Authorized redirect URI** on that client, exactly
-as written — Google compares the string, not the resolved URL:
+```dotenv
+GOOGLE_CLIENT_ID=1234567890-abcdefg.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxxxxxx
 
-```
-http://localhost:3000/api/v1/auth/google/callback
+# Optional — this is already the default:
+# GOOGLE_CALLBACK_URL=http://localhost:3000/api/v1/auth/google/callback
+
+# Optional — leave unset and the callback answers with JSON, which is what
+# makes the flow demonstrable with no frontend:
+# GOOGLE_POST_LOGIN_REDIRECT=
 ```
 
 Unset credentials mean the two routes answer **404**: this deployment does not
 offer that sign-in method, which is the truth. Setting only one of the pair is
 refused at boot — it would send people to a consent screen whose callback can
 never complete the exchange.
+
+---
+
+## Getting them
+
+Free. No billing account, no card, and **no Google review** — the scopes used
+here (`openid`, `email`, `profile`) are the non-sensitive ones, which is what
+makes this the cheapest of the remaining scope-map items to actually finish.
+
+**1. A project.** At
+[console.cloud.google.com](https://console.cloud.google.com), pick the project
+dropdown at the top → **New Project**. Any name.
+
+**2. The consent screen.** Left menu → **APIs & Services → OAuth consent
+screen** (newer consoles call this **Google Auth Platform → Branding**).
+
+- User type **External**.
+- App name, a support email, a developer contact email. That is all that is
+  required.
+- Scopes: **add nothing**. `openid`, `email` and `profile` are granted by
+  default and are not the kind that trigger a verification review.
+
+**3. Test users — the step everyone misses.** While the app's publishing status
+is **Testing**, only accounts listed as test users can sign in; everyone else
+gets `access_denied` at the consent screen and it looks like a bug in the code.
+Add your own Google account under **Audience → Test users**. Up to 100.
+
+Alternatively press **Publish app**. With non-sensitive scopes only, that needs
+no verification.
+
+**4. The credentials.** **APIs & Services → Credentials → Create Credentials →
+OAuth client ID**.
+
+- Application type: **Web application**.
+- Under **Authorized redirect URIs**, add this, exactly:
+
+  ```
+  http://localhost:3000/api/v1/auth/google/callback
+  ```
+
+  Google compares the **string**, not the resolved URL. A trailing slash, `127.
+0.0.1` instead of `localhost`, or a different port is a different URI and
+  fails with `redirect_uri_mismatch`.
+
+  Plain `http` is fine here: Google requires HTTPS for redirect URIs generally,
+  but exempts loopback addresses — `localhost`, `127.0.0.1`, `[::1]` — for
+  local development. A deployed instance needs an `https://` URI added
+  alongside it, and `GOOGLE_CALLBACK_URL` set to match.
+
+- **Authorized JavaScript origins** can be left empty. That field is for
+  browser-side token flows; ours is server-side.
+
+**5. Copy the two values** into `.env` and restart the server.
+
+**No API needs enabling.** The identity claims arrive inside the ID token from
+the OAuth endpoints themselves — nothing here calls a Google API, so there is
+no library to enable and nothing to add to the project.
+
+### Checking it worked
+
+```
+curl -i http://localhost:3000/api/v1/auth/google
+```
+
+- **302** with a `Location` on `accounts.google.com` and a `Set-Cookie:
+oauthState=…` — configured correctly.
+- **404** — the server has no credentials; check `.env` and that it restarted.
+
+Then open `http://localhost:3000/api/v1/auth/google` **in a browser** (not
+curl — the flow is a navigation). After the consent screen you land back on the
+callback with the session cookies set, and the JSON body naming the account.
+
+### When it goes wrong
+
+| What you see                | What it means                                                            |
+| --------------------------- | ------------------------------------------------------------------------ |
+| `redirect_uri_mismatch`     | The registered URI is not character-for-character the callback.          |
+| `access_denied`             | The account is not a test user, and the app is still in Testing.         |
+| 400 `could not be verified` | The `oauthState` cookie did not survive — usually a different host/port. |
+| 404 on `/auth/google`       | No credentials configured on this deployment.                            |
 
 ---
 
