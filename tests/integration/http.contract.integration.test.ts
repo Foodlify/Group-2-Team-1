@@ -8,6 +8,7 @@
  * status by the time it reaches the wire.
  */
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import app from "../../src/app";
 import prisma from "../../src/config/prisma";
 import { disconnect, resetDatabase } from "./helpers/db";
 import { api, asCookie, createAccount } from "./helpers/http";
@@ -203,6 +204,17 @@ describe("the Stripe webhook's place in the middleware order", () => {
 });
 
 // ═══════════════════════════════════════════════════════════
+describe("client identity behind a proxy", () => {
+  it("does not trust forwarded headers unless configured to", async () => {
+    // `trust proxy` decides what `req.ip` is, and the rate limiter counts by
+    // it. The default has to be 0: guessing a hop count on a deployment's
+    // behalf either lets clients forge their own identity, or collapses every
+    // customer into one bucket. This asserts the app reads it from config
+    // rather than leaving Express's default in place.
+    expect(app.get("trust proxy")).toBe(0);
+  });
+});
+
 describe("the health endpoint", () => {
   it("reports the database it is actually connected to", async () => {
     const res = await api().get("/health");
