@@ -97,7 +97,16 @@ first attempt and only showed it under that check.
   no automatic money movement — and automatic retrying is deliberately **not**
   built: sending money back on a timer with nobody looking is not a cron job's
   decision.
-- **Partial refunds** are not supported; a cancellation always refunds in full.
+- ~~**`View Payment Transactions` / `Generate Transaction Receipt`**~~ — done
+  (2026-08-10). Both are named endpoints in the official scope map, and the
+  transaction module had no routes at all, so neither was reachable. Customer
+  and ADMIN listings (paged, filterable) plus receipts rendered on demand from
+  the order's snapshots. 9 mutations, all caught.
+- **Partial refunds will not be built.** `PARTIAL_REFUND` is in the enum and the
+  dashboard already subtracts it, but nothing writes one — and nothing should:
+  it appears nowhere in the official scope map, and the mentor's S15 decision
+  was that a refund is a **manual refund** (record it, change the status, no
+  gateway integration). The Stripe refunds here already exceed that.
 - **Abandoned card orders depend on `checkout.session.expired`.** Stock is
   reserved at checkout, and that 24-hour event is what releases it. If the
   webhook endpoint is ever unreachable for a long stretch, abandoned checkouts

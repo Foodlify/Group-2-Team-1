@@ -1,0 +1,213 @@
+import { Router } from "express";
+import { validate } from "../../middlewares/validate.middleware";
+import { authenticate, authorize } from "../../middlewares/auth.middleware";
+import { routeRegistry } from "../../openapi/registry";
+import * as controller from "./transaction.controller";
+import {
+  TransactionIdParamsSchema,
+  TransactionListQuerySchema,
+} from "./transaction.validation";
+
+/**
+ * The customer's own transactions and receipts, mounted under
+ * `/customers/me/transactions` alongside the rest of the self-service surface.
+ *
+ * Two routers rather than one shared router with per-route guards: the scoping
+ * is the difference between them, and a customer route that forgets to filter
+ * by owner is exactly the mistake that separation makes impossible.
+ */
+export const myTransactionsRouter: Router = Router();
+
+myTransactionsRouter.use(authenticate);
+
+myTransactionsRouter.get(
+  "/",
+  validate({ query: TransactionListQuerySchema }),
+  controller.listMyTransactions,
+);
+
+myTransactionsRouter.get(
+  "/:transactionId/receipt",
+  validate({ params: TransactionIdParamsSchema }),
+  controller.getMyReceipt,
+);
+
+/** Every transaction in the system, for the admin view. */
+export const adminTransactionsRouter: Router = Router();
+
+adminTransactionsRouter.use(authenticate, authorize("ADMIN"));
+
+adminTransactionsRouter.get(
+  "/",
+  validate({ query: TransactionListQuerySchema }),
+  controller.listAllTransactions,
+);
+
+adminTransactionsRouter.get(
+  "/:transactionId/receipt",
+  validate({ params: TransactionIdParamsSchema }),
+  controller.getReceipt,
+);
+
+// ─── OpenAPI Documentation ───────────────────────────────
+
+const tag = "Transactions";
+const errorRef = { $ref: "#/components/schemas/ErrorResponse" };
+const validationErrorRef = {
+  $ref: "#/components/schemas/ValidationErrorResponse",
+};
+const security: Record<string, string[]>[] = [
+  { cookieAuth: [] },
+  { BearerAuth: [] },
+];
+
+const listParams = [
+  {
+    name: "page",
+    in: "query" as const,
+    schema: { type: "integer" as const, default: 1 },
+  },
+  {
+    name: "limit",
+    in: "query" as const,
+    schema: { type: "integer" as const, default: 20, maximum: 100 },
+  },
+  {
+    name: "type",
+    in: "query" as const,
+    schema: {
+      type: "string" as const,
+      enum: ["ORDER_PAYMENT", "REFUND", "PARTIAL_REFUND"],
+    },
+  },
+  {
+    name: "status",
+    in: "query" as const,
+    schema: {
+      type: "string" as const,
+      enum: ["PENDING", "SUCCESS", "FAILED"],
+    },
+  },
+  {
+    name: "orderId",
+    in: "query" as const,
+    schema: { type: "string" as const },
+  },
+];
+
+const transactionIdParam = {
+  name: "transactionId",
+  in: "path" as const,
+  required: true,
+  schema: { type: "string" as const },
+};
+
+const listResponses = {
+  "200": {
+    description: "A page of transactions, newest first",
+    content: {
+      "application/json": {
+        schema: { $ref: "#/components/schemas/TransactionListSuccessResponse" },
+      },
+    },
+  },
+  "400": {
+    description: "Invalid filter or pagination value",
+    content: { "application/json": { schema: validationErrorRef } },
+  },
+  "401": {
+    description: "Not signed in",
+    content: { "application/json": { schema: errorRef } },
+  },
+};
+
+const receiptResponses = {
+  "200": {
+    description: "The receipt",
+    content: {
+      "application/json": {
+        schema: { $ref: "#/components/schemas/ReceiptSuccessResponse" },
+      },
+    },
+  },
+  "404": {
+    description: "No such transaction, or it belongs to someone else",
+    content: { "application/json": { schema: errorRef } },
+  },
+  "409": {
+    description: "The transaction has not settled, or has no order to itemise",
+    content: { "application/json": { schema: errorRef } },
+  },
+};
+
+routeRegistry.push({
+  path: "/api/v1/customers/me/transactions",
+  pathItem: {
+    get: {
+      tags: [tag],
+      security,
+      summary: "The signed-in customer's payment transactions",
+      description:
+        "Payments and refunds belonging to this customer's own orders, newest first. Ownership runs through the order, so a transaction not attached to one of the caller's orders is never returned.",
+      parameters: listParams,
+      responses: listResponses,
+    },
+  },
+});
+
+routeRegistry.push({
+  path: "/api/v1/customers/me/transactions/{transactionId}/receipt",
+  pathItem: {
+    get: {
+      tags: [tag],
+      security,
+      summary: "Receipt for one of the customer's own transactions",
+      description:
+        "Rendered on demand from the order's own snapshots — the item names and prices as they were at checkout, not as they are now. Only settled (SUCCESS) transactions have a receipt.",
+      parameters: [transactionIdParam],
+      responses: receiptResponses,
+    },
+  },
+});
+
+routeRegistry.push({
+  path: "/api/v1/transactions",
+  pathItem: {
+    get: {
+      tags: [tag],
+      security,
+      summary: "Every payment transaction (ADMIN)",
+      description:
+        "The whole ledger, newest first, filterable by type, status and order.",
+      parameters: listParams,
+      responses: {
+        ...listResponses,
+        "403": {
+          description: "Not an admin",
+          content: { "application/json": { schema: errorRef } },
+        },
+      },
+    },
+  },
+});
+
+routeRegistry.push({
+  path: "/api/v1/transactions/{transactionId}/receipt",
+  pathItem: {
+    get: {
+      tags: [tag],
+      security,
+      summary: "Receipt for any transaction (ADMIN)",
+      description:
+        "Same document as the customer's, without the ownership restriction.",
+      parameters: [transactionIdParam],
+      responses: {
+        ...receiptResponses,
+        "403": {
+          description: "Not an admin",
+          content: { "application/json": { schema: errorRef } },
+        },
+      },
+    },
+  },
+});
