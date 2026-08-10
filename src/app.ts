@@ -29,6 +29,37 @@ app.set("trust proxy", env.TRUST_PROXY);
 // ── Middlewares ──────────────────────────────────────
 // Security headers first so every response (including errors) carries them.
 app.use(helmet());
+
+// ── Content-Security-Policy for the docs UI only ─────
+// Scalar renders itself from a CDN bundle plus an inline bootstrap call, and
+// helmet's default `script-src 'self'` refuses both — the page loads, the
+// script never runs, and you get a blank screen with nothing in the response
+// to explain it.
+//
+// Relaxed for `/api-docs` alone rather than globally. The strict policy is
+// worth keeping on every route that returns data, and a documentation viewer
+// is a different kind of surface from an API response: it renders a spec this
+// server already publishes at `/openapi.json`.
+//
+// `/api-docs/swagger` needs none of this — swagger-ui-express serves its
+// assets from this origin with no inline script — and it stays available as
+// the fallback whenever the CDN is unreachable.
+app.use(
+  "/api-docs",
+  helmet.contentSecurityPolicy({
+    directives: {
+      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+      "script-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
+      "connect-src": ["'self'", "https://cdn.jsdelivr.net"],
+      // Scalar pulls its icons and web fonts from the same CDN.
+      "img-src": ["'self'", "data:", "https://cdn.jsdelivr.net"],
+      "font-src": ["'self'", "data:", "https://cdn.jsdelivr.net"],
+      // `upgrade-insecure-requests` is in the defaults and would rewrite this
+      // page's own http://localhost assets to https during development.
+      "upgrade-insecure-requests": null,
+    },
+  }),
+);
 // CORS with credentials so browsers send/receive the httpOnly auth cookies.
 // `CORS_ORIGIN` (comma-separated) restricts origins in production; when unset
 // we reflect the request origin (dev convenience).

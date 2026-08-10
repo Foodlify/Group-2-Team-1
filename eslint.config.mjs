@@ -24,13 +24,23 @@ export default tseslint.config(
   // Disables stylistic rules that conflict with Prettier (must come last).
   prettier,
   {
-    // The demo's service worker runs in a worker global scope, where `self` is
-    // the registration itself. Linted rather than ignored — it is real code a
-    // browser executes, and a typo in it fails silently in the background
-    // where nobody is watching.
-    files: ["public/demo/sw.js"],
+    // The demo page's scripts run in a browser, not in Node. Linted rather
+    // than ignored — both are real code a browser executes, and a typo in the
+    // service worker in particular fails silently in the background where
+    // nobody is watching.
+    files: ["public/demo/*.js"],
     languageOptions: {
-      globals: { self: "readonly" },
+      globals: {
+        // Service worker scope: `self` is the registration itself.
+        self: "readonly",
+        // Page scope.
+        window: "readonly",
+        document: "readonly",
+        navigator: "readonly",
+        fetch: "readonly",
+        atob: "readonly",
+        Notification: "readonly",
+      },
     },
   },
   {
