@@ -9,6 +9,7 @@ import { notificationService } from "../notification/notification.service";
 import type { TimelineEntry } from "../order/order.model";
 import { getStripe } from "./stripe.client";
 import { StripeCardStrategy } from "./stripe.strategy";
+import { verifySettlement } from "./payment.verification";
 import env from "../../config/env";
 
 /**
@@ -68,7 +69,13 @@ class PaymentWebhookService {
 
   async handleEvent(event: Stripe.Event): Promise<void> {
     switch (event.type) {
+      // `completed` fires as soon as the customer finishes the checkout, which
+      // for a delayed payment method is before any money has moved.
+      // `async_payment_succeeded` is what says it finally did. Both land here
+      // because `markPaid` settles only a session Stripe reports as `paid`,
+      // so the pair is safe in either order and safe to redeliver.
       case "checkout.session.completed":
+      case "checkout.session.async_payment_succeeded":
         await this.markPaid(event.data.object);
         break;
       // `expired` fires when the customer never paid within 24 hours;
@@ -99,6 +106,20 @@ class PaymentWebhookService {
     const orderId = this.readOrderId(session);
     if (!orderId) return;
 
+    // A completed session is not a paid one. Delayed methods finish the
+    // checkout before the money arrives and report `unpaid` here, settling
+    // later via `async_payment_succeeded` (handled above). Recording SUCCESS
+    // now would put a payment in the ledger that has not happened yet — and
+    // the customer's own browser reaching the success page proves even less.
+    if (session.payment_status !== "paid") {
+      logger.info("Stripe checkout completed but not paid yet; leaving it", {
+        orderId,
+        sessionId: session.id,
+        paymentStatus: session.payment_status,
+      });
+      return;
+    }
+
     const outcome = await orderRepository.transaction(async (tx) => {
       const pending = await transactionService.findPendingGatewayPayment(
         orderId,
@@ -106,6 +127,36 @@ class PaymentWebhookService {
       );
       // Already settled by an earlier delivery of this same event.
       if (!pending) return "already-settled" as const;
+
+      // The signature proved the event is Stripe's. It did not prove the event
+      // settles THIS payment — that the sum and currency which moved are the
+      // ones this ledger row is owed. Without this check the webhook accepts
+      // whatever figure the event carries, and an order for 100 is settled in
+      // full by a session for 1.
+      const discrepancy = verifySettlement(
+        { amount: pending.amount, currency: pending.currency },
+        { amountTotal: session.amount_total, currency: session.currency },
+      );
+      if (discrepancy) {
+        // Left PENDING, not marked FAILED. The signature is valid, so money
+        // genuinely moved at the gateway — calling it a failure would be as
+        // untrue as calling it a success. "Unsettled and flagged" is the only
+        // honest state, and it keeps the row in the outstanding admin views
+        // where a human will see it. Metadata only: no status change.
+        await transactionService.attachGatewayReference(
+          pending.id,
+          {
+            metadata: {
+              gateway: "stripe",
+              stage: "verification_failed",
+              sessionId: session.id,
+              ...discrepancy,
+            },
+          },
+          tx,
+        );
+        return { unverified: discrepancy } as const;
+      }
 
       // The PaymentIntent id is captured here because it is the only thing
       // Stripe will refund against later — `externalRef` holds the Checkout
@@ -146,6 +197,18 @@ class PaymentWebhookService {
       logger.info("Stripe webhook replayed for a settled payment; ignoring", {
         orderId,
         sessionId: session.id,
+      });
+      return;
+    }
+    if (typeof outcome === "object") {
+      // Deliberately not thrown. A mismatch is permanent — the same event
+      // redelivered for three days will disagree in exactly the same way — so
+      // a 5xx would buy nothing but noise. The alarm belongs in the logs and
+      // on the row, where it stays until somebody acts on it.
+      logger.error("Stripe settled an amount we did not ask for", {
+        orderId,
+        sessionId: session.id,
+        ...outcome.unverified,
       });
       return;
     }

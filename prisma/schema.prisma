@@ -12,9 +12,17 @@ datasource db {
 // Users & Access Control
 // ═══════════════════════════════════════════════════════════════
 
+/// The official ERD lists `Role` and `User Type` as tables. They are an enum
+/// here because these three are fixed at build time: each one is named in an
+/// `authorize()` call somewhere in this codebase, so a role that exists only as
+/// a row would be a role no route can name. A table earns its place when roles
+/// are defined at runtime, which is a different system than this one.
 enum Role {
   CUSTOMER
   ADMIN
+  /// Runs one or more restaurants. Sees and acts on their orders, and nothing
+  /// else — the scope comes from `Restaurant.ownerId`, not from the role.
+  RESTAURANT
 }
 
 model User {
@@ -23,7 +31,8 @@ model User {
   email String @unique
   /// Hashed password (bcrypt). Never returned in any API response.
   password String
-  /// Account role — CUSTOMER for storefront users, ADMIN for dashboard.
+  /// Account role — CUSTOMER for storefront users, ADMIN for dashboard,
+  /// RESTAURANT for someone who runs a restaurant on the platform.
   role     Role   @default(CUSTOMER)
   /// When email ownership was proven via the registration OTP. Null until
   /// verified — login stays blocked while it is null.
@@ -35,6 +44,10 @@ model User {
 
   customer      Customer?
   refreshTokens RefreshToken[]
+  /// Restaurants this account runs. The ERD puts `Restaurant` among the user
+  /// module's tables next to `Customer`, and this is that edge: `Customer` is
+  /// what a User is to the storefront, this is what a User is to the catalog.
+  ownedRestaurants Restaurant[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -154,11 +167,68 @@ model Restaurant {
   /// rows created before auditing existed have no actor to attribute.
   createdBy String?
   updatedBy String?
+  /// The account that runs this restaurant, assigned by an admin. This is the
+  /// whole of the ownership model: "may I act on this order?" is answered by
+  /// walking the order's restaurant to here, never by the role alone.
+  ///
+  /// Nullable because a restaurant with no owner is a real state — every one
+  /// that predates this column has none, and an admin runs those. Not unique:
+  /// one account may run several restaurants, and the order history reads
+  /// across all of them.
+  ///
+  /// `SetNull` on delete: losing the account must not take the restaurant, its
+  /// menus and its order history down with it. It goes back to being unowned.
+  ownerId String?
+  owner   User?   @relation(fields: [ownerId], references: [id], onDelete: SetNull)
 
-  menus  Menu[]
-  carts  Cart[]
-  orders Order[]
-  rates  RestaurantRate[]
+  menus   Menu[]
+  carts   Cart[]
+  orders  Order[]
+  rates   RestaurantRate[]
+  details RestaurantDetails?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Every owner-scoped read starts here: "which restaurants are mine".
+  @@index([ownerId])
+}
+
+/// The official ERD's `restaurantDetails` — how to reach a restaurant and where
+/// it is, kept out of `Restaurant` itself.
+///
+/// A separate table rather than more columns, for the reason the ERD splits
+/// them: `Restaurant` is joined on nearly every read in the system — listings,
+/// search, carts, orders, ratings, dashboard — while these fields are wanted on
+/// exactly one screen. Widening the hot row to carry them would make every one
+/// of those reads move bytes nobody asked for.
+///
+/// Optional (`Restaurant.details` is nullable): restaurants registered before
+/// this existed genuinely have no details, and inventing a phone number for
+/// them would be worse than an empty field.
+///
+/// No `isDeleted` of its own. The row is only ever reachable through its
+/// restaurant, which is already filtered, and a second flag would be a second
+/// source of truth about the same fact.
+model RestaurantDetails {
+  id           String @id @default(cuid())
+  restaurantId String @unique
+  /// Kept required: a restaurant nobody can call is not operationally real.
+  phone        String
+  email        String?
+  description  String?
+
+  /// Its own columns rather than a row in `Address`. `Address` belongs to a
+  /// customer — `customerId` is required and cascades from them — and making
+  /// that optional to fit a restaurant in would weaken a constraint that is
+  /// doing real work, for the sake of sharing five field names.
+  addressLine1 String
+  addressLine2 String?
+  city         String
+  postalCode   String
+  country      String
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -502,13 +572,122 @@ model Transaction {
   orderId        String?
   metadata       Json?
 
-  order Order? @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  order   Order?              @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  details TransactionDetails?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([orderId])
   @@index([externalRef])
+}
+
+/// The official ERD's `transactionDetails` — the gateway's own facts about a
+/// transaction, as typed columns.
+///
+/// NOT a line-item breakdown. That already exists as `OrderItems`, which the
+/// receipt is built from, and a second copy of it would be a second version of
+/// the truth about what somebody bought.
+///
+/// What this replaces is the `Transaction.metadata` blob. Those facts were
+/// real but untyped, and the cost showed: `resolvePaymentIntentId` dug the
+/// refund reference out of JSON with a `typeof` check and paid an extra round
+/// trip to Stripe whenever the key was missing or misspelled. A column cannot
+/// be misspelled.
+///
+/// Every field is nullable and the row itself is optional, because every fact
+/// here belongs to a gateway and cash payments have none. Only fields the
+/// payment paths actually populate are present — a column nothing ever writes
+/// is decoration that reads as data.
+///
+/// `metadata` stays on `Transaction` as the raw, unstructured record of what
+/// the provider said. This table is what code reads; that blob is what a human
+/// reads when something inexplicable happened.
+model TransactionDetails {
+  id            String @id @default(cuid())
+  transactionId String @unique
+
+  /// Which provider, e.g. "stripe". Null for cash.
+  gateway String?
+  /// Where in the gateway's flow this row got to — "checkout_created",
+  /// "paid", "verification_failed".
+  stage   String?
+
+  /// The Checkout Session. Also on `Transaction.externalRef`, kept here too
+  /// because that column holds whichever reference came first and this one
+  /// says which kind it is.
+  sessionId       String?
+  /// What Stripe will actually accept a refund against. The session id is not
+  /// it, which is the whole reason this column exists.
+  paymentIntentId String?
+  refundId        String?
+
+  /// The provider's own status word, unmapped — "succeeded", "requires_action".
+  /// Our three-state `TransactionStatus` is the mapped version; this is what it
+  /// was mapped from, which is what you need when the mapping looks wrong.
+  gatewayStatus String?
+  /// Why it failed, in the provider's words.
+  failureReason String?
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([paymentIntentId])
+}
+
+/// The official ERD's `paymentIntegrationType` — the catalogue of payment
+/// integrations this deployment knows about, one row each.
+///
+/// `isEnabled` is the point of putting this in a table at all: turning card
+/// payments off is currently a matter of removing an environment variable and
+/// restarting, which is not something anyone wants to do at the moment a
+/// gateway starts misbehaving. This flag is checked when a payment is taken,
+/// so flipping it takes effect on the next request.
+model PaymentIntegrationType {
+  id String @id @default(cuid())
+  /// Stable machine name — "stripe", "cash". What code and the admin API use.
+  code        String        @unique
+  displayName String
+  /// Which of our payment methods this integration serves.
+  paymentMethod PaymentMethod
+  isEnabled     Boolean       @default(true)
+
+  configuration PaymentIntegrationConfiguration?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// The official ERD's `paymentIntegrationConfiguration` — how one integration
+/// is set up.
+///
+/// **No secrets live here, ever.** A database is dumped, backed up, replicated
+/// and readable by anyone with a connection string; an API key in a table is an
+/// API key in every one of those places. What is stored instead is the NAME of
+/// the environment variable holding each secret, so this table can say how the
+/// integration is wired without being able to leak it.
+model PaymentIntegrationConfiguration {
+  id     String @id @default(cuid())
+  typeId String @unique
+
+  /// Currency the integration charges in, as an ISO code.
+  currency   String  @default("EGP")
+  successUrl String?
+  cancelUrl  String?
+  /// Whether this points at the provider's sandbox. Recorded rather than
+  /// inferred: "are we live?" should not be answered by squinting at a key.
+  isTestMode Boolean @default(true)
+
+  /// Names, never values. `STRIPE_SECRET_KEY`, not `sk_live_...`.
+  secretKeyEnvVar     String?
+  webhookSecretEnvVar String?
+
+  type PaymentIntegrationType @relation(fields: [typeId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // ═══════════════════════════════════════════════════════════════

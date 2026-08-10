@@ -55,12 +55,27 @@ export async function createCustomer(suffix = "1") {
   return { user, customer, address };
 }
 
-/** A restaurant with one menu and one item, priced and optionally stocked. */
+/**
+ * A restaurant with one menu and one item, priced and optionally stocked.
+ *
+ * `name` matters once a test needs two restaurants: the column is not unique,
+ * so two identically named ones are legal but indistinguishable in a failure
+ * message. `ownerId` is the account that runs it — left null, as every
+ * restaurant was before ownership existed.
+ */
 export async function createCatalog(
-  options: { price?: string; stock?: number | null } = {},
+  options: {
+    price?: string;
+    stock?: number | null;
+    name?: string;
+    ownerId?: string;
+  } = {},
 ) {
   const restaurant = await prisma.restaurant.create({
-    data: { name: "Koshary El Tahrir" },
+    data: {
+      name: options.name ?? "Koshary El Tahrir",
+      ...(options.ownerId ? { ownerId: options.ownerId } : {}),
+    },
   });
   const menu = await prisma.menu.create({
     data: { name: "Dinner", restaurantId: restaurant.id },

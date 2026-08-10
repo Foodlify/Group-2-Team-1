@@ -3,3 +3,5 @@ node_modules
 src/generated
 logs
 package-lock.json
+# A running PostgreSQL rewrites files under here mid-check — see .gitignore.
+tmp

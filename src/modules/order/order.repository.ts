@@ -125,13 +125,23 @@ export class OrderRepository extends BaseRepository<PrismaClient["order"]> {
     );
   }
 
-  /** Admin: paginated list across all customers, same optional filters. */
+  /**
+   * Admin: paginated list across all customers, same optional filters, plus an
+   * optional narrowing to given restaurants.
+   *
+   * `restaurantIds` is also how the restaurant owner's history is served — the
+   * caller passes the ids it owns. An **empty array is not "no filter"**: it
+   * means "these restaurants", of which there are none, and must return
+   * nothing. Reading it as "unfiltered" would hand an owner with no restaurants
+   * the whole platform's orders.
+   */
   async findPaginatedAll(options: {
     page: number;
     limit: number;
     from?: Date;
     to?: Date;
     status?: OrderStatus;
+    restaurantIds?: string[];
   }) {
     return this.findPaginatedWhere(
       this.buildOrderFilter(options),
@@ -141,12 +151,22 @@ export class OrderRepository extends BaseRepository<PrismaClient["order"]> {
   }
 
   private buildOrderFilter(
-    options: { from?: Date; to?: Date; status?: OrderStatus },
+    options: {
+      from?: Date;
+      to?: Date;
+      status?: OrderStatus;
+      restaurantIds?: string[];
+    },
     customerId?: string,
   ): Prisma.OrderWhereInput {
     const where: Prisma.OrderWhereInput = {};
     if (customerId) where.customerId = customerId;
     if (options.status) where.status = options.status;
+    // Deliberately `!== undefined` rather than a truthiness or length check:
+    // see `findPaginatedAll` on why an empty array must still filter.
+    if (options.restaurantIds !== undefined) {
+      where.restaurantId = { in: options.restaurantIds };
+    }
     if (options.from || options.to) {
       where.createdAt = {};
       if (options.from) where.createdAt.gte = options.from;

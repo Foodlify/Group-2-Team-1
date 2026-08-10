@@ -15,6 +15,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Stripe from "stripe";
+import { Prisma } from "../../src/generated/prisma/client";
 
 // `vi.hoisted` because the `vi.mock` factory below is lifted above every
 // top-level statement — a plain const would not exist yet when it runs.
@@ -50,6 +51,7 @@ vi.mock("../../src/modules/transaction/transaction.service", () => ({
     findPendingGatewayPayment: vi.fn(),
     updateStatus: vi.fn(),
     recordGatewayOutcome: vi.fn(),
+    attachGatewayReference: vi.fn(),
     findByExternalRef: vi.fn(),
   },
 }));
@@ -96,6 +98,13 @@ const session = {
   // Stripe sends this unexpanded, as a bare id — the shape the handler has to
   // cope with in production.
   payment_intent: "pi_test_1",
+  // The three fields the settlement is checked against. They are on the
+  // fixture rather than added per test because a session without them proves
+  // nothing was paid, and every "settles the payment" test below would then be
+  // asserting against an event no real gateway would send.
+  payment_status: "paid",
+  amount_total: 2445,
+  currency: "egp",
   metadata: { orderId: "order_1", transactionId: "txn_1" },
 };
 
@@ -104,6 +113,8 @@ const pendingPayment = {
   status: "PENDING",
   paymentMethod: "CREDIT_CARD",
   type: "ORDER_PAYMENT",
+  amount: new Prisma.Decimal("24.45"),
+  currency: "EGP",
 };
 
 beforeEach(() => {
@@ -289,6 +300,128 @@ describe("a completed checkout settles the payment and confirms the order", () =
       id: "evt_2",
       type: "checkout.session.completed",
       data: { object: { id: "cs_x", metadata: {} } },
+    } as never);
+
+    expect(mockedTransactions.recordGatewayOutcome).not.toHaveBeenCalled();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+describe("the settled amount is checked before the payment is accepted", () => {
+  const completedWith = (over: Record<string, unknown>) =>
+    ({
+      id: "evt_v",
+      type: "checkout.session.completed",
+      data: { object: { ...session, ...over } },
+    }) as never;
+
+  it("refuses to settle an order for 24.45 with a session for 0.01", async () => {
+    await paymentWebhookService.handleEvent(completedWith({ amount_total: 1 }));
+
+    // The whole point. A valid signature says the event is Stripe's; it does
+    // not say the sum inside it is the one this order is owed.
+    expect(mockedTransactions.recordGatewayOutcome).not.toHaveBeenCalled();
+    expect(mockedOrders.appendTimelineEntry).not.toHaveBeenCalled();
+    expect(mockedNotifications.notifyOrderStatusChanged).not.toHaveBeenCalled();
+  });
+
+  it("refuses a session in a different currency", async () => {
+    await paymentWebhookService.handleEvent(completedWith({ currency: "usd" }));
+
+    expect(mockedTransactions.recordGatewayOutcome).not.toHaveBeenCalled();
+  });
+
+  it("leaves the row PENDING rather than marking it FAILED", async () => {
+    await paymentWebhookService.handleEvent(completedWith({ amount_total: 1 }));
+
+    // Money did move — the signature is valid. Calling that a failure is as
+    // untrue as calling it a success, and FAILED would drop the row out of
+    // the pending views where somebody still needs to look at it.
+    expect(mockedTransactions.recordGatewayOutcome).not.toHaveBeenCalled();
+    expect(mockedTransactions.attachGatewayReference).toHaveBeenCalledWith(
+      "txn_1",
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          stage: "verification_failed",
+          reason: "amount_mismatch",
+          expected: "2445",
+          received: "1",
+        }),
+      }),
+      tx,
+    );
+  });
+
+  it("does not throw, because redelivering will not change the numbers", async () => {
+    // A 5xx has Stripe retry for three days over an event that disagrees the
+    // same way every time.
+    await expect(
+      paymentWebhookService.handleEvent(completedWith({ amount_total: 1 })),
+    ).resolves.toBeUndefined();
+  });
+
+  it("still settles a session that matches exactly", async () => {
+    await paymentWebhookService.handleEvent(completedWith({}));
+
+    expect(mockedTransactions.recordGatewayOutcome).toHaveBeenCalledWith(
+      "txn_1",
+      "SUCCESS",
+      expect.anything(),
+      tx,
+    );
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+describe("a completed checkout is not necessarily a paid one", () => {
+  const withStatus = (payment_status: string, type: string) =>
+    ({
+      id: "evt_d",
+      type,
+      data: { object: { ...session, payment_status } },
+    }) as never;
+
+  it("does not settle a session Stripe reports as unpaid", async () => {
+    // Delayed methods (bank debits) finish the checkout before any money
+    // moves. Settling here records a payment that has not happened.
+    await paymentWebhookService.handleEvent(
+      withStatus("unpaid", "checkout.session.completed"),
+    );
+
+    expect(mockedTransactions.recordGatewayOutcome).not.toHaveBeenCalled();
+    expect(mockedOrders.appendTimelineEntry).not.toHaveBeenCalled();
+  });
+
+  it("does not flag an unpaid session as a discrepancy", async () => {
+    await paymentWebhookService.handleEvent(
+      withStatus("unpaid", "checkout.session.completed"),
+    );
+
+    // It is a normal waiting state, not an alarm. Marking the row would send
+    // somebody chasing a payment that is simply still in flight.
+    expect(mockedTransactions.attachGatewayReference).not.toHaveBeenCalled();
+  });
+
+  it("settles it when the delayed payment finally succeeds", async () => {
+    await paymentWebhookService.handleEvent(
+      withStatus("paid", "checkout.session.async_payment_succeeded"),
+    );
+
+    // Without this event such a payment would sit PENDING forever, even
+    // though the money arrived.
+    expect(mockedTransactions.recordGatewayOutcome).toHaveBeenCalledWith(
+      "txn_1",
+      "SUCCESS",
+      expect.anything(),
+      tx,
+    );
+  });
+
+  it("checks the amount on the delayed event too", async () => {
+    await paymentWebhookService.handleEvent({
+      id: "evt_d2",
+      type: "checkout.session.async_payment_succeeded",
+      data: { object: { ...session, amount_total: 1 } },
     } as never);
 
     expect(mockedTransactions.recordGatewayOutcome).not.toHaveBeenCalled();

@@ -8,6 +8,7 @@ import {
   OrderIdParamsSchema,
   OrderQuerySchema,
   PlaceOrderRequestSchema,
+  ScopedOrderQuerySchema,
   UpdateStatusRequestSchema,
 } from "./order.validation";
 
@@ -31,7 +32,7 @@ router.get("/", validate({ query: OrderQuerySchema }), controller.getMyOrders);
 router.get(
   "/admin",
   authorize("ADMIN"),
-  validate({ query: OrderQuerySchema }),
+  validate({ query: ScopedOrderQuerySchema }),
   controller.listAllOrders,
 );
 router.get(
@@ -53,10 +54,12 @@ router.delete(
   controller.cancelOrder,
 );
 
-// Status & delivery-tracking changes are operational/admin actions.
+// Status changes are operational. The role gets a caller as far as the
+// handler; whether THIS order is theirs is decided in the service, against the
+// ownership rows — a RESTAURANT token is not a key to every restaurant.
 router.patch(
   "/:orderId/status",
-  authorize("ADMIN"),
+  authorize("ADMIN", "RESTAURANT"),
   validate({ params: OrderIdParamsSchema, body: UpdateStatusRequestSchema }),
   controller.updateOrderStatus,
 );
@@ -233,7 +236,10 @@ routeRegistry.push({
     patch: {
       tags: [tag],
       security,
-      summary: "Update order status (follows valid transitions)",
+      summary:
+        "Update order status (ADMIN, or the owner of the order's restaurant)",
+      description:
+        "Also how a restaurant cancels an order — the official `Cancelled Orders by Customers or Restaurants` — by moving it to CANCELLED. One state machine and one refund path serve both actors. A RESTAURANT caller acting on an order from a restaurant they do not run gets a 403.",
       parameters: [orderIdParam],
       requestBody: {
         required: true,
@@ -319,6 +325,12 @@ routeRegistry.push({
           in: "query",
           schema: { type: "string" },
           description: "Filter by order status",
+        },
+        {
+          name: "restaurantId",
+          in: "query",
+          schema: { type: "string" },
+          description: "Limit to one restaurant's orders",
         },
       ],
       responses: {

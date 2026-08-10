@@ -100,6 +100,38 @@ export const ReceiptResponseSchema = z
     description: "Proof of a settled payment or refund, rendered on demand",
   });
 
+export const TransactionDetailsResponseSchema = z
+  .object({
+    gateway: z.string().nullable().meta({ example: "stripe" }),
+    stage: z.string().nullable().meta({
+      description: "Where in the gateway's flow this row got to",
+      example: "paid",
+    }),
+    sessionId: z.string().nullable(),
+    paymentIntentId: z.string().nullable().meta({
+      description:
+        "What the gateway will accept a refund against. The session id is not it — which is why this is a column of its own.",
+    }),
+    refundId: z.string().nullable(),
+    gatewayStatus: z.string().nullable().meta({
+      description:
+        "The provider's own status word, unmapped. `status` above is what it was mapped to.",
+      example: "succeeded",
+    }),
+    failureReason: z.string().nullable(),
+  })
+  .meta({
+    id: "TransactionDetails",
+    description: "The official Transaction Details table — the gateway's facts",
+  });
+
+export const AdminTransactionResponseSchema = TransactionResponseSchema.extend({
+  details: TransactionDetailsResponseSchema.nullable().meta({
+    description:
+      "Null for a cash payment, which has no gateway, and for anything settled before this table existed.",
+  }),
+}).meta({ id: "AdminTransactionResponse" });
+
 export const TransactionListSuccessResponseSchema = z
   .object({
     success: z.literal(true),
@@ -108,6 +140,21 @@ export const TransactionListSuccessResponseSchema = z
     meta: PaginationMetaSchema,
   })
   .meta({ id: "TransactionListSuccessResponse" });
+
+/**
+ * The admin listing carries the gateway details; the customer's does not.
+ * Session and PaymentIntent ids, raw provider statuses and failure text are
+ * facts about our integration, not information a customer is owed about their
+ * own payment.
+ */
+export const AdminTransactionListSuccessResponseSchema = z
+  .object({
+    success: z.literal(true),
+    message: z.string(),
+    data: z.array(AdminTransactionResponseSchema),
+    meta: PaginationMetaSchema,
+  })
+  .meta({ id: "AdminTransactionListSuccessResponse" });
 
 export const ReceiptSuccessResponseSchema = z
   .object({
@@ -128,9 +175,21 @@ schemaRegistry.register(
   TransactionListSuccessResponseSchema,
 );
 schemaRegistry.register("ReceiptSuccessResponse", ReceiptSuccessResponseSchema);
+schemaRegistry.register("TransactionDetails", TransactionDetailsResponseSchema);
+schemaRegistry.register(
+  "AdminTransactionResponse",
+  AdminTransactionResponseSchema,
+);
+schemaRegistry.register(
+  "AdminTransactionListSuccessResponse",
+  AdminTransactionListSuccessResponseSchema,
+);
 
 export type TransactionListQueryInput = z.infer<
   typeof TransactionListQuerySchema
 >;
 export type TransactionIdParams = z.infer<typeof TransactionIdParamsSchema>;
 export type ReceiptResponse = z.infer<typeof ReceiptResponseSchema>;
+export type AdminTransactionResponse = z.infer<
+  typeof AdminTransactionResponseSchema
+>;

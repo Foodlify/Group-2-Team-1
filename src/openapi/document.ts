@@ -18,6 +18,7 @@ import "../modules/order/order.validation";
 import "../modules/dashboard/dashboard.validation";
 import "../modules/transaction/transaction.validation";
 import "../modules/payment/payment.validation";
+import "../modules/payment/integration.validation";
 import "../modules/auditing/auditing.validation";
 
 // Ensure every route's OpenAPI path is registered too. Routes push into

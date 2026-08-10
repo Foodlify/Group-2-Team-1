@@ -8,6 +8,16 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// The kill switch reads a table. Mocked to "enabled" here so these tests keep
+// asserting what they were written for — that a payment routes to the right
+// strategy — rather than turning into tests of the integration lookup. Its own
+// behaviour is covered in integration.service.unit.test.ts.
+vi.mock("../../src/modules/payment/integration.service", () => ({
+  paymentIntegrationService: {
+    assertMethodEnabled: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
 vi.mock("../../src/modules/transaction/transaction.service", () => ({
   transactionService: {
     createTransaction: vi.fn(),

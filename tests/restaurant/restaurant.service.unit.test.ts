@@ -15,8 +15,10 @@ vi.mock("../../src/modules/restaurant/restaurant.repository", () => ({
     listPaginated: vi.fn(),
     findById: vi.fn(),
     findByIdIncludingDeleted: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
+    findByIdWithDetails: vi.fn(),
+    createRestaurant: vi.fn(),
+    updateById: vi.fn(),
+    upsertDetails: vi.fn(),
     softDeleteById: vi.fn(),
     restoreById: vi.fn(),
     // Runs the callback against a stub client — the service's cascade logic is
@@ -84,10 +86,33 @@ const restaurantRow = {
   isDeleted: false,
   createdBy: null,
   updatedBy: null,
+  // Unowned — the state every restaurant registered before the owner column
+  // existed is in, and the one an admin runs directly.
+  ownerId: null,
   createdAt: now,
   updatedAt: now,
 };
 const deletedRow = { ...restaurantRow, isDeleted: true };
+
+/** A complete details payload — the shape an admin actually sends. */
+const detailsInput = {
+  phone: "+201000000000",
+  email: "hello@koshary.example",
+  description: "Since 1998.",
+  addressLine1: "12 Tahrir St",
+  city: "Cairo",
+  postalCode: "11511",
+  country: "Egypt",
+};
+
+const detailsRow = {
+  id: "det_1",
+  restaurantId: "rest_1",
+  ...detailsInput,
+  addressLine2: null,
+  createdAt: now,
+  updatedAt: now,
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -95,6 +120,9 @@ beforeEach(() => {
     async (cb: (tx: never) => Promise<unknown>) => cb({} as never),
   );
   mockedMenuRepo.findIdsByRestaurantId.mockResolvedValue([]);
+  mocked.createRestaurant.mockResolvedValue(restaurantRow);
+  mocked.updateById.mockResolvedValue(restaurantRow);
+  mocked.upsertDetails.mockResolvedValue(detailsRow);
 });
 
 describe("list", () => {
@@ -154,7 +182,10 @@ describe("list", () => {
 
 describe("getByIdOrThrow", () => {
   it("returns the mapped restaurant when it exists", async () => {
-    mocked.findById.mockResolvedValue(restaurantRow);
+    mocked.findByIdWithDetails.mockResolvedValue({
+      ...restaurantRow,
+      details: null,
+    });
 
     const result = await restaurantService.getByIdOrThrow("rest_1");
 
@@ -163,7 +194,7 @@ describe("getByIdOrThrow", () => {
   });
 
   it("throws RESTAURANT_NOT_FOUND when it does not exist", async () => {
-    mocked.findById.mockResolvedValue(null);
+    mocked.findByIdWithDetails.mockResolvedValue(null);
 
     await expect(
       restaurantService.getByIdOrThrow("nope"),
@@ -171,6 +202,54 @@ describe("getByIdOrThrow", () => {
       message: catalogErrors.RESTAURANT_NOT_FOUND.message,
       statusCode: catalogErrors.RESTAURANT_NOT_FOUND.statusCode,
     });
+  });
+
+  it("carries the details when the restaurant has them", async () => {
+    mocked.findByIdWithDetails.mockResolvedValue({
+      ...restaurantRow,
+      details: detailsRow,
+    });
+
+    const result = await restaurantService.getByIdOrThrow("rest_1");
+
+    expect(result.details).toEqual({
+      phone: "+201000000000",
+      email: "hello@koshary.example",
+      description: "Since 1998.",
+      addressLine1: "12 Tahrir St",
+      addressLine2: null,
+      city: "Cairo",
+      postalCode: "11511",
+      country: "Egypt",
+    });
+  });
+
+  it("reports null details rather than an empty object", async () => {
+    mocked.findByIdWithDetails.mockResolvedValue({
+      ...restaurantRow,
+      details: null,
+    });
+
+    const result = await restaurantService.getByIdOrThrow("rest_1");
+
+    // A restaurant registered without details genuinely has none. An empty
+    // object would read as "details exist and every field is blank".
+    expect(result.details).toBeNull();
+  });
+
+  it("never exposes the details row's own id or timestamps", async () => {
+    mocked.findByIdWithDetails.mockResolvedValue({
+      ...restaurantRow,
+      details: detailsRow,
+    });
+
+    const result = await restaurantService.getByIdOrThrow("rest_1");
+
+    // The caller can neither address nor update that row on its own, so
+    // handing them its id only invites an attempt.
+    expect(result.details).not.toHaveProperty("id");
+    expect(result.details).not.toHaveProperty("restaurantId");
+    expect(result.details).not.toHaveProperty("createdAt");
   });
 });
 
@@ -212,39 +291,78 @@ describe("getMenus", () => {
 
 describe("create", () => {
   it("creates the restaurant and stamps the actor on both auditing columns", async () => {
-    mocked.create.mockResolvedValue(restaurantRow);
-
     const result = await restaurantService.create(
       { name: "Koshary El Tahrir" },
       ADMIN,
     );
 
-    expect(mocked.create).toHaveBeenCalledWith({
-      data: {
-        name: "Koshary El Tahrir",
-        createdBy: ADMIN,
-        updatedBy: ADMIN,
-      },
-    });
+    expect(mocked.createRestaurant).toHaveBeenCalledWith(
+      { name: "Koshary El Tahrir", createdBy: ADMIN, updatedBy: ADMIN },
+      expect.anything(),
+    );
     expect(result.name).toBe("Koshary El Tahrir");
+  });
+
+  it("registers a restaurant with no details at all", async () => {
+    const result = await restaurantService.create({ name: "Bare" }, ADMIN);
+
+    // Details are optional at registration; writing an empty row would put a
+    // blank phone number into a NOT NULL column.
+    expect(mocked.upsertDetails).not.toHaveBeenCalled();
+    expect(result.details).toBeNull();
+  });
+
+  it("writes the details alongside the restaurant when given", async () => {
+    const result = await restaurantService.create(
+      { name: "Koshary El Tahrir", details: detailsInput },
+      ADMIN,
+    );
+
+    expect(mocked.upsertDetails).toHaveBeenCalledWith(
+      "rest_1",
+      detailsInput,
+      expect.anything(),
+    );
+    expect(result.details?.phone).toBe("+201000000000");
+  });
+
+  it("writes both rows in one transaction", async () => {
+    await restaurantService.create(
+      { name: "Koshary El Tahrir", details: detailsInput },
+      ADMIN,
+    );
+
+    // A restaurant that exists while its details insert failed is a
+    // half-registered restaurant, and the admin sent one request.
+    expect(mocked.transaction).toHaveBeenCalledTimes(1);
+    const [, , txPassedToDetails] = mocked.upsertDetails.mock.calls[0]!;
+    const [, txPassedToCreate] = mocked.createRestaurant.mock.calls[0]!;
+    // The same client, not merely both non-undefined: two different
+    // transactions would satisfy a laxer assertion and roll back separately.
+    expect(txPassedToDetails).toBe(txPassedToCreate);
+    expect(txPassedToDetails).toBeDefined();
   });
 });
 
 describe("update", () => {
   it("throws 404 when the restaurant does not exist", async () => {
-    mocked.findById.mockResolvedValue(null);
+    mocked.findByIdWithDetails.mockResolvedValue(null);
 
     await expect(
       restaurantService.update("nope", { name: "New" }, ADMIN),
     ).rejects.toMatchObject({
       statusCode: catalogErrors.RESTAURANT_NOT_FOUND.statusCode,
     });
-    expect(mocked.update).not.toHaveBeenCalled();
+    expect(mocked.updateById).not.toHaveBeenCalled();
+    expect(mocked.upsertDetails).not.toHaveBeenCalled();
   });
 
   it("updates, stamps updatedBy, and leaves createdBy alone", async () => {
-    mocked.findById.mockResolvedValue(restaurantRow);
-    mocked.update.mockResolvedValue({ ...restaurantRow, name: "Renamed" });
+    mocked.findByIdWithDetails.mockResolvedValue({
+      ...restaurantRow,
+      details: null,
+    });
+    mocked.updateById.mockResolvedValue({ ...restaurantRow, name: "Renamed" });
 
     const result = await restaurantService.update(
       "rest_1",
@@ -252,11 +370,83 @@ describe("update", () => {
       ADMIN,
     );
 
-    expect(mocked.update).toHaveBeenCalledWith({
-      where: { id: "rest_1" },
-      data: { name: "Renamed", updatedBy: ADMIN },
-    });
+    expect(mocked.updateById).toHaveBeenCalledWith(
+      "rest_1",
+      { name: "Renamed", updatedBy: ADMIN },
+      expect.anything(),
+    );
     expect(result.name).toBe("Renamed");
+  });
+
+  it("adds details to a restaurant that had none", async () => {
+    mocked.findByIdWithDetails.mockResolvedValue({
+      ...restaurantRow,
+      details: null,
+    });
+
+    const result = await restaurantService.update(
+      "rest_1",
+      { details: detailsInput },
+      ADMIN,
+    );
+
+    expect(mocked.upsertDetails).toHaveBeenCalledWith(
+      "rest_1",
+      detailsInput,
+      expect.anything(),
+    );
+    expect(result.details?.city).toBe("Cairo");
+  });
+
+  it("leaves the name alone when only details were sent", async () => {
+    mocked.findByIdWithDetails.mockResolvedValue({
+      ...restaurantRow,
+      details: null,
+    });
+
+    await restaurantService.update("rest_1", { details: detailsInput }, ADMIN);
+
+    // `name: undefined` in a Prisma update is a no-op, but writing it would
+    // still be saying something about a field the caller never mentioned.
+    expect(mocked.updateById).toHaveBeenCalledWith(
+      "rest_1",
+      { updatedBy: ADMIN },
+      expect.anything(),
+    );
+  });
+
+  it("stamps updatedBy even when only the details changed", async () => {
+    mocked.findByIdWithDetails.mockResolvedValue({
+      ...restaurantRow,
+      details: detailsRow,
+    });
+
+    await restaurantService.update("rest_1", { details: detailsInput }, ADMIN);
+
+    // The catalog row was touched as far as auditing is concerned, and
+    // "who changed this restaurant" is the question the column answers.
+    expect(mocked.updateById).toHaveBeenCalledWith(
+      "rest_1",
+      expect.objectContaining({ updatedBy: ADMIN }),
+      expect.anything(),
+    );
+  });
+
+  it("keeps the existing details when the payload does not mention them", async () => {
+    mocked.findByIdWithDetails.mockResolvedValue({
+      ...restaurantRow,
+      details: detailsRow,
+    });
+
+    const result = await restaurantService.update(
+      "rest_1",
+      { name: "Renamed" },
+      ADMIN,
+    );
+
+    // Renaming a restaurant must not silently wipe its address.
+    expect(mocked.upsertDetails).not.toHaveBeenCalled();
+    expect(result.details?.phone).toBe("+201000000000");
   });
 });
 
@@ -315,6 +505,10 @@ describe("remove", () => {
 describe("restore", () => {
   it("brings the restaurant and its whole catalog back", async () => {
     mocked.findByIdIncludingDeleted.mockResolvedValue(deletedRow);
+    mocked.findByIdWithDetails.mockResolvedValue({
+      ...restaurantRow,
+      details: null,
+    });
     mockedMenuRepo.findIdsByRestaurantId.mockResolvedValue(["menu_1"]);
 
     const result = await restaurantService.restore("rest_1", ADMIN);

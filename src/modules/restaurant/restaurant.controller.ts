@@ -2,7 +2,16 @@ import type { Request, Response } from "express";
 import { asyncHandler } from "../../utils/asyncHandler";
 import { sendSuccess } from "../../utils/response";
 import { restaurantService } from "./restaurant.service";
+// The order history lives on `/restaurants/me/orders` because that is where the
+// scope map puts it, but the reading of orders stays in the order service —
+// this module owns the route, not the query.
+import { orderService } from "../order/order.service";
 import type {
+  OrderIdParams,
+  ScopedOrderQuery,
+} from "../order/order.validation";
+import type {
+  AssignOwnerInput,
   CreateRestaurantInput,
   RestaurantIdParams,
   RestaurantQuery,
@@ -83,5 +92,40 @@ export const restoreRestaurant = asyncHandler(
       req.user!.id,
     );
     sendSuccess(res, restaurant, "Restaurant restored");
+  },
+);
+
+export const assignRestaurantOwner = asyncHandler(
+  async (req: Request<RestaurantIdParams>, res: Response): Promise<void> => {
+    const result = await restaurantService.assignOwner(
+      req.params.restaurantId,
+      (req.body as AssignOwnerInput).ownerId,
+      req.user!.id,
+    );
+    sendSuccess(res, result, "Restaurant owner updated");
+  },
+);
+
+// ─── Restaurant owner (RESTAURANT role) ──────────────────
+// `me` throughout: the owner never names a restaurant id to be scoped by one.
+// The scope comes from the ownership rows, so there is no id to tamper with.
+
+export const getMyRestaurantOrders = asyncHandler(
+  async (req: Request, res: Response): Promise<void> => {
+    const result = await orderService.listRestaurantOrders(
+      req.user!.id,
+      req.query as unknown as ScopedOrderQuery,
+    );
+    sendSuccess(res, result.data, "Orders retrieved", 200, result.meta);
+  },
+);
+
+export const getMyRestaurantOrder = asyncHandler(
+  async (req: Request<OrderIdParams>, res: Response): Promise<void> => {
+    const order = await orderService.getRestaurantOrder(
+      req.user!.id,
+      req.params.orderId,
+    );
+    sendSuccess(res, order, "Order retrieved");
   },
 );

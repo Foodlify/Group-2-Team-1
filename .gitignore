@@ -112,3 +112,6 @@ src/generated/
 # Load testing — generated per run, not source
 perf/data/
 perf/results/
+# Scratch space. `.env.test.example` tells you to put a throwaway PostgreSQL
+# in ./tmp/pgdata, so this is where a whole database cluster ends up.
+tmp/

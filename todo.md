@@ -130,6 +130,23 @@ first attempt and only showed it under that check.
 
 Still open in this area:
 
+- ~~**Payment Verification & Validation**~~ — done (2026-08-10). The webhook now
+  checks `payment_status`, amount and currency before settling, and handles
+  `checkout.session.async_payment_succeeded`. A mismatch leaves the row PENDING
+  and flagged rather than FAILED. See `docs/PAYMENTS.md`.
+- ~~**`RestaurantDetails` table**~~ — done (2026-08-10). Contact and location,
+  one-to-one and optional, carried on the existing Register/Update Restaurant
+  payloads rather than on a new endpoint the scope map does not name.
+- ~~**`TransactionDetails` table**~~ — done (2026-08-10). The gateway's own
+  facts as typed columns instead of keys in `Transaction.metadata`. Written at
+  the repository layer, merged across the successive writes of one payment, and
+  exposed on the ADMIN listing only. 10 mutations, all caught.
+- ~~**`PaymentIntegrationType` / `PaymentIntegrationConfiguration`**~~ — done
+  (2026-08-10). Seeded by the migration, both enabled. No secret is stored: the
+  configuration names the env var holding each key, and `secretConfigured` says
+  whether it has a value. `isEnabled` is a runtime kill switch read when a
+  payment is taken. 9 mutations, all caught — two of them only after the tests
+  were strengthened, including a leak that a blanked env var had made invisible.
 - **Partial indexes** for the soft-delete filter (`WHERE "isDeleted" = false`).
   Prisma can't express them; worth adding by hand to a migration if the catalog
   ever grows enough for it to matter.
@@ -287,8 +304,24 @@ Still open in this area:
   is a property to keep, not a gap — it is why the tests above stub the
   environment instead of changing how the plans run.
 
-### Restaurant-owner perspective (Kamal's branch, part 4)
+### ~~Restaurant-owner perspective (Kamal's branch, part 4)~~ — done
 
-- `register / me / me/orders` for a restaurant owner actor exists on
-  `customer-management`. Needs a team decision before porting: it introduces a
-  third actor across the whole authorization surface.
+Shipped as `Restaurant.ownerId` + the `RESTAURANT` role, closing the scope
+map's `Restaurants Order History` and `Cancelled Orders by Customers or
+Restaurants`. Kamal's `customer-management` work was the starting point and the
+naming follows it (`/restaurants/me/orders`), with two departures:
+
+- **No self-registration.** His branch has `POST /restaurants/register`, which
+  creates a restaurant for whoever is logged in. The scope map has no such
+  endpoint, and adding one means deciding — with no source — who may claim a
+  restaurant. An admin assigns ownership instead.
+- **No `UserType` / `UserRole` tables.** His branch carries the ERD's full role
+  tables; ours stays an enum with a third value, because every role is named in
+  an `authorize()` call. Reasoned through in
+  [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#L399).
+
+Still open, and deliberately so: **demoting an account does not clear the
+`Restaurant.ownerId` rows pointing at it.** The service refuses a non-RESTAURANT
+actor regardless, so this is not a hole — but an admin who demotes an owner and
+later re-promotes them silently restores their old restaurants. Clearing the
+rows on demotion is a product decision nobody has made.

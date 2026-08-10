@@ -42,7 +42,18 @@ describe("a customer's own transactions", () => {
       expect.objectContaining({ order: { customerId: "cust_1" } }),
       0,
       20,
+      false,
     );
+  });
+
+  it("does not load the gateway details", async () => {
+    await transactionService.listForCustomer("cust_1", query);
+
+    // Session and PaymentIntent ids, raw provider statuses and failure text are
+    // facts about our integration. A customer is owed none of them about their
+    // own payment, and the join is not paid for on their behalf.
+    const [, , , withDetails] = mockedRepo.findPage.mock.calls[0]!;
+    expect(withDetails).toBe(false);
   });
 
   it("keeps the owner filter when other filters are applied", async () => {
@@ -62,13 +73,19 @@ describe("a customer's own transactions", () => {
       },
       0,
       20,
+      false,
     );
   });
 
   it("translates the page number into an offset", async () => {
     await transactionService.listForCustomer("cust_1", { page: 3, limit: 20 });
 
-    expect(mockedRepo.findPage).toHaveBeenCalledWith(expect.anything(), 40, 20);
+    expect(mockedRepo.findPage).toHaveBeenCalledWith(
+      expect.anything(),
+      40,
+      20,
+      false,
+    );
   });
 });
 
@@ -87,7 +104,17 @@ describe("the admin listing", () => {
       { orderId: "order_9" },
       0,
       20,
+      true,
     );
+  });
+
+  it("loads the gateway details", async () => {
+    await transactionService.listAll(query);
+
+    // The admin view is where "which PaymentIntent was this, and what did
+    // Stripe actually say" has to be answerable.
+    const [, , , withDetails] = mockedRepo.findPage.mock.calls[0]!;
+    expect(withDetails).toBe(true);
   });
 });
 

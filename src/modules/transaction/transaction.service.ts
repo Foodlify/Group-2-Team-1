@@ -3,12 +3,20 @@ import {
   transactionRepository,
   TransactionRepository,
 } from "./transaction.repository";
-import type { TransactionModel } from "../../generated/prisma/models";
+import type {
+  TransactionModel,
+  TransactionDetailsModel,
+} from "../../generated/prisma/models";
 import type {
   TransactionType,
   TransactionStatus,
   PaymentMethod,
 } from "./transaction.model";
+
+/** A transaction with its gateway details joined — the admin listing's shape. */
+export type TransactionWithDetails = TransactionModel & {
+  details: TransactionDetailsModel | null;
+};
 
 /** A REFUND row awaiting execution against the gateway that took the money. */
 export interface PendingGatewayRefund {
@@ -42,13 +50,24 @@ class TransactionService {
     return this.list({ ...query, customerId });
   }
 
-  /** Every transaction, for the admin view. */
+  /**
+   * Every transaction, for the admin view — with the gateway's own details.
+   *
+   * Those are deliberately absent from the customer listing above: session and
+   * PaymentIntent ids, the provider's raw status and its failure text are
+   * operational facts about our integration, not information a customer is
+   * owed about their own payment.
+   */
   async listAll(query: TransactionListQuery) {
-    return this.list(query);
+    return this.list(query, true) as Promise<{
+      rows: TransactionWithDetails[];
+      total: number;
+    }>;
   }
 
   private async list(
     query: TransactionListQuery & { customerId?: string },
+    withDetails = false,
   ): Promise<{ rows: TransactionModel[]; total: number }> {
     const where: Prisma.TransactionWhereInput = {
       ...(query.customerId ? { order: { customerId: query.customerId } } : {}),
@@ -60,6 +79,7 @@ class TransactionService {
       where,
       (query.page - 1) * query.limit,
       query.limit,
+      withDetails,
     );
   }
 

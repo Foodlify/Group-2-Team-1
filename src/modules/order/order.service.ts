@@ -9,6 +9,9 @@ import { cartService } from "../cart/cart.service";
 import { paymentService } from "../payment/payment.service";
 import { orderRepository } from "./order.repository";
 import { orderItemRepository } from "../orderItem/orderItem.repository";
+// The repository, not the service: `restaurant.service` reaches into menus and
+// caches, none of which an authorization check has any business touching.
+import { restaurantRepository } from "../restaurant/restaurant.repository";
 import { notificationService } from "../notification/notification.service";
 import {
   transactionService,
@@ -32,9 +35,22 @@ import type {
   UpdateStatusInput,
   AddTrackingInput,
   OrderQuery,
+  ScopedOrderQuery,
   OrderResponse,
   OrderListItemResponse,
 } from "./order.validation";
+
+/**
+ * Who is asking to change an order.
+ *
+ * Required, not optional with an admin default: the whole point is that two
+ * different actors reach `updateOrderStatus` and they are not interchangeable.
+ * A caller that could omit this would be a caller that skips the check.
+ */
+export interface OrderActor {
+  userId: string;
+  role: string;
+}
 
 class OrderService {
   // ─── Place Order ──────────────────────────────────────────────
@@ -242,7 +258,76 @@ class OrderService {
   }
 
   // ─── Admin: list all orders (paginated) ──────────────────────
-  async listAllOrders(query: OrderQuery): Promise<{
+  async listAllOrders(query: ScopedOrderQuery): Promise<{
+    data: OrderListItemResponse[];
+    meta: { page: number; limit: number; total: number; totalPages: number };
+  }> {
+    return this.listScopedOrders(
+      query,
+      query.restaurantId ? [query.restaurantId] : undefined,
+    );
+  }
+
+  // ─── Restaurants Order History ───────────────────────────────
+  /**
+   * The official `Restaurants Order History` endpoint, scoped by ownership.
+   *
+   * The owned ids are resolved here on every request rather than read from the
+   * token. An admin who reassigns or deletes a restaurant has to take effect on
+   * the next request, not fifteen minutes later when the access token expires.
+   *
+   * An owner with no restaurants gets an empty page. That is the honest answer
+   * — they have no orders — and it needs no error of its own.
+   */
+  async listRestaurantOrders(
+    ownerId: string,
+    query: ScopedOrderQuery,
+  ): Promise<{
+    data: OrderListItemResponse[];
+    meta: { page: number; limit: number; total: number; totalPages: number };
+  }> {
+    const owned = await restaurantRepository.findIdsByOwnerId(ownerId);
+    // Intersect rather than trust: asking for a restaurant someone else owns
+    // narrows to nothing instead of widening past what they own.
+    const scope = query.restaurantId
+      ? owned.filter((id) => id === query.restaurantId)
+      : owned;
+    return this.listScopedOrders(query, scope);
+  }
+
+  /**
+   * One order in full, for the owner of the restaurant that has to cook it —
+   * the list carries a count, and a kitchen needs the items.
+   *
+   * A restaurant that isn't theirs is 403, the same answer and the same message
+   * a customer gets for someone else's order.
+   */
+  async getRestaurantOrder(
+    ownerId: string,
+    orderId: string,
+  ): Promise<OrderResponse> {
+    const order = await this.findOrderOrThrow(orderId);
+    const owns = await restaurantRepository.isOwnedBy(
+      order.restaurantId,
+      ownerId,
+    );
+    if (!owns) {
+      throw new AppError(
+        orderErrors.ORDER_FORBIDDEN.message,
+        orderErrors.ORDER_FORBIDDEN.statusCode,
+      );
+    }
+    return this.toOrderResponse(order);
+  }
+
+  /**
+   * `restaurantIds` of `undefined` means unscoped — only the admin's unfiltered
+   * listing passes that. Everything else passes a list, possibly empty.
+   */
+  private async listScopedOrders(
+    query: ScopedOrderQuery,
+    restaurantIds: string[] | undefined,
+  ): Promise<{
     data: OrderListItemResponse[];
     meta: { page: number; limit: number; total: number; totalPages: number };
   }> {
@@ -252,6 +337,7 @@ class OrderService {
       from: query.from ? new Date(query.from) : undefined,
       to: query.to ? new Date(query.to) : undefined,
       status: query.status,
+      restaurantIds,
     });
     return {
       data: (result.data as OrderListItem[]).map((o) =>
@@ -359,10 +445,17 @@ class OrderService {
     return result.response;
   }
 
-  // ─── Update Order Status (admin) ─────────────────────────────
+  // ─── Update Order Status (admin, or the restaurant that owns it) ─────
+  /**
+   * Also the official `Cancelled Orders by Customers or Restaurants`: a
+   * restaurant cancels by moving the order to CANCELLED through this same
+   * endpoint, which means one state machine and one refund path serve both
+   * actors rather than a second cancel route that could drift from the first.
+   */
   async updateOrderStatus(
     orderId: string,
     input: UpdateStatusInput,
+    actor: OrderActor,
   ): Promise<OrderResponse> {
     const result = await orderRepository.transaction(async (tx) => {
       const order = await orderRepository.findById(orderId, tx);
@@ -372,6 +465,11 @@ class OrderService {
           orderErrors.ORDER_NOT_FOUND.statusCode,
         );
       }
+
+      // Before the transition is even considered: the role got the caller
+      // through the route guard, this decides whether this particular order is
+      // theirs. A RESTAURANT token is not a key to every restaurant's orders.
+      await this.assertMayManage(order.restaurantId, actor);
 
       const currentStatus = order.status as OrderStatusValue;
       const allowed = VALID_TRANSITIONS[currentStatus];
@@ -446,6 +544,45 @@ class OrderService {
   }
 
   // ─── Private Helpers ──────────────────────────────────────────
+
+  /**
+   * The ownership check, in one place so every actor-facing path shares it.
+   *
+   * ADMIN returns early and never touches the database — the platform operator
+   * is not scoped to a restaurant, and making them pay for a lookup that can
+   * only say "yes" would tax the busiest caller for nothing.
+   *
+   * Anyone else must own the restaurant. The failure is `ORDER_FORBIDDEN` —
+   * deliberately the same 403 and the same message a customer gets for another
+   * customer's order, so a probe learns nothing about who owns what.
+   */
+  private async assertMayManage(
+    restaurantId: string,
+    actor: OrderActor,
+  ): Promise<void> {
+    if (actor.role === "ADMIN") return;
+    // The role is checked here as well as on the route, and not for symmetry:
+    // demoting an account does NOT clear the `Restaurant.ownerId` rows pointing
+    // at it. Without this line an ex-owner demoted to CUSTOMER would still
+    // satisfy the ownership lookup, and the only thing standing between them
+    // and the order would be the route guard — which is one edit away from
+    // being widened by someone who reads the check below as sufficient.
+    if (actor.role !== "RESTAURANT") {
+      throw new AppError(
+        orderErrors.ORDER_FORBIDDEN.message,
+        orderErrors.ORDER_FORBIDDEN.statusCode,
+      );
+    }
+    const owns = await restaurantRepository.isOwnedBy(
+      restaurantId,
+      actor.userId,
+    );
+    if (owns) return;
+    throw new AppError(
+      orderErrors.ORDER_FORBIDDEN.message,
+      orderErrors.ORDER_FORBIDDEN.statusCode,
+    );
+  }
 
   private async findOrderOrThrow(orderId: string): Promise<OrderWithDetails> {
     const order = await orderRepository.findByIdWithDetails(orderId);

@@ -7,8 +7,13 @@ import {
 } from "../../middlewares/auth.middleware";
 import { routeRegistry } from "../../openapi/registry";
 import { IncludeDeletedQuerySchema } from "../menu/menu.validation";
+import {
+  OrderIdParamsSchema,
+  ScopedOrderQuerySchema,
+} from "../order/order.validation";
 import * as controller from "./restaurant.controller";
 import {
+  AssignOwnerRequestSchema,
   CreateRestaurantRequestSchema,
   RestaurantIdParamsSchema,
   RestaurantQuerySchema,
@@ -16,6 +21,28 @@ import {
 } from "./restaurant.validation";
 
 const router: Router = Router();
+
+// ─── Restaurant owner (RESTAURANT only) ──────────────────
+// Declared first. Nothing collides with these today — "/:restaurantId" is one
+// segment and these are two, and no "/:restaurantId/orders" route exists — so
+// moving them below changes nothing, which a mutation confirmed. The order is
+// insurance against the route that would collide: an admin-facing
+// "/:restaurantId/orders" is an obvious next endpoint, and declared above these
+// it would swallow "/me/orders" and turn it into a 400 on an invalid cuid2.
+router.get(
+  "/me/orders",
+  authenticate,
+  authorize("RESTAURANT"),
+  validate({ query: ScopedOrderQuerySchema }),
+  controller.getMyRestaurantOrders,
+);
+router.get(
+  "/me/orders/:orderId",
+  authenticate,
+  authorize("RESTAURANT"),
+  validate({ params: OrderIdParamsSchema }),
+  controller.getMyRestaurantOrder,
+);
 
 // ─── Public catalog reads ────────────────────────────────
 // `optionalAuthenticate` on the two list endpoints: they stay open to everyone,
@@ -74,6 +101,16 @@ router.patch(
   validate({ params: RestaurantIdParamsSchema }),
   controller.restoreRestaurant,
 );
+router.patch(
+  "/:restaurantId/owner",
+  authenticate,
+  authorize("ADMIN"),
+  validate({
+    params: RestaurantIdParamsSchema,
+    body: AssignOwnerRequestSchema,
+  }),
+  controller.assignRestaurantOwner,
+);
 
 // ─── OpenAPI ─────────────────────────────────────────────
 const tag = "Catalog";
@@ -104,6 +141,8 @@ routeRegistry.push({
     get: {
       tags: [tag],
       summary: "List restaurants (paginated, optional name search)",
+      description:
+        "Deliberately does not carry contact and location details. Those live in their own table so that this query — the most-run read in the system — does not pay for them; fetch one restaurant by id to get them.",
       parameters: [
         { name: "page", in: "query", schema: { type: "integer", default: 1 } },
         {
@@ -146,7 +185,9 @@ routeRegistry.push({
   pathItem: {
     get: {
       tags: [tag],
-      summary: "Get a restaurant by ID",
+      summary: "Get a restaurant by ID, with its contact and location details",
+      description:
+        "`details` is null for a restaurant registered without them — a real state, not a placeholder.",
       parameters: [restaurantIdParam],
       responses: {
         "200": {
@@ -209,6 +250,8 @@ routeRegistry.push({
     post: {
       tags: [tag],
       summary: "Create a restaurant (ADMIN)",
+      description:
+        "`details` is optional at registration and can be added later with PATCH. Both rows are written in one transaction, so a restaurant is never left half-registered.",
       security,
       requestBody: jsonBody("CreateRestaurantRequest"),
       responses: {
@@ -240,7 +283,9 @@ routeRegistry.push({
   pathItem: {
     patch: {
       tags: [tag],
-      summary: "Update a restaurant (ADMIN)",
+      summary: "Update a restaurant's name, its details, or both (ADMIN)",
+      description:
+        "Send at least one of `name` or `details`; an empty body is rejected rather than reported as a successful no-op. A `details` object REPLACES any existing details — it is not merged into them.",
       security,
       parameters: [restaurantIdParam],
       requestBody: jsonBody("UpdateRestaurantRequest"),
@@ -318,6 +363,147 @@ routeRegistry.push({
         },
         "409": {
           description: "Restaurant is not deleted",
+          content: { "application/json": { schema: errorRef } },
+        },
+      },
+    },
+  },
+});
+
+routeRegistry.push({
+  path: "/api/v1/restaurants/{restaurantId}/owner",
+  pathItem: {
+    patch: {
+      tags: [tag],
+      summary: "Assign or clear a restaurant's owner (ADMIN)",
+      description:
+        "The only way ownership is established — there is no self-registration for owners. The account must already have the RESTAURANT role; promote it via `PATCH /users/{id}` first. Send `null` to take the restaurant back and leave it admin-run.",
+      security,
+      parameters: [restaurantIdParam],
+      requestBody: jsonBody("AssignOwnerRequest"),
+      responses: {
+        "200": {
+          description: "Owner updated",
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/RestaurantOwnerSuccessResponse",
+              },
+            },
+          },
+        },
+        "400": {
+          description: "The account does not have the RESTAURANT role",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "403": {
+          description: "Forbidden",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "404": {
+          description: "Restaurant or user not found",
+          content: { "application/json": { schema: errorRef } },
+        },
+      },
+    },
+  },
+});
+
+// ─── Restaurant owner docs ───────────────────────────────
+const ordersTag = "Orders";
+
+routeRegistry.push({
+  path: "/api/v1/restaurants/me/orders",
+  pathItem: {
+    get: {
+      tags: [ordersTag],
+      summary: "Restaurants Order History — orders for the restaurants I run",
+      description:
+        "Scoped by ownership, not by the role: a RESTAURANT token sees the orders of the restaurants assigned to that account and nothing else. Ownership is resolved on every request, so an admin's reassignment takes effect immediately rather than at token expiry. An account that runs no restaurant gets an empty page.",
+      security,
+      parameters: [
+        { name: "page", in: "query", schema: { type: "integer", default: 1 } },
+        {
+          name: "limit",
+          in: "query",
+          schema: { type: "integer", default: 20 },
+        },
+        {
+          name: "status",
+          in: "query",
+          schema: { type: "string" },
+          description: "Filter by order status",
+        },
+        {
+          name: "from",
+          in: "query",
+          schema: { type: "string", format: "date-time" },
+          description: "Orders created on or after this date (ISO 8601)",
+        },
+        {
+          name: "to",
+          in: "query",
+          schema: { type: "string", format: "date-time" },
+          description: "Orders created on or before this date (ISO 8601)",
+        },
+        {
+          name: "restaurantId",
+          in: "query",
+          schema: { type: "string" },
+          description:
+            "Narrow to one of your restaurants. One you do not own yields an empty page, not an error.",
+        },
+      ],
+      responses: {
+        "200": {
+          description: "Orders",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/OrderListSuccessResponse" },
+            },
+          },
+        },
+        "403": {
+          description: "Forbidden",
+          content: { "application/json": { schema: errorRef } },
+        },
+      },
+    },
+  },
+});
+
+routeRegistry.push({
+  path: "/api/v1/restaurants/me/orders/{orderId}",
+  pathItem: {
+    get: {
+      tags: [ordersTag],
+      summary: "One of my restaurants' orders, with its items",
+      description:
+        "The list carries an item count; a kitchen needs the items. An order belonging to a restaurant you do not run returns the same 403, with the same message, that a customer gets for another customer's order.",
+      security,
+      parameters: [
+        {
+          name: "orderId",
+          in: "path",
+          required: true,
+          schema: { type: "string" as const },
+        },
+      ],
+      responses: {
+        "200": {
+          description: "Order",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/OrderSuccessResponse" },
+            },
+          },
+        },
+        "403": {
+          description: "This order does not belong to you",
+          content: { "application/json": { schema: errorRef } },
+        },
+        "404": {
+          description: "Order not found",
           content: { "application/json": { schema: errorRef } },
         },
       },

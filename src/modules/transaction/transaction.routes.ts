@@ -176,12 +176,22 @@ routeRegistry.push({
     get: {
       tags: [tag],
       security,
-      summary: "Every payment transaction (ADMIN)",
+      summary: "Every payment transaction, with gateway details (ADMIN)",
       description:
-        "The whole ledger, newest first, filterable by type, status and order.",
+        "The whole ledger, newest first, filterable by type, status and order. Each row carries its `details` — the gateway's own session and PaymentIntent ids, raw status and failure text. The customer's own listing deliberately does not.",
       parameters: listParams,
       responses: {
         ...listResponses,
+        "200": {
+          description: "A page of transactions with their gateway details",
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/AdminTransactionListSuccessResponse",
+              },
+            },
+          },
+        },
         "403": {
           description: "Not an admin",
           content: { "application/json": { schema: errorRef } },
