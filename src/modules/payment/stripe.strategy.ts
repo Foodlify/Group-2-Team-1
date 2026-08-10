@@ -202,8 +202,21 @@ export class StripeCardStrategy implements PaymentStrategy {
    * order is still refundable rather than silently unrefundable.
    */
   static async resolvePaymentIntentId(
-    payment: TransactionModel,
+    payment: TransactionModel & {
+      details?: { paymentIntentId: string | null } | null;
+    },
   ): Promise<string> {
+    // The typed column first — written by the same webhook that used to put
+    // this in the metadata blob, and it cannot be misspelled. Read off the row
+    // the caller already loaded rather than fetched here: a strategy that
+    // queries the database on its own is a strategy you cannot unit test
+    // without one.
+    if (payment.details?.paymentIntentId)
+      return payment.details.paymentIntentId;
+
+    // Then the blob, for payments settled before `TransactionDetails` existed.
+    // Their facts are still in there and are still correct; dropping this would
+    // make every old order unrefundable without a round trip.
     const metadata = payment.metadata as { paymentIntentId?: unknown } | null;
     if (typeof metadata?.paymentIntentId === "string") {
       return metadata.paymentIntentId;
