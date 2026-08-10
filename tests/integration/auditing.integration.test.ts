@@ -183,6 +183,70 @@ describe("the entry and the change commit together", () => {
 });
 
 // ═══════════════════════════════════════════════════════════
+describe("the gateway hand-off, kept separate from the money", () => {
+  const pendingCardPayment = () =>
+    transactionRepository.createTransaction({
+      type: "ORDER_PAYMENT",
+      amount: 10,
+      status: "PENDING",
+      paymentMethod: "CREDIT_CARD",
+    });
+
+  it("records attaching a reference as an update, not as a settlement", async () => {
+    const payment = await pendingCardPayment();
+
+    await transactionRepository.attachGatewayReference(payment.id, {
+      externalRef: "pi_123",
+    });
+
+    const entry = await prisma.auditingEvent.findFirstOrThrow({
+      where: { action: { not: "CREATED" } },
+    });
+    // An auditor filtering for STATUS_CHANGED is asking when money moved.
+    // Handing the payment to Stripe is not that — the row is still PENDING —
+    // and recording it under the same action would put a non-event in the
+    // answer.
+    expect(entry.action).toBe("UPDATED");
+    expect(entry.changes).toEqual({
+      externalRef: { from: null, to: "pi_123" },
+    });
+  });
+
+  it("records the gateway's answer as a settlement, with both facts", async () => {
+    const payment = await pendingCardPayment();
+    await transactionRepository.attachGatewayReference(payment.id, {
+      externalRef: "pi_123",
+    });
+
+    await transactionRepository.recordGatewayOutcome(payment.id, "SUCCESS", {
+      externalRef: "pi_456",
+      metadata: { card: { last4: "4242" } },
+    });
+
+    const entry = await prisma.auditingEvent.findFirstOrThrow({
+      where: { action: "STATUS_CHANGED" },
+    });
+    expect(entry.changes).toEqual({
+      status: { from: "PENDING", to: "SUCCESS" },
+      externalRef: { from: "pi_123", to: "pi_456" },
+      metadataReplaced: true,
+    });
+  });
+
+  it("keeps the provider's blob out of the trail entirely", async () => {
+    const payment = await pendingCardPayment();
+    await transactionRepository.recordGatewayOutcome(payment.id, "SUCCESS", {
+      metadata: { card: { last4: "4242" }, raw: "whatever Stripe sent" },
+    });
+
+    // The blob is on the transaction row for anyone who needs it. It has no
+    // business in a table nothing ever prunes.
+    const trail = await prisma.auditingEvent.findMany();
+    expect(JSON.stringify(trail)).not.toContain("4242");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
 describe("under concurrent writes to the same transaction", () => {
   it("records a chain of transitions rather than two claiming the same start", async () => {
     const created = await transactionRepository.createTransaction({
