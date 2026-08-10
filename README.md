@@ -631,6 +631,15 @@ Two things the plans depend on, both explained there: they run with
 `429`s, and virtual users arrive pre-authenticated so the plans measure the
 order path instead of bcrypt.
 
+Switching the limiter back **on** found two more problems. It enforces its
+budget correctly, but nothing set `trust proxy` — so behind a load balancer
+`req.ip` is the proxy for everybody and the limit stops being per-customer:
+measured, 20 distinct addresses exhaust it and the 21st customer is refused.
+That is now `TRUST_PROXY`, a hop count defaulting to 0. And logging one account
+in 20 times returned fourteen `500`s: refresh tokens carried no unique claim, so
+two logins in the same second produced identical tokens and collided on a unique
+index. A random `jti` fixes it — a double-clicked Sign in used to be enough.
+
 ---
 
 ## Payments

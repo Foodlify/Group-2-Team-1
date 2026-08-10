@@ -354,6 +354,69 @@ an index to help it.
 
 ---
 
+## Finding 4 — Switching the rate limiter on
+
+Every measurement above runs with `NODE_ENV=test`, which skips the limiter
+entirely. That is what makes the numbers meaningful, but it also meant the
+limiter had never executed — not in a test, not in a load run, nowhere.
+
+Turning it on found two things, and only one of them was the limiter.
+
+### The limiter itself is correct
+
+Twenty-five logins from one address against a real server:
+
+```
+200 x20, then 429 x5
+RateLimit-Policy: 20;w=900
+RateLimit: limit=20, remaining=0, reset=895
+Retry-After: 895
+{"success":false,"message":"Too many authentication attempts. Please try again later."}
+```
+
+Exactly the configured budget, the standard draft-7 headers, a `Retry-After` a
+client can obey, and the same error envelope as the rest of the API.
+`tests/middleware/rateLimit.unit.test.ts` now covers this by stubbing the
+environment to production, since the suite's own `NODE_ENV=test` would
+otherwise skip it.
+
+### But it could not tell customers apart
+
+The limiter keys on `req.ip`, and nothing set `trust proxy`. Behind any reverse
+proxy — nginx, a cloud load balancer, anything — `req.ip` is the _proxy's_
+address for every request, so all customers share one bucket. Measured: twenty
+different client addresses exhaust the auth limit, and the twenty-first
+unrelated customer is refused.
+
+In other words, deployed behind a load balancer this was not a per-customer
+limit but **a global cap of 20 logins per 15 minutes for the entire service** —
+a protection that becomes the outage.
+
+The fix is `TRUST_PROXY`, defaulting to **0** (directly exposed). It is a hop
+count rather than a boolean on purpose: trusting blindly is the opposite
+failure, letting a client prepend its own `X-Forwarded-For` and mint a fresh
+bucket per request. Set it to the number of proxies actually in front.
+
+### And a 500 that had nothing to do with rate limiting
+
+Driving 20 logins at **one account** returned `200, 500, 500, 200, 500, 500,
+500, …` — 14 of 20 failed. The limiter was working; the login was not.
+
+`RefreshToken.tokenHash` is unique, and a refresh JWT's only varying claim was
+`iat`, which has one-second resolution. Two logins in the same second therefore
+produced byte-identical tokens, identical hashes, and a unique-constraint
+violation surfaced as a 500. A customer double-clicking Sign in was enough.
+
+Fixed by giving the refresh token a random `jti`. The same 25 requests now
+return `200 x20, 429 x5, zero 500s`.
+
+Worth noting where this came from: the 500-concurrent login plan never caught
+it, because every virtual user is a different account by design. It took the
+opposite shape of test — one account, many attempts — which is exactly the
+shape a rate-limit test has.
+
+---
+
 ## Plan 1 — Order flow under load
 
 500 concurrent customers, each adding an amply-stocked item to their cart and
