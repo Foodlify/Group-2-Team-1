@@ -23,13 +23,25 @@ describe("a settlement that matches", () => {
     ).toBeNull();
   });
 
-  it("compares currency case-insensitively", () => {
-    // Stripe reports lower case; our ledger stores "EGP". Comparing raw
-    // strings would reject every single correct payment.
+  it("accepts our upper-case ledger value against Stripe's lower-case one", () => {
+    // Our ledger stores "EGP"; Stripe reports "egp". Comparing raw strings
+    // would reject every single correct payment.
     expect(
       verifySettlement(owed("10.00", "EGP"), {
         amountTotal: 1000,
         currency: "egp",
+      }),
+    ).toBeNull();
+  });
+
+  it("does not depend on which casing the gateway happens to use", () => {
+    // Stripe documents lower case today. Both sides are normalised anyway, so
+    // the comparison is between currency identifiers rather than between two
+    // strings that happen to agree on a provider's formatting convention.
+    expect(
+      verifySettlement(owed("10.00", "EGP"), {
+        amountTotal: 1000,
+        currency: "EGP",
       }),
     ).toBeNull();
   });

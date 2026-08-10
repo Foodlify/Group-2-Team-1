@@ -130,6 +130,10 @@ first attempt and only showed it under that check.
 
 Still open in this area:
 
+- ~~**Payment Verification & Validation**~~ — done (2026-08-10). The webhook now
+  checks `payment_status`, amount and currency before settling, and handles
+  `checkout.session.async_payment_succeeded`. A mismatch leaves the row PENDING
+  and flagged rather than FAILED. See `docs/PAYMENTS.md`.
 - **Partial indexes** for the soft-delete filter (`WHERE "isDeleted" = false`).
   Prisma can't express them; worth adding by hand to a migration if the catalog
   ever grows enough for it to matter.
