@@ -264,6 +264,45 @@ describe("login writes cookies a browser will actually keep", () => {
     expect(res.get("Set-Cookie")).toBeUndefined();
   });
 
+  it("survives the same account logging in twice in a row", async () => {
+    await createAccount("CUSTOMER");
+    const login = () =>
+      api()
+        .post("/api/v1/auth/login")
+        .send({ email: "http-customer@example.com", password: TEST_PASSWORD });
+
+    const first = await login();
+    const second = await login();
+
+    // Both sessions are stored, and `RefreshToken.tokenHash` is unique — so
+    // two tokens minted in the same second must not be the same bytes. They
+    // were: `iat` has one-second resolution and was the only varying claim, so
+    // a double-clicked Sign in button returned a 500. Driving 20 logins at one
+    // account failed 14 of them.
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+
+    const rows = await prisma.refreshToken.count();
+    expect(rows).toBe(2);
+  });
+
+  it("stores a distinct row for every session in a burst", async () => {
+    await createAccount("CUSTOMER");
+
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        api().post("/api/v1/auth/login").send({
+          email: "http-customer@example.com",
+          password: TEST_PASSWORD,
+        }),
+      ),
+    );
+
+    // Concurrent, not just sequential: the same second, genuinely in parallel.
+    expect(results.map((r) => r.status)).toEqual([200, 200, 200, 200, 200]);
+    expect(await prisma.refreshToken.count()).toBe(5);
+  });
+
   it("clears both cookies on logout", async () => {
     const { token } = await createAccount("CUSTOMER");
 

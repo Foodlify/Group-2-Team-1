@@ -14,6 +14,16 @@ import { serveOpenApi } from "./openapi/serve";
 
 const app: Application = express();
 
+// ── Client identity ──────────────────────────────────
+// How many proxy hops to believe when working out `req.ip`. This is what the
+// rate limiter counts by, so getting it wrong breaks the limiter in one of two
+// directions: too low and every customer shares one bucket (behind a load
+// balancer, 20 logins per 15 minutes for the entire service); too high and a
+// client can forge `X-Forwarded-For` to get a fresh bucket per request.
+// Defaults to 0 — directly exposed — because that is the only safe assumption
+// to make on someone else's behalf.
+app.set("trust proxy", env.TRUST_PROXY);
+
 // ── Middlewares ──────────────────────────────────────
 // Security headers first so every response (including errors) carries them.
 app.use(helmet());

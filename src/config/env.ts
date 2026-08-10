@@ -37,6 +37,23 @@ const EnvSchema = z
     // (dev convenience only). REQUIRED in production (enforced in superRefine
     // below) because the app authenticates via httpOnly cookies + credentials.
     CORS_ORIGIN: z.string().trim().optional(),
+    // Number of reverse proxies between the internet and this process, and the
+    // only thing that decides who the rate limiter thinks a client is.
+    //
+    // 0 (the default) means directly exposed: `req.ip` is the socket address.
+    // Behind a proxy that is the *proxy's* address for everybody, so the limits
+    // stop being per-client and become one shared cap on the whole service —
+    // measured, not assumed: 20 different customers exhaust the auth limit and
+    // the 21st is refused (tests/middleware/rateLimit.unit.test.ts).
+    //
+    // Set it to the number of hops you actually run, not to a blanket "trust
+    // everything": with an untrusted hop counted, a client can prepend its own
+    // `X-Forwarded-For` and mint a fresh identity per request, which turns the
+    // limiter off just as effectively.
+    TRUST_PROXY: z.preprocess(
+      (value) => (value === undefined || value === "" ? 0 : value),
+      z.coerce.number().int().min(0),
+    ),
     // ── SMTP (OTP emails) ── all optional: when SMTP_HOST is unset the mailer
     // logs messages instead of sending (dev/test) and refuses in production.
     SMTP_HOST: z.string().trim().optional(),

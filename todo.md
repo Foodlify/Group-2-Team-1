@@ -18,7 +18,7 @@ in code reviews. Items here are **known and deliberately deferred**, not oversig
   Writing them found and fixed a real bug — line subtotals were computed with
   float multiplication and served `24.450000000000003` for `8.15 x 3`.
 
-### Integration tests — 81 tests (2026-08-07, HTTP layer added 2026-08-09)
+### Integration tests — 84 tests (2026-08-07, HTTP layer added 2026-08-09)
 
 - **Done:** Order & Payment against a real PostgreSQL (mentor requirement,
   S17), plus the CI database service and the migration-drift check that
@@ -51,8 +51,9 @@ in code reviews. Items here are **known and deliberately deferred**, not oversig
   but `authorize` still trusted the token's `role` claim. A demoted admin kept
   admin rights until their token expired.
 
-**Still uncovered here:** the rate limiter, which skips itself under
-`NODE_ENV=test` — see the load-testing item below.
+The rate limiter was the last thing left uncovered here, and is now done too —
+see the load-testing section, which is also where the two bugs it exposed are
+written up.
 
 **Convention worth keeping:** every new assertion here was checked against a
 deliberately broken copy of the code before being committed. A test that
@@ -248,9 +249,33 @@ Still open in this area:
   socket-level refusals once the pool is large. No pool size rescues it; that is
   an admission-control problem (queue, shed load, or scale out), not a tuning
   one.
-- **The rate limiter is untested under load.** Runs use `NODE_ENV=test`, which
-  skips it entirely. Its real behaviour — and whether the limits are right for
-  production traffic — has never been exercised.
+- ~~**The rate limiter is untested.**~~ — done (2026-08-10). Covered by
+  `tests/middleware/rateLimit.unit.test.ts` (environment stubbed to production,
+  since the suite's own `NODE_ENV=test` skips it) and verified live: 25 logins
+  gave exactly `200 x20, 429 x5` with draft-7 headers and `Retry-After`.
+  **Two bugs came out of it:**
+  - **It could not tell customers apart.** Nothing set `trust proxy`, so behind
+    any load balancer `req.ip` is the proxy for everyone — measured: 20 distinct
+    addresses exhaust the auth limit and the 21st customer is refused. That is a
+    global cap of 20 logins per 15 minutes for the whole service. Now
+    `TRUST_PROXY`, a hop count defaulting to 0; blind trust is the opposite
+    failure, letting a client forge a fresh bucket per request.
+  - **Login 500'd on a double-click.** `RefreshToken.tokenHash` is unique and a
+    refresh JWT's only varying claim was `iat` (one-second resolution), so two
+    logins in the same second collided — 14 of 20 failed. Fixed with a random
+    `jti`. The 500-concurrent login plan could never have found it: every
+    virtual user there is a different account.
+- **The limiter's _limits_ are still unvalidated against real traffic.** 20 auth
+  attempts per 15 minutes and 120 requests per minute are reasonable guesses,
+  not numbers derived from observed usage. Revisit once there is production
+  traffic to look at.
+- **The limiter counts per instance.** It uses the in-memory store, so N
+  instances means N times the effective limit. A shared store (Redis, already a
+  dependency) is what makes the number mean what it says.
+- **The load runs still skip it**, and should: `NODE_ENV=test` disables the
+  limiter so the numbers describe the application rather than the limiter. That
+  is a property to keep, not a gap — it is why the tests above stub the
+  environment instead of changing how the plans run.
 
 ### Restaurant-owner perspective (Kamal's branch, part 4)
 
