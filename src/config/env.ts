@@ -6,7 +6,7 @@ dotenv.config();
 const EnvSchema = z
   .object({
     PORT: z.preprocess(
-      (value) => (value === undefined || value === "" ? 3000 : value),
+      (value) => (value === undefined || value === "" ? 4444 : value),
       z.coerce.number().int().min(1).max(65535),
     ),
     NODE_ENV: z.preprocess(
@@ -60,14 +60,14 @@ const EnvSchema = z
     STRIPE_SUCCESS_URL: z.preprocess(
       (value) =>
         value === undefined || value === ""
-          ? "http://localhost:3000/payment/success"
+          ? "http://localhost:4444/payment/success"
           : value,
       z.url(),
     ),
     STRIPE_CANCEL_URL: z.preprocess(
       (value) =>
         value === undefined || value === ""
-          ? "http://localhost:3000/payment/cancel"
+          ? "http://localhost:4444/payment/cancel"
           : value,
       z.url(),
     ),
@@ -84,7 +84,7 @@ const EnvSchema = z
     GOOGLE_CALLBACK_URL: z.preprocess(
       (value) =>
         value === undefined || value === ""
-          ? "http://localhost:3000/api/v1/auth/google/callback"
+          ? "http://localhost:4444/api/v1/auth/google/callback"
           : value,
       z.url(),
     ),
