@@ -1,13 +1,3 @@
-/**
- * Restaurant Service — unit tests.
- *
- * Pattern ported from Kamal's `customer-management` branch: the repository and
- * collaborating services are mocked so each test asserts pure service logic —
- * "IF the repository returns X, THEN the service does Y" — with no database.
- *
- * `vi.mock` calls are hoisted above the imports by Vitest, so the service
- * receives the mocked modules when it loads.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/modules/restaurant/restaurant.repository", () => ({
@@ -21,8 +11,7 @@ vi.mock("../../src/modules/restaurant/restaurant.repository", () => ({
     upsertDetails: vi.fn(),
     softDeleteById: vi.fn(),
     restoreById: vi.fn(),
-    // Runs the callback against a stub client — the service's cascade logic is
-    // what's under test here, not Prisma's transaction semantics.
+
     transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
       cb({} as unknown),
     ),
@@ -86,15 +75,13 @@ const restaurantRow = {
   isDeleted: false,
   createdBy: null,
   updatedBy: null,
-  // Unowned — the state every restaurant registered before the owner column
-  // existed is in, and the one an admin runs directly.
+
   ownerId: null,
   createdAt: now,
   updatedAt: now,
 };
 const deletedRow = { ...restaurantRow, isDeleted: true };
 
-/** A complete details payload — the shape an admin actually sends. */
 const detailsInput = {
   phone: "+201000000000",
   email: "hello@koshary.example",
@@ -232,8 +219,6 @@ describe("getByIdOrThrow", () => {
 
     const result = await restaurantService.getByIdOrThrow("rest_1");
 
-    // A restaurant registered without details genuinely has none. An empty
-    // object would read as "details exist and every field is blank".
     expect(result.details).toBeNull();
   });
 
@@ -245,8 +230,6 @@ describe("getByIdOrThrow", () => {
 
     const result = await restaurantService.getByIdOrThrow("rest_1");
 
-    // The caller can neither address nor update that row on its own, so
-    // handing them its id only invites an attempt.
     expect(result.details).not.toHaveProperty("id");
     expect(result.details).not.toHaveProperty("restaurantId");
     expect(result.details).not.toHaveProperty("createdAt");
@@ -282,8 +265,6 @@ describe("getMenus", () => {
 
     await restaurantService.getMenus("rest_1", true);
 
-    // The soft-delete-aware lookup, not the filtered one — otherwise a
-    // cascaded delete would be a dead end for the admin.
     expect(mocked.findById).not.toHaveBeenCalled();
     expect(mockedMenus.listByRestaurant).toHaveBeenCalledWith("rest_1", true);
   });
@@ -306,8 +287,6 @@ describe("create", () => {
   it("registers a restaurant with no details at all", async () => {
     const result = await restaurantService.create({ name: "Bare" }, ADMIN);
 
-    // Details are optional at registration; writing an empty row would put a
-    // blank phone number into a NOT NULL column.
     expect(mocked.upsertDetails).not.toHaveBeenCalled();
     expect(result.details).toBeNull();
   });
@@ -332,13 +311,10 @@ describe("create", () => {
       ADMIN,
     );
 
-    // A restaurant that exists while its details insert failed is a
-    // half-registered restaurant, and the admin sent one request.
     expect(mocked.transaction).toHaveBeenCalledTimes(1);
     const [, , txPassedToDetails] = mocked.upsertDetails.mock.calls[0]!;
     const [, txPassedToCreate] = mocked.createRestaurant.mock.calls[0]!;
-    // The same client, not merely both non-undefined: two different
-    // transactions would satisfy a laxer assertion and roll back separately.
+
     expect(txPassedToDetails).toBe(txPassedToCreate);
     expect(txPassedToDetails).toBeDefined();
   });
@@ -406,8 +382,6 @@ describe("update", () => {
 
     await restaurantService.update("rest_1", { details: detailsInput }, ADMIN);
 
-    // `name: undefined` in a Prisma update is a no-op, but writing it would
-    // still be saying something about a field the caller never mentioned.
     expect(mocked.updateById).toHaveBeenCalledWith(
       "rest_1",
       { updatedBy: ADMIN },
@@ -423,8 +397,6 @@ describe("update", () => {
 
     await restaurantService.update("rest_1", { details: detailsInput }, ADMIN);
 
-    // The catalog row was touched as far as auditing is concerned, and
-    // "who changed this restaurant" is the question the column answers.
     expect(mocked.updateById).toHaveBeenCalledWith(
       "rest_1",
       expect.objectContaining({ updatedBy: ADMIN }),
@@ -444,7 +416,6 @@ describe("update", () => {
       ADMIN,
     );
 
-    // Renaming a restaurant must not silently wipe its address.
     expect(mocked.upsertDetails).not.toHaveBeenCalled();
     expect(result.details?.phone).toBe("+201000000000");
   });

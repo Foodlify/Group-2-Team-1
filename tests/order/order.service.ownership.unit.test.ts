@@ -1,13 +1,3 @@
-/**
- * Restaurant ownership — who may see and change which orders.
- *
- * The official scope map names Restaurants as an actor on orders twice
- * ("Restaurants Order History", "Cancelled Orders by Customers or
- * Restaurants"), and this is the rule that makes those safe: the RESTAURANT
- * role gets a caller through the route guard, `Restaurant.ownerId` decides
- * which orders are theirs. A test suite that only checked the role would ratify
- * a system where any restaurant can cancel any other restaurant's orders.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/modules/order/order.repository", () => ({
@@ -112,7 +102,6 @@ beforeEach(() => {
   mockedOrders.findPaginatedAll.mockResolvedValue(emptyPage as never);
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("changing an order's status", () => {
   it("lets the owner of the order's restaurant through", async () => {
     mockedRestaurants.isOwnedBy.mockResolvedValue(true);
@@ -131,9 +120,6 @@ describe("changing an order's status", () => {
       OWNER,
     );
 
-    // The id comes off the loaded row. Taking it from anywhere the caller can
-    // influence would let an owner name a restaurant they do own while acting
-    // on an order belonging to one they don't.
     expect(mockedRestaurants.isOwnedBy).toHaveBeenCalledWith(
       "rest_1",
       "user_owner",
@@ -158,16 +144,12 @@ describe("changing an order's status", () => {
       orderService.updateOrderStatus("order_1", { status: "CONFIRMED" }, OWNER),
     ).rejects.toThrow();
 
-    // A 403 that still moved the order would be a 403 in name only.
     expect(mockedOrders.appendTimelineEntry).not.toHaveBeenCalled();
   });
 
   it("refuses before deciding whether the transition is legal", async () => {
     mockedRestaurants.isOwnedBy.mockResolvedValue(false);
 
-    // PENDING -> DELIVERED is an invalid transition. Answering with that
-    // instead of a 403 would confirm the order exists and reveal its current
-    // status to someone with no standing to ask.
     await expect(
       orderService.updateOrderStatus("order_1", { status: "DELIVERED" }, OWNER),
     ).rejects.toMatchObject({
@@ -182,16 +164,10 @@ describe("changing an order's status", () => {
       ADMIN,
     );
 
-    // Not merely allowed — never asked. The platform operator is not scoped to
-    // a restaurant, so the lookup could only ever answer "yes".
     expect(mockedRestaurants.isOwnedBy).not.toHaveBeenCalled();
   });
 
   it("refuses an owner who has been demoted, even though the row still names them", async () => {
-    // Demoting an account does not clear `Restaurant.ownerId`, so the lookup
-    // would happily say "yes". Discovered by a mutation: widening the route
-    // guard to admit CUSTOMER changed no test, because the ownership check
-    // alone could not tell a demoted ex-owner from a current one.
     mockedRestaurants.isOwnedBy.mockResolvedValue(true);
 
     await expect(
@@ -209,8 +185,6 @@ describe("changing an order's status", () => {
   it("gives a restaurant the same 403 message a customer gets", async () => {
     mockedRestaurants.isOwnedBy.mockResolvedValue(false);
 
-    // Deliberately indistinguishable: a distinct message would let a probe
-    // map which restaurants exist and who runs them.
     await expect(
       orderService.updateOrderStatus("order_1", { status: "CONFIRMED" }, OWNER),
     ).rejects.toMatchObject({
@@ -219,7 +193,6 @@ describe("changing an order's status", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("Restaurants Order History", () => {
   it("scopes to the restaurants the caller runs", async () => {
     mockedRestaurants.findIdsByOwnerId.mockResolvedValue(["rest_1", "rest_2"]);
@@ -236,8 +209,6 @@ describe("Restaurants Order History", () => {
 
     await orderService.listRestaurantOrders("user_owner", query);
 
-    // An admin who reassigns a restaurant has to take effect on the next
-    // request, not when a fifteen-minute access token happens to expire.
     expect(mockedRestaurants.findIdsByOwnerId).toHaveBeenCalledWith(
       "user_owner",
     );
@@ -248,8 +219,6 @@ describe("Restaurants Order History", () => {
 
     await orderService.listRestaurantOrders("user_owner", query);
 
-    // The dangerous bug this guards: reading an empty list as "no filter" and
-    // handing over every order on the platform.
     expect(mockedOrders.findPaginatedAll).toHaveBeenCalledWith(
       expect.objectContaining({ restaurantIds: [] }),
     );
@@ -276,8 +245,6 @@ describe("Restaurants Order History", () => {
       restaurantId: "rest_someone_else",
     } as never);
 
-    // Asking for a restaurant they do not run narrows to nothing. Passing the
-    // requested id straight through would be the whole vulnerability.
     expect(mockedOrders.findPaginatedAll).toHaveBeenCalledWith(
       expect.objectContaining({ restaurantIds: [] }),
     );
@@ -301,12 +268,10 @@ describe("Restaurants Order History", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("the admin's platform-wide listing", () => {
   it("stays unscoped when no restaurant is named", async () => {
     await orderService.listAllOrders(query);
 
-    // `undefined`, not `[]` — the distinction the repository filter turns on.
     expect(mockedOrders.findPaginatedAll).toHaveBeenCalledWith(
       expect.objectContaining({ restaurantIds: undefined }),
     );
@@ -325,7 +290,6 @@ describe("the admin's platform-wide listing", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("reading one order as a restaurant", () => {
   it("returns it to the owner of its restaurant", async () => {
     mockedRestaurants.isOwnedBy.mockResolvedValue(true);

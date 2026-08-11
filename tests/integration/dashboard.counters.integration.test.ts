@@ -1,14 +1,3 @@
-/**
- * The daily and monthly counters the scope map names.
- *
- * These cannot be proved with mocks: every one is a `WHERE` clause that a real
- * PostgreSQL has to agree with, and the interesting cases live exactly on the
- * boundaries — an order at 00:00:00.000 today, one at 23:59:59.999 yesterday,
- * one on the last day of last month.
- *
- * The clock is frozen so those boundaries are known. Only `Date` is faked;
- * faking timers as well would stall the database driver.
- */
 import {
   afterAll,
   afterEach,
@@ -28,7 +17,6 @@ import {
   resetDatabase,
 } from "./helpers/db";
 
-/** Mid-month and mid-day, so "today" and "this month" are plainly different. */
 const NOW = new Date("2026-08-15T12:00:00.000Z");
 const DAY_START = new Date("2026-08-15T00:00:00.000Z");
 const MONTH_START = new Date("2026-08-01T00:00:00.000Z");
@@ -79,11 +67,6 @@ afterAll(async () => {
   await disconnect();
 });
 
-/**
- * Today: two still owed, one cancelled, one delivered.
- * Earlier this month: one pending, one cancelled.
- * Last month: one cancelled.
- */
 const seedSpread = async () => {
   await placeOrderAt(ctx, NOW, "PENDING");
   await placeOrderAt(ctx, NOW, "CONFIRMED");
@@ -94,7 +77,6 @@ const seedSpread = async () => {
   await placeOrderAt(ctx, new Date("2026-07-20T09:00:00.000Z"), "CANCELLED");
 };
 
-// ═══════════════════════════════════════════════════════════
 describe("Daily / Monthly Cancelled Orders", () => {
   it("counts today's cancellations, this month's, and all time separately", async () => {
     await seedSpread();
@@ -103,8 +85,7 @@ describe("Daily / Monthly Cancelled Orders", () => {
 
     expect(overview.counters.cancelledOrdersToday).toBe(1);
     expect(overview.counters.cancelledOrdersThisMonth).toBe(2);
-    // Three cancellations exist; only the all-time counter sees the one from
-    // last month.
+
     expect(overview.counters.cancelledOrders).toBe(3);
   });
 
@@ -113,8 +94,6 @@ describe("Daily / Monthly Cancelled Orders", () => {
 
     const overview = await dashboardService.getOverview();
 
-    // `gte`, not `gt` — an order placed on the stroke of midnight belongs to
-    // the day that just started.
     expect(overview.counters.cancelledOrdersToday).toBe(1);
   });
 
@@ -124,8 +103,7 @@ describe("Daily / Monthly Cancelled Orders", () => {
     const overview = await dashboardService.getOverview();
 
     expect(overview.counters.cancelledOrdersToday).toBe(0);
-    // Still inside the month, so the monthly counter must see it — the pair is
-    // what proves the two windows are genuinely different.
+
     expect(overview.counters.cancelledOrdersThisMonth).toBe(1);
   });
 
@@ -139,7 +117,6 @@ describe("Daily / Monthly Cancelled Orders", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("Daily Orders not Delivered Count", () => {
   it("counts today's orders that are still owed to a customer", async () => {
     await seedSpread();
@@ -149,8 +126,6 @@ describe("Daily Orders not Delivered Count", () => {
       { granularity: "day" },
     );
 
-    // PENDING + CONFIRMED from today. The delivered one is done and the
-    // cancelled one is not owed to anybody.
     expect(report.counters.notDeliveredToday).toBe(2);
   });
 
@@ -163,9 +138,6 @@ describe("Daily Orders not Delivered Count", () => {
       { granularity: "day" },
     );
 
-    // The literal reading — "status is not DELIVERED" — would answer 1 here.
-    // The map lists cancelled orders as their own counter beside this one, so
-    // the two are read as a partition.
     expect(report.counters.notDeliveredToday).toBe(0);
   });
 
@@ -177,13 +149,10 @@ describe("Daily Orders not Delivered Count", () => {
       { granularity: "day" },
     );
 
-    // It is a daily counter, not a backlog. An older unfinished order is a
-    // different question the map does not ask.
     expect(report.counters.notDeliveredToday).toBe(0);
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("the restaurant's day and month counters", () => {
   it("reports orders for today and this month", async () => {
     await seedSpread();
@@ -217,8 +186,6 @@ describe("the restaurant's day and month counters", () => {
       },
     );
 
-    // `ordersInRange` follows the window; the named counters must not, or
-    // "today" would mean whatever the caller last asked for.
     expect(wide.counters.ordersInRange).toBe(7);
     expect(narrow.counters.ordersInRange).toBe(4);
     expect(wide.counters.ordersToday).toBe(narrow.counters.ordersToday);
@@ -250,7 +217,6 @@ describe("the restaurant's day and month counters", () => {
     expect(report.counters.cancelledOrdersToday).toBe(1);
     expect(report.counters.notDeliveredToday).toBe(2);
 
-    // The system overview, by contrast, sees both restaurants.
     const overview = await dashboardService.getOverview();
     expect(overview.counters.ordersToday).toBe(6);
     expect(overview.counters.cancelledOrdersToday).toBe(2);

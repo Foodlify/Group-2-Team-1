@@ -1,11 +1,3 @@
-/**
- * `Transaction Details`, against a real database.
- *
- * The table is filled by successive writes about the same payment — the
- * checkout knows the session id, the webhook later knows the PaymentIntent —
- * so the property that matters is that each write ADDS to the row instead of
- * replacing it. A test that only ever writes once cannot tell the difference.
- */
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import prisma from "../../src/config/prisma";
 import { Prisma } from "../../src/generated/prisma/client";
@@ -38,7 +30,6 @@ afterAll(async () => {
   await disconnect();
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("what gets a details row", () => {
   it("records the gateway facts of a card payment", async () => {
     const payment = await cardPayment({
@@ -60,7 +51,6 @@ describe("what gets a details row", () => {
       paymentMethod: "CASH",
     });
 
-    // No gateway was involved. An all-null row would say one was.
     expect(await prisma.transactionDetails.count()).toBe(0);
   });
 
@@ -71,7 +61,6 @@ describe("what gets a details row", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("successive writes about the same payment", () => {
   it("adds the PaymentIntent without losing the session id", async () => {
     const payment = await cardPayment({
@@ -84,8 +73,6 @@ describe("successive writes about the same payment", () => {
       metadata: { gateway: "stripe", stage: "paid", paymentIntentId: "pi_1" },
     });
 
-    // This is the whole reason the write merges. Replacing would drop `cs_1`,
-    // and reconciling against Stripe's records needs both.
     expect(await detailsOf(payment.id)).toMatchObject({
       sessionId: "cs_1",
       paymentIntentId: "pi_1",
@@ -118,24 +105,18 @@ describe("successive writes about the same payment", () => {
       metadata: { error: "card network unavailable" },
     });
 
-    // A FAILED refund is money still owed; why it failed is the first thing
-    // whoever chases it needs.
     expect((await detailsOf(refund.id)).failureReason).toBe(
       "card network unavailable",
     );
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("who pays for the join", () => {
   it("leaves the details out unless they are asked for", async () => {
     await cardPayment({ gateway: "stripe", paymentIntentId: "pi_1" });
 
     const { rows } = await transactionRepository.findPage({}, 0, 20, false);
 
-    // Asserted on the repository, not on the response: the customer mapper
-    // drops `details` either way, so a listing that quietly loaded them would
-    // look identical from outside while paying for a join on every page.
     expect(rows).toHaveLength(1);
     expect(rows[0]).not.toHaveProperty("details");
   });
@@ -149,7 +130,6 @@ describe("who pays for the join", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("the details and the transaction commit together", () => {
   it("leaves neither behind when the caller's transaction rolls back", async () => {
     await expect(
@@ -177,13 +157,10 @@ describe("the details and the transaction commit together", () => {
 
     await prisma.transaction.delete({ where: { id: payment.id } });
 
-    // Unlike the audit trail, these details describe nothing without their
-    // transaction — so here a cascade is right.
     expect(await prisma.transactionDetails.count()).toBe(0);
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("the refund reference the column exists for", () => {
   it("prefers the column when the column and the blob disagree", async () => {
     const created = await cardPayment({
@@ -191,8 +168,7 @@ describe("the refund reference the column exists for", () => {
       stage: "paid",
       paymentIntentId: "pi_from_column",
     });
-    // Made to disagree deliberately. Agreeing sources cannot show which one
-    // was actually read.
+
     await prisma.transaction.update({
       where: { id: created.id },
       data: { metadata: { paymentIntentId: "pi_from_blob" } },
@@ -232,17 +208,11 @@ describe("the refund reference the column exists for", () => {
 
     const [row] = await transactionRepository.findByOrderId(order.id);
 
-    // Joined here so the strategy needs no query of its own. A payment
-    // strategy that reaches for the database cannot be unit tested without
-    // one — which is exactly how this went wrong the first time.
     expect(row!.details?.paymentIntentId).toBe("pi_1");
     expect(await StripeCardStrategy.resolvePaymentIntentId(row!)).toBe("pi_1");
   });
 
   it("falls back to the blob for a payment settled before this table existed", async () => {
-    // Its details row was never written, but the fact is still in the blob and
-    // is still correct. Dropping the fallback would make every old order
-    // unrefundable without a round trip to Stripe.
     const legacy = await prisma.transaction.create({
       data: {
         type: "ORDER_PAYMENT",

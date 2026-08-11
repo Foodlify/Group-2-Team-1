@@ -7,17 +7,14 @@ export class OtpRepository extends BaseRepository<PrismaClient["otp"]> {
     super(prisma.otp);
   }
 
-  /** Codes issued for this email+purpose since `since` — feeds the rate limit. */
   async countRecent(email: string, purpose: string, since: Date) {
     return this.count({ where: { email, purpose, createdAt: { gte: since } } });
   }
 
-  /** Invalidate pending codes before issuing a new one (single active code). */
   async deleteUnused(email: string, purpose: string): Promise<void> {
     await prisma.otp.deleteMany({ where: { email, purpose, used: false } });
   }
 
-  /** Latest unexpired, unused code for this email+purpose (if any). */
   async findLatestValid(email: string, purpose: string) {
     return this.findFirst({
       where: { email, purpose, used: false, expiresAt: { gt: new Date() } },

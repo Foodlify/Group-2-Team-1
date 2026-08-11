@@ -1,17 +1,3 @@
-/**
- * Summarises a JMeter .jtl result file.
- *
- * JMeter's own HTML report is fine for browsing, but the numbers that matter
- * for a written conclusion — per-endpoint percentiles and the exact spread of
- * response codes — are quicker to read here, and this can be diffed between
- * runs.
- *
- * The .jtl is RFC4180 CSV: failure messages contain commas and are quoted, so
- * it needs a real parser. Splitting on "," silently misaligns every column
- * after the first quoted field, which turns the whole summary into fiction.
- *
- * Usage: node perf/analyze.js perf/results/plan1.jtl
- */
 function parseCsv(text) {
   const rows = [];
   let row = [];

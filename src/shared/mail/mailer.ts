@@ -6,16 +6,6 @@ import { appError } from "../../middlewares/error.middleware";
 import { otpErrors } from "../exceptions/otp.errors";
 import { describeError } from "../errors/describe";
 
-/**
- * Thin wrapper around nodemailer so services never touch SMTP details.
- *
- * Behaviour by environment:
- * - SMTP configured (SMTP_HOST set): real emails through the transport.
- * - Not configured, development/test: the message is logged instead of sent so
- *   the OTP flow stays fully testable without credentials.
- * - Not configured, production: sending fails with an operational 503 — better
- *   a clear error than silently swallowing verification codes.
- */
 class Mailer {
   private transporter: Transporter | null = null;
 
@@ -24,7 +14,7 @@ class Mailer {
       this.transporter = nodemailer.createTransport({
         host: env.SMTP_HOST,
         port: env.SMTP_PORT,
-        // Port 465 is implicit TLS; 587/25 upgrade via STARTTLS.
+
         secure: env.SMTP_PORT === 465,
         auth:
           env.SMTP_USER && env.SMTP_PASS
@@ -60,9 +50,6 @@ class Mailer {
         text,
       });
     } catch (error) {
-      // A transport failure is operational, not a bug: an unreachable or
-      // refusing mail server would otherwise escape as a bare 500 with the
-      // reason visible only in the logs.
       logger.error("Sending email failed", {
         to,
         subject,
@@ -71,8 +58,6 @@ class Mailer {
       throw appError(otpErrors.MAIL_SEND_FAILED);
     }
 
-    // `sendMail` resolves as long as the server accepted *some* recipient, so
-    // a rejected address is otherwise indistinguishable from a delivered one.
     if (info.rejected.length > 0) {
       logger.warn("Mail server rejected a recipient", {
         rejected: info.rejected,
@@ -81,10 +66,6 @@ class Mailer {
       });
     }
 
-    // The provider's id is the only handle for tracing "I never got the email"
-    // back to a specific send. Acceptance is not delivery — a provider can
-    // answer 250 and still drop the message — so this is the last point where
-    // the application knows anything at all about it.
     logger.info("Email handed to the mail server", {
       to,
       subject,
@@ -93,7 +74,6 @@ class Mailer {
     });
   }
 
-  /** Order confirmation — sent right after a successful checkout. */
   async sendOrderConfirmation(
     to: string,
     order: {
@@ -115,7 +95,6 @@ class Mailer {
     await this.send(to, `Your Foodlify order #${order.id} is confirmed`, text);
   }
 
-  /** Status-change notification — one per transition (including cancellation). */
   async sendOrderStatusUpdate(
     to: string,
     order: { id: string; customerName: string; status: string },

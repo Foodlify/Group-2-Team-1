@@ -28,14 +28,11 @@ import menuItemRouter from "../modules/menuItem/menuItem.routes";
 
 const router: Router = Router();
 
-// Strict limiter in front of auth endpoints to blunt brute-force / credential
-// stuffing (login, register, refresh, admin login).
 router.use("/auth", authLimiter, authRouter);
-// OTP endpoints are as abuse-prone as login — same strict limiter (plus the
-// service's own per-email cap of 3 codes / 10 minutes).
+
 router.use("/otp", authLimiter, otpRouter);
 router.use("/users", usersRouter);
-// Specific mounts registered BEFORE their parent prefixes so they match first.
+
 router.use("/customers/me/ratings", myRatingsRouter);
 router.use("/customers/me/support-tickets", mySupportRouter);
 router.use("/customers/me/transactions", myTransactionsRouter);
@@ -52,8 +49,7 @@ router.use("/carts", cartRouter);
 router.use("/orders", orderRouter);
 router.use("/dashboard", dashboardRouter);
 router.use("/push", pushRouter);
-// The Stripe webhook lives at /payments/stripe/webhook and is mounted directly
-// on the app, ahead of this router — see app.ts.
+
 router.use("/payments", paymentAdminRouter);
 
 export default router;

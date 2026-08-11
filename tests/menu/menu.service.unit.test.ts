@@ -1,9 +1,3 @@
-/**
- * Menu Service — unit tests (history audit + soft delete).
- *
- * Repositories are mocked so each test asserts pure service logic —
- * "IF the repository returns X, THEN the service does Y" — with no database.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/modules/menu/menu.repository", () => ({
@@ -234,7 +228,7 @@ describe("restore", () => {
 
   it("refuses to restore into a still-deleted restaurant", async () => {
     mockedMenus.findByIdIncludingDeleted.mockResolvedValue(deletedMenuRow);
-    // Filtered lookup returns nothing → the restaurant is itself deleted.
+
     mockedRestaurants.findById.mockResolvedValue(null);
 
     await expect(menuService.restore("menu_1", ADMIN)).rejects.toMatchObject({

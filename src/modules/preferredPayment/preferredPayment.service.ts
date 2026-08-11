@@ -19,7 +19,6 @@ class PreferredPaymentService {
     customerId: string,
     input: CreatePaymentSettingInput,
   ): Promise<PaymentSettingResponse> {
-    // The customer's first saved method becomes the default automatically.
     const existing =
       await preferredPaymentRepository.countByCustomerId(customerId);
     try {
@@ -28,7 +27,6 @@ class PreferredPaymentService {
       });
       return this.toResponse(setting);
     } catch (e) {
-      // @@unique([customerId, method]) makes the DB the arbiter of duplicates.
       if (isUniqueViolation(e)) {
         throw appError(customerErrors.PAYMENT_METHOD_ALREADY_SAVED);
       }
@@ -57,7 +55,6 @@ class PreferredPaymentService {
     );
   }
 
-  // ─── Private helpers ──────────────────────────────────
   private async assertOwned(
     settingId: string,
     customerId: string,

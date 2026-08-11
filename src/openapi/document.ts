@@ -2,7 +2,6 @@ import { createDocument, type ZodOpenApiObject } from "zod-openapi";
 import { routeRegistry, schemaRegistry } from "./registry";
 import env from "../config/env";
 
-// Ensure shared schemas are registered
 import "../shared/schemas/error.schema";
 import "../shared/schemas/pagination.schema";
 import "../modules/user/user.validation";
@@ -22,11 +21,6 @@ import "../modules/payment/integration.validation";
 import "../modules/auditing/auditing.validation";
 import "../modules/push/push.validation";
 
-// Ensure every route's OpenAPI path is registered too. Routes push into
-// `routeRegistry` as a side effect of being imported; importing them here (not
-// only via app.ts) makes `buildOpenApiDocument()` deterministic even when
-// called outside the Express app (e.g. a spec-generation script). ES modules
-// are singletons, so these imports never double-register.
 import "../modules/user/user.routes";
 import "../modules/otp/otp.routes";
 import "../modules/customer/customer.routes";
@@ -41,17 +35,10 @@ import "../modules/dashboard/dashboard.routes";
 import "../modules/transaction/transaction.routes";
 import "../modules/auditing/auditing.routes";
 import "../modules/push/push.routes";
-// Mounted straight onto the app rather than the `/api/v1` router (it needs the
-// raw body), so it would otherwise be missing from the spec entirely.
+
 import "../modules/payment/payment.routes";
 
-/**
- * Build the OpenAPI 3.1 document by combining:
- * - registered routes (from each module's routes file)
- * - registered shared schemas (error, pagination, etc.)
- */
 export const buildOpenApiDocument = (): ReturnType<typeof createDocument> => {
-  // Build paths object from registered routes
   const paths: ZodOpenApiObject["paths"] = {};
   for (const { path, pathItem } of routeRegistry) {
     paths[path] = { ...(paths[path] ?? {}), ...pathItem };

@@ -8,14 +8,6 @@ import {
   TransactionListQuerySchema,
 } from "./transaction.validation";
 
-/**
- * The customer's own transactions and receipts, mounted under
- * `/customers/me/transactions` alongside the rest of the self-service surface.
- *
- * Two routers rather than one shared router with per-route guards: the scoping
- * is the difference between them, and a customer route that forgets to filter
- * by owner is exactly the mistake that separation makes impossible.
- */
 export const myTransactionsRouter: Router = Router();
 
 myTransactionsRouter.use(authenticate);
@@ -32,7 +24,6 @@ myTransactionsRouter.get(
   controller.getMyReceipt,
 );
 
-/** Every transaction in the system, for the admin view. */
 export const adminTransactionsRouter: Router = Router();
 
 adminTransactionsRouter.use(authenticate, authorize("ADMIN"));
@@ -48,8 +39,6 @@ adminTransactionsRouter.get(
   validate({ params: TransactionIdParamsSchema }),
   controller.getReceipt,
 );
-
-// ─── OpenAPI Documentation ───────────────────────────────
 
 const tag = "Transactions";
 const errorRef = { $ref: "#/components/schemas/ErrorResponse" };

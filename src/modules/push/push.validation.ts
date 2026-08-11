@@ -1,13 +1,6 @@
 import { z } from "zod";
 import { schemaRegistry } from "../../openapi/registry";
 
-/**
- * The shape a browser's `PushSubscription.toJSON()` produces, verbatim.
- *
- * Accepted as the browser emits it rather than flattened into our own field
- * names, so a client can post the object straight through. Bending it would
- * mean every caller writing the same adapter.
- */
 export const PushSubscriptionRequestSchema = z
   .object({
     endpoint: z
@@ -47,10 +40,6 @@ export const UnsubscribeRequestSchema = z
     description: "Removes one browser's subscription",
   });
 
-/**
- * `p256dh` and `auth` are absent by design. They are the browser's half of the
- * payload encryption and a customer listing their devices has no use for them.
- */
 export const PushSubscriptionResponseSchema = z
   .object({
     id: z.cuid2(),

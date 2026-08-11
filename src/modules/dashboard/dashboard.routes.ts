@@ -10,10 +10,6 @@ import {
 
 const router: Router = Router();
 
-// Every figure here aggregates across all customers and all revenue, so the
-// whole module is ADMIN-only. Applied at the router rather than per route:
-// a new report added later is then locked down by default rather than by
-// remembering to guard it.
 router.use(authenticate, authorize("ADMIN"));
 
 router.get("/overview", controller.getOverview);
@@ -29,8 +25,6 @@ router.get(
   validate({ params: RestaurantIdParamsSchema, query: ReportQuerySchema }),
   controller.getRestaurantReport,
 );
-
-// ─── OpenAPI Documentation ───────────────────────────────
 
 const tag = "Dashboard";
 const errorRef = { $ref: "#/components/schemas/ErrorResponse" };

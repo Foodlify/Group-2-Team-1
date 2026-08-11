@@ -3,14 +3,6 @@ import { StatusCodes } from "http-status-codes";
 import env from "../config/env";
 import logger from "../config/logger";
 
-/**
- * Rate limiters. Responses reuse the standard error envelope
- * (`{ success: false, message }`) so clients see a consistent shape.
- *
- * Skipped entirely under NODE_ENV=test so the limiter never interferes with
- * automated test runs.
- */
-
 const sharedOptions: Partial<Options> = {
   standardHeaders: "draft-7",
   legacyHeaders: false,
@@ -24,10 +16,6 @@ const sharedOptions: Partial<Options> = {
   },
 };
 
-/**
- * Strict limiter for authentication endpoints (login, register, refresh) to
- * blunt credential-stuffing / brute-force attempts. Keyed by client IP.
- */
 export const authLimiter = rateLimit({
   ...sharedOptions,
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -36,10 +24,6 @@ export const authLimiter = rateLimit({
   message: "Too many authentication attempts. Please try again later.",
 });
 
-/**
- * General-purpose limiter applied to the whole API surface as a safety net
- * against abusive traffic. Generous enough not to affect normal usage.
- */
 export const apiLimiter = rateLimit({
   ...sharedOptions,
   windowMs: 60 * 1000, // 1 minute

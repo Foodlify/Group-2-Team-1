@@ -1,18 +1,3 @@
-/**
- * Adds reporting history on top of `seed-load.ts`, for the dashboard plan.
- *
- * The order plans leave roughly 500 transactions behind, which is not enough to
- * say anything about a report: at that size every aggregate is instant whatever
- * it does. This bulk-inserts a realistic back catalogue spread over 90 days so
- * the `date_trunc` series and the `SUM`s have to actually scan something.
- *
- * It also mints the ADMIN token the plan needs. Every dashboard endpoint is
- * ADMIN-only, and logging in from the plan would measure bcrypt again — the
- * same reason the order plans arrive pre-authenticated.
- *
- * Run after `perf:seed`, against the load database:
- *   npm run perf:seed && npm run perf:seed-dashboard
- */
 import fs from "node:fs";
 import path from "node:path";
 import prisma from "../src/config/prisma";
@@ -26,7 +11,6 @@ const BATCH = 5_000;
 
 const dataDir = path.join(__dirname, "data");
 
-/** Deterministic pseudo-random, so two seeds produce comparable databases. */
 const rng = (seed: number) => () => {
   seed = (seed * 1103515245 + 12345) & 0x7fffffff;
   return seed / 0x7fffffff;
@@ -75,9 +59,7 @@ async function main(): Promise<void> {
 
     for (let i = 0; i < size; i++) {
       const n = start + i;
-      // Spread over the window. `createdAt` is timestamp WITHOUT time zone and
-      // the reports query in UTC, so these must be UTC instants — a local-time
-      // value would land outside every window the dashboard asks for.
+
       const at = new Date(now - Math.floor(random() * spanMs));
       const amount = new Prisma.Decimal(
         (10 + Math.floor(random() * 90)).toFixed(2),
@@ -103,8 +85,7 @@ async function main(): Promise<void> {
         orderId,
         internalTxNumber: `PERF-${n}`,
         type: "ORDER_PAYMENT" as const,
-        // Only SUCCESS rows count as money, so a mix keeps the aggregate from
-        // being a simple count of the table.
+
         status: (status === "CANCELLED" ? "FAILED" : "SUCCESS") as
           | "FAILED"
           | "SUCCESS",

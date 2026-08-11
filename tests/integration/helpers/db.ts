@@ -1,15 +1,6 @@
 import prisma from "../../../src/config/prisma";
 import { Prisma } from "../../../src/generated/prisma/client";
 
-/**
- * Empties every table between tests.
- *
- * The table list is read from the database rather than hard-coded, so a new
- * model can never quietly leak rows into the next test — the failure mode of a
- * hand-maintained list is a test that passes because of data it didn't create.
- * `_prisma_migrations` is kept: dropping it would make `migrate deploy` replay
- * everything on the next run.
- */
 export async function resetDatabase(): Promise<void> {
   const tables = await prisma.$queryRaw<Array<{ tablename: string }>>`
     SELECT tablename FROM pg_tables
@@ -25,10 +16,6 @@ export async function resetDatabase(): Promise<void> {
 export async function disconnect(): Promise<void> {
   await prisma.$disconnect();
 }
-
-// ─── Fixtures ────────────────────────────────────────────
-// Deliberately built through Prisma rather than raw SQL, so every fixture also
-// exercises the schema's defaults, constraints and relations.
 
 export async function createCustomer(suffix = "1") {
   const user = await prisma.user.create({
@@ -55,14 +42,6 @@ export async function createCustomer(suffix = "1") {
   return { user, customer, address };
 }
 
-/**
- * A restaurant with one menu and one item, priced and optionally stocked.
- *
- * `name` matters once a test needs two restaurants: the column is not unique,
- * so two identically named ones are legal but indistinguishable in a failure
- * message. `ownerId` is the account that runs it — left null, as every
- * restaurant was before ownership existed.
- */
 export async function createCatalog(
   options: {
     price?: string;
@@ -91,7 +70,6 @@ export async function createCatalog(
   return { restaurant, menu, menuItem };
 }
 
-/** A cart for `customerId` holding `quantity` of `menuItem`. */
 export async function createCartWithItem(
   customerId: string,
   restaurantId: string,

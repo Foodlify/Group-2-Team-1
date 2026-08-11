@@ -11,10 +11,6 @@ import {
 } from "./transaction.model";
 import { TransactionResponseSchema } from "../payment/payment.validation";
 
-// ═══════════════════════════════════════════════════════════════
-// Request Schemas (inputs)
-// ═══════════════════════════════════════════════════════════════
-
 export const TransactionListQuerySchema = PaginationQuerySchema.extend({
   type: z.enum(TRANSACTION_TYPES).optional().meta({
     description: "Only payments, only refunds, ...",
@@ -37,10 +33,6 @@ export const TransactionIdParamsSchema = z
     transactionId: z.cuid2().meta({ description: "Transaction ID" }),
   })
   .meta({ id: "TransactionIdOnlyParams" });
-
-// ═══════════════════════════════════════════════════════════════
-// Response Schemas (outputs)
-// ═══════════════════════════════════════════════════════════════
 
 export const ReceiptResponseSchema = z
   .object({
@@ -81,9 +73,7 @@ export const ReceiptResponseSchema = z
     customer: z.object({
       name: z.string(),
       email: z.email(),
-      // Null rather than an empty string for a customer who has not added one:
-      // a receipt is a record, and a blank field that reads as "no phone" is
-      // more honest than one that reads as a phone number of no characters.
+
       phone: z.string().nullable(),
     }),
     deliveryAddress: z.string(),
@@ -144,12 +134,6 @@ export const TransactionListSuccessResponseSchema = z
   })
   .meta({ id: "TransactionListSuccessResponse" });
 
-/**
- * The admin listing carries the gateway details; the customer's does not.
- * Session and PaymentIntent ids, raw provider statuses and failure text are
- * facts about our integration, not information a customer is owed about their
- * own payment.
- */
 export const AdminTransactionListSuccessResponseSchema = z
   .object({
     success: z.literal(true),
@@ -166,10 +150,6 @@ export const ReceiptSuccessResponseSchema = z
     data: ReceiptResponseSchema,
   })
   .meta({ id: "ReceiptSuccessResponse" });
-
-// ═══════════════════════════════════════════════════════════════
-// Registry
-// ═══════════════════════════════════════════════════════════════
 
 schemaRegistry.register("TransactionListQuery", TransactionListQuerySchema);
 schemaRegistry.register("Receipt", ReceiptResponseSchema);

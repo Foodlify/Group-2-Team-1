@@ -2,10 +2,6 @@ import { z } from "zod";
 import { schemaRegistry } from "../../openapi/registry";
 import { PaginationMetaSchema } from "../../shared/schemas/pagination.schema";
 
-// ═══════════════════════════════════════════════════════════════
-// Request Schemas (inputs)
-// ═══════════════════════════════════════════════════════════════
-
 export const CreateRatingRequestSchema = z
   .object({
     orderId: z.cuid2().meta({
@@ -25,10 +21,6 @@ export const CreateRatingRequestSchema = z
     id: "CreateRatingRequest",
     description: "Rate the restaurant of a delivered order",
   });
-
-// ═══════════════════════════════════════════════════════════════
-// Response Schemas (outputs)
-// ═══════════════════════════════════════════════════════════════
 
 export const RatingResponseSchema = z
   .object({
@@ -85,10 +77,6 @@ export const RestaurantRatingsSuccessResponseSchema = z
   })
   .meta({ id: "RestaurantRatingsSuccessResponse" });
 
-// ═══════════════════════════════════════════════════════════════
-// Registry
-// ═══════════════════════════════════════════════════════════════
-
 schemaRegistry.register("CreateRatingRequest", CreateRatingRequestSchema);
 schemaRegistry.register("RatingResponse", RatingResponseSchema);
 schemaRegistry.register("RatingSuccessResponse", RatingSuccessResponseSchema);
@@ -104,11 +92,6 @@ schemaRegistry.register(
   "RestaurantRatingsSuccessResponse",
   RestaurantRatingsSuccessResponseSchema,
 );
-
-// ═══════════════════════════════════════════════════════════════
-// Discovery (official "Top Rating Restaurants" + "Restaurants
-// Recommendations")
-// ═══════════════════════════════════════════════════════════════
 
 export const DiscoveryQuerySchema = z
   .object({
@@ -145,10 +128,6 @@ schemaRegistry.register(
   "TopRatedListSuccessResponse",
   TopRatedListSuccessResponseSchema,
 );
-
-// ═══════════════════════════════════════════════════════════════
-// TypeScript Types
-// ═══════════════════════════════════════════════════════════════
 
 export type CreateRatingInput = z.infer<typeof CreateRatingRequestSchema>;
 export type RatingResponse = z.infer<typeof RatingResponseSchema>;

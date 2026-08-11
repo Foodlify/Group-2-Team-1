@@ -1,15 +1,3 @@
-/**
- * Stripe card strategy — the hand-off to the gateway.
- *
- * Two things here can silently take the wrong amount of money from a real
- * customer, and neither is visible in the response we return: the conversion
- * to minor units, and the idempotency key. Both are asserted directly.
- *
- * The Stripe SDK is mocked. That is not a shortcut around a hard test — the
- * point of these assertions is *what we send*, and the only way to see that is
- * to inspect the call. Whether Stripe honours it is Stripe's contract, and is
- * verified separately against the real API (see docs/PAYMENTS.md).
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const createSession = vi.fn();
@@ -48,7 +36,6 @@ beforeEach(() => {
 });
 
 describe("money is converted to minor units exactly", () => {
-  // Real menu prices, chosen because each one breaks naive `amount * 100`.
   it.each([
     [45.5, 4550],
     [19.99, 1999],
@@ -61,9 +48,6 @@ describe("money is converted to minor units exactly", () => {
   });
 
   it("proves the naive float version would be wrong", () => {
-    // 19.99 * 100 === 1998.9999999999998 in IEEE 754. Truncating that charges
-    // the customer a piastre less; this is the exact bug the Decimal path
-    // exists to prevent.
     expect(Math.trunc(19.99 * 100)).toBe(1998);
     expect(StripeCardStrategy.toMinorUnits(19.99)).toBe(1999);
   });
@@ -79,8 +63,6 @@ describe("pay() stays local", () => {
   it("records the payment as pending without calling Stripe", async () => {
     const result = await stripeCardStrategy.pay(100, context);
 
-    // pay() runs inside the checkout database transaction. A network call here
-    // would hold the cart row lock open for the whole round-trip.
     expect(createSession).not.toHaveBeenCalled();
     expect(result.status).toBe("PENDING");
   });
@@ -88,7 +70,6 @@ describe("pay() stays local", () => {
   it("never reports success on its own", async () => {
     const result = await stripeCardStrategy.pay(100, context);
 
-    // Only the webhook may mark a card payment SUCCESS.
     expect(result.status).not.toBe("SUCCESS");
   });
 });
@@ -99,7 +80,7 @@ describe("initiate() creates the checkout session", () => {
 
     const [params] = createSession.mock.calls[0]!;
     expect(params.line_items[0].price_data.unit_amount).toBe(4550);
-    // Stripe rejects "EGP"; it wants "egp".
+
     expect(params.line_items[0].price_data.currency).toBe("egp");
   });
 
@@ -107,8 +88,7 @@ describe("initiate() creates the checkout session", () => {
     await stripeCardStrategy.initiate(transaction, 45.5, context);
 
     const [params] = createSession.mock.calls[0]!;
-    // Without these the callback has nothing to correlate: Stripe knows only
-    // its own session id, and the payment would be stranded.
+
     expect(params.metadata).toEqual({
       orderId: "order_1",
       transactionId: "txn_abc",

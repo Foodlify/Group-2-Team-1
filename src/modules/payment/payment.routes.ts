@@ -12,20 +12,6 @@ import {
   UpdateIntegrationRequestSchema,
 } from "./integration.validation";
 
-/**
- * The Stripe webhook, on its own router because of where it must be mounted.
- *
- * It is attached in `app.ts` BEFORE `express.json()` and outside the `/api/v1`
- * router, for two reasons:
- *
- *   - `express.raw` has to see the untouched body. Once the global JSON parser
- *     has consumed the stream, re-serialising the object gives different bytes
- *     and every signature check fails.
- *   - it must bypass `apiLimiter`. Stripe retries a failed delivery for three
- *     days; answering 429 would turn a traffic spike into lost payment
- *     confirmations. The signature check is the protection here, not the rate
- *     limit.
- */
 export const paymentWebhookRouter: Router = Router();
 
 paymentWebhookRouter.post(
@@ -34,14 +20,6 @@ paymentWebhookRouter.post(
   controller.stripeWebhook,
 );
 
-/**
- * Admin refund management, mounted normally under `/api/v1/payments`.
- *
- * Separate router from the webhook above because this one *wants* everything
- * the webhook must avoid: JSON parsing, the rate limiter, and real
- * authentication. The webhook is matched first in `app.ts` (its path is more
- * specific and mounted earlier), so the two never collide.
- */
 export const paymentAdminRouter: Router = Router();
 
 paymentAdminRouter.use(authenticate, authorize("ADMIN"));
@@ -58,11 +36,6 @@ paymentAdminRouter.post(
   controller.retryRefund,
 );
 
-// The official `Payment Integration Type` / `Payment Integration
-// Configuration` tables. Read-and-configure only: there is no create or delete,
-// because an integration exists when a strategy is written for it in code, not
-// when a row is inserted. A row for a gateway with no strategy behind it would
-// advertise a payment method that fails at the moment someone tries to pay.
 paymentAdminRouter.get("/integrations", controller.listIntegrations);
 
 paymentAdminRouter.patch(
@@ -73,8 +46,6 @@ paymentAdminRouter.patch(
   }),
   controller.updateIntegration,
 );
-
-// ─── OpenAPI Documentation ───────────────────────────────
 
 const adminSecurity: Record<string, string[]>[] = [
   { cookieAuth: [] },

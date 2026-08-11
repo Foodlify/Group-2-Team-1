@@ -6,10 +6,6 @@ import {
   TRANSACTION_TYPES,
 } from "../transaction/transaction.model";
 
-// ═══════════════════════════════════════════════════════════════
-// Request Schemas (inputs)
-// ═══════════════════════════════════════════════════════════════
-
 export const TransactionIdParamsSchema = z
   .object({
     transactionId: z.cuid2().meta({ description: "Transaction (refund) ID" }),
@@ -27,10 +23,6 @@ export const OutstandingRefundsQuerySchema = z
     id: "OutstandingRefundsQuery",
     description: "How many outstanding refunds to return (oldest first)",
   });
-
-// ═══════════════════════════════════════════════════════════════
-// Response Schemas (outputs)
-// ═══════════════════════════════════════════════════════════════
 
 export const TransactionResponseSchema = z
   .object({
@@ -73,10 +65,6 @@ export const TransactionSuccessResponseSchema = z
   })
   .meta({ id: "TransactionSuccessResponse" });
 
-// ═══════════════════════════════════════════════════════════════
-// Registry
-// ═══════════════════════════════════════════════════════════════
-
 schemaRegistry.register("TransactionIdParams", TransactionIdParamsSchema);
 schemaRegistry.register(
   "OutstandingRefundsQuery",
@@ -91,10 +79,6 @@ schemaRegistry.register(
   "TransactionSuccessResponse",
   TransactionSuccessResponseSchema,
 );
-
-// ═══════════════════════════════════════════════════════════════
-// TypeScript Types
-// ═══════════════════════════════════════════════════════════════
 
 export type TransactionIdParams = z.infer<typeof TransactionIdParamsSchema>;
 export type OutstandingRefundsQuery = z.infer<

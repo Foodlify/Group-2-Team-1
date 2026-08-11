@@ -1,12 +1,3 @@
-/**
- * The ambient request context.
- *
- * This is the mechanism the audit trail's "who" depends on, and it has one
- * catastrophic failure mode: a context that leaks between concurrent requests
- * attributes one customer's action to another, in a table whose entire purpose
- * is to be believed. A module-level variable passes every single-request test
- * and fails this one.
- */
 import { describe, expect, it } from "vitest";
 import {
   currentContext,
@@ -22,8 +13,7 @@ describe("carrying the context across async boundaries", () => {
         await Promise.resolve();
         return currentContext();
       };
-      // The write that records this happens several layers below the
-      // middleware that set it — controller, service, repository.
+
       expect(await deeper()).toMatchObject({ ip: "10.0.0.1" });
     });
   });
@@ -36,16 +26,12 @@ describe("carrying the context across async boundaries", () => {
         seen.push(currentContext()?.actorId);
       });
 
-    // `b` starts second and finishes first — the interleaving that a shared
-    // mutable variable gets wrong.
     await Promise.all([request("a", 20), request("b", 1)]);
 
     expect(seen).toEqual(["b", "a"]);
   });
 
   it("is undefined outside a request", () => {
-    // A background sweep has no request. Callers must read this as "nobody",
-    // not as an error.
     expect(currentContext()).toBeUndefined();
   });
 });
@@ -63,8 +49,6 @@ describe("filling in the actor once authentication resolves it", () => {
   });
 
   it("does nothing outside a request rather than throwing", () => {
-    // Called unconditionally from `authenticate`, which is exercised by unit
-    // tests that never enter a context.
     expect(() => setContextActor("user_1", "ADMIN")).not.toThrow();
     expect(currentContext()).toBeUndefined();
   });

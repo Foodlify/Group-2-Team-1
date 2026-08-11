@@ -11,7 +11,7 @@ export const sendOtp = asyncHandler(
   ): Promise<void> => {
     const { email, purpose } = req.body;
     const result = await otpService.sendOtp(email, purpose);
-    // The code itself travels ONLY via email — the response carries the expiry.
+
     sendSuccess(res, result, "Verification code sent");
   },
 );

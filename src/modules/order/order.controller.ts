@@ -10,19 +10,13 @@ import type {
   ScopedOrderQuery,
 } from "./order.validation";
 
-// Resolves the current customer id from the authenticated user (set by
-// `authenticate`). Throws 403 if the account is not a customer.
 const getCurrentCustomerId = (req: Request): Promise<string> =>
   customerService.requireCustomerIdByUserId(req.user!.id);
 
-// The authenticated caller as the order service sees them. `req.user.role` is
-// re-read from the row by `authenticate`, never taken from the token's claim.
 const actorOf = (req: Request) => ({
   userId: req.user!.id,
   role: req.user!.role,
 });
-
-// ─── Handlers ────────────────────────────────────────────
 
 export const placeOrder = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
@@ -59,8 +53,6 @@ export const getOrderById = asyncHandler(
     sendSuccess(res, order, "Order retrieved");
   },
 );
-
-// ─── Admin handlers ───────────────────────────────────────
 
 export const listAllOrders = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {

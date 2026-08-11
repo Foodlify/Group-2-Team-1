@@ -44,8 +44,6 @@ export const listRestaurantRatings = asyncHandler(
   },
 );
 
-// ─── Discovery ────────────────────────────────────────────
-
 export const topRatedRestaurants = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const restaurants = await ratingService.topRated(

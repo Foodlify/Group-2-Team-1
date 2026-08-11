@@ -2,10 +2,6 @@ import { z } from "zod";
 import { schemaRegistry } from "../../openapi/registry";
 import { PAYMENT_METHODS } from "../transaction/transaction.model";
 
-// ═══════════════════════════════════════════════════════════════
-// Request Schemas (inputs)
-// ═══════════════════════════════════════════════════════════════
-
 export const UpdateCustomerRequestSchema = z
   .object({
     name: z
@@ -54,10 +50,6 @@ export const AddressIdParamsSchema = z
       .meta({ description: "Address ID", example: "clxyz..." }),
   })
   .meta({ id: "AddressIdParams" });
-
-// ═══════════════════════════════════════════════════════════════
-// Response Schemas (outputs)
-// ═══════════════════════════════════════════════════════════════
 
 export const CustomerResponseSchema = z
   .object({
@@ -122,10 +114,6 @@ export const AddressListSuccessResponseSchema = z
   })
   .meta({ id: "AddressListSuccessResponse" });
 
-// ═══════════════════════════════════════════════════════════════
-// Registry
-// ═══════════════════════════════════════════════════════════════
-
 schemaRegistry.register("UpdateCustomerRequest", UpdateCustomerRequestSchema);
 schemaRegistry.register("CreateAddressRequest", CreateAddressRequestSchema);
 schemaRegistry.register("UpdateAddressRequest", UpdateAddressRequestSchema);
@@ -142,20 +130,12 @@ schemaRegistry.register(
   AddressListSuccessResponseSchema,
 );
 
-// ═══════════════════════════════════════════════════════════════
-// TypeScript Types
-// ═══════════════════════════════════════════════════════════════
-
 export type UpdateCustomerInput = z.infer<typeof UpdateCustomerRequestSchema>;
 export type CreateAddressInput = z.infer<typeof CreateAddressRequestSchema>;
 export type UpdateAddressInput = z.infer<typeof UpdateAddressRequestSchema>;
 export type AddressIdParams = z.infer<typeof AddressIdParamsSchema>;
 export type CustomerResponse = z.infer<typeof CustomerResponseSchema>;
 export type AddressResponse = z.infer<typeof AddressResponseSchema>;
-
-// ═══════════════════════════════════════════════════════════════
-// Preferred Payment Settings
-// ═══════════════════════════════════════════════════════════════
 
 export const CreatePaymentSettingRequestSchema = z
   .object({

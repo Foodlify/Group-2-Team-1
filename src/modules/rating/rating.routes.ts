@@ -10,7 +10,6 @@ import {
 import { RestaurantIdParamsSchema } from "../restaurant/restaurant.validation";
 import { PaginationQuerySchema } from "../../shared/schemas/pagination.schema";
 
-// ─── My ratings (mounted at /customers/me/ratings) ───────
 export const myRatingsRouter: Router = Router();
 myRatingsRouter.use(authenticate);
 myRatingsRouter.post(
@@ -20,9 +19,6 @@ myRatingsRouter.post(
 );
 myRatingsRouter.get("/", controller.listMyRatings);
 
-// ─── Public restaurant ratings ───────────────────────────
-// Mounted at /restaurants/:restaurantId/ratings — mergeParams exposes the
-// parent-mount `:restaurantId` to this router's handlers.
 export const restaurantRatingsRouter: Router = Router({ mergeParams: true });
 restaurantRatingsRouter.get(
   "/",
@@ -30,8 +26,6 @@ restaurantRatingsRouter.get(
   controller.listRestaurantRatings,
 );
 
-// ─── Restaurant discovery (mounted at /restaurants) ──────
-// Exact paths only — anything else falls through to the main catalog router.
 export const restaurantDiscoveryRouter: Router = Router();
 restaurantDiscoveryRouter.get(
   "/top-rated",
@@ -45,7 +39,6 @@ restaurantDiscoveryRouter.get(
   controller.recommendedRestaurants,
 );
 
-// ─── OpenAPI Documentation ───────────────────────────────
 const tag = "Ratings";
 const errorRef = { $ref: "#/components/schemas/ErrorResponse" };
 const validationErrorRef = {

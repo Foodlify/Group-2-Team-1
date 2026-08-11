@@ -1,16 +1,3 @@
-/**
- * Order Service — the checkout transaction.
- *
- * `placeOrder` is the one place where money, stock and the cart all move at
- * once, and its correctness rests on two things that are invisible from the
- * response: everything happens inside a single transaction with the *same*
- * client, and the cart is row-locked first so a concurrent "add to cart"
- * can't have its item silently dropped by the clear at the end.
- *
- * Neither is checkable by asserting on the returned order, so these assert on
- * the collaborators: who is called, with which transaction client, in what
- * order, and what stops when a step fails.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/modules/order/order.repository", () => ({
@@ -87,7 +74,6 @@ const mockedAddresses = vi.mocked(addressService);
 const mockedPayment = vi.mocked(paymentService);
 const mockedNotifications = vi.mocked(notificationService);
 
-/** A recognisable stand-in for the Prisma transaction client. */
 const tx = { __brand: "tx" } as never;
 const now = new Date("2026-08-06T10:00:00.000Z");
 const price30 = new Prisma.Decimal(30);
@@ -142,11 +128,9 @@ beforeEach(() => {
   ] as never);
   mockedOrders.createOrder.mockResolvedValue(orderRow as never);
   mockedOrderItems.createManyWithTx.mockResolvedValue([] as never);
-  // Re-armed every test on purpose: `clearAllMocks` resets recorded calls but
-  // NOT implementations, so the `mockRejectedValue` used by the payment-failure
-  // test below would otherwise leak into every test that follows it.
+
   mockedPayment.processPayment.mockResolvedValue({ id: "txn_1" } as never);
-  // Cash has no gateway hand-off, so the post-commit phase returns nothing.
+
   mockedPayment.initiatePayment.mockResolvedValue({});
 });
 
@@ -154,9 +138,6 @@ describe("the cart is locked before anything is read from it", () => {
   it("locks by owner using the transaction client", async () => {
     await orderService.placeOrder("cust_1", input);
 
-    // Passing the tx is the whole point: the row lock has to be held by the
-    // same transaction that later clears the cart, or a concurrent add-to-cart
-    // slips in between and its item is lost.
     expect(mockedCart.lockByOwnerWithItems).toHaveBeenCalledWith(
       { customerId: "cust_1" },
       tx,
@@ -244,8 +225,6 @@ describe("everything inside runs on one transaction client", () => {
   it("hands the same tx to every write", async () => {
     await orderService.placeOrder("cust_1", input);
 
-    // If any of these got the plain client instead, that write would commit
-    // independently and a later failure would leave the data half-applied.
     expect(mockedCart.lockByOwnerWithItems).toHaveBeenCalledWith(
       expect.anything(),
       tx,
@@ -289,8 +268,7 @@ describe("everything inside runs on one transaction client", () => {
     await expect(orderService.placeOrder("cust_1", input)).rejects.toThrow(
       "gateway down",
     );
-    // The transaction would roll the rest back; the cart must not have been
-    // cleared as a separate, already-committed action.
+
     expect(mockedCart.clearCart).not.toHaveBeenCalled();
   });
 
@@ -335,8 +313,6 @@ describe("after the commit", () => {
   it("hands off to the gateway only after the transaction has closed", async () => {
     await orderService.placeOrder("cust_1", input);
 
-    // The whole point of the two-phase split: an external HTTPS call inside
-    // the transaction would hold the cart's row lock for its full duration.
     const clear = mockedCart.clearCart.mock.invocationCallOrder[0]!;
     const initiate = mockedPayment.initiatePayment.mock.invocationCallOrder[0]!;
     expect(clear).toBeLessThan(initiate);

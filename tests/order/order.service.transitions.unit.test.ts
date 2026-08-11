@@ -1,15 +1,3 @@
-/**
- * Order Service — status transitions.
- *
- * `VALID_TRANSITIONS` is the order lifecycle in one object, and nothing else
- * enforces it: a wrong entry silently lets an order jump from PENDING straight
- * to DELIVERED, or lets a cancelled order come back to life. So rather than
- * spot-checking a few paths, this walks **every** ordered pair of statuses and
- * asserts the service agrees with the table — 36 combinations, generated.
- *
- * The table is also asserted directly, because a test derived only from it
- * would happily ratify a table that had been edited wrongly.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/modules/order/order.repository", () => ({
@@ -53,7 +41,7 @@ vi.mock("../../src/modules/address/address.service", () => ({
 vi.mock("../../src/modules/payment/payment.service", () => ({
   paymentService: {
     processPayment: vi.fn(),
-    // Cash has no gateway phase; armed in `beforeEach` to return nothing.
+
     initiatePayment: vi.fn(),
     refundPayments: vi.fn(),
   },
@@ -83,10 +71,6 @@ const mockedNotifications = vi.mocked(notificationService);
 const tx = {} as never;
 const now = new Date("2026-08-06T10:00:00.000Z");
 
-// This file is about the transition table, so every call is made as an admin —
-// the one actor whose reach is not scoped to a restaurant, and the only one
-// that skips the ownership lookup entirely. Ownership itself is the subject of
-// order.service.ownership.unit.test.ts.
 const ADMIN = { userId: "user_admin", role: "ADMIN" };
 
 const orderAt = (status: OrderStatusValue) =>
@@ -105,7 +89,7 @@ const orderAt = (status: OrderStatusValue) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // Cash never reaches a gateway, so the post-commit phase returns nothing.
+
   vi.mocked(paymentService).initiatePayment.mockResolvedValue({});
   mockedOrders.transaction.mockImplementation(
     async (cb: (client: never) => Promise<unknown>) => cb(tx),
@@ -125,8 +109,6 @@ describe("the transition table itself", () => {
   });
 
   it("is exactly the intended lifecycle", () => {
-    // Spelled out rather than derived, so an accidental edit to the table
-    // fails here instead of being ratified by the generated tests below.
     expect(VALID_TRANSITIONS).toEqual({
       PENDING: ["CONFIRMED", "CANCELLED"],
       CONFIRMED: ["PREPARING", "CANCELLED"],
@@ -149,7 +131,6 @@ describe("the transition table itself", () => {
   });
 
   it("stops accepting cancellation once the order is out for delivery", () => {
-    // The point at which the restaurant has already committed the food.
     expect(VALID_TRANSITIONS.PREPARING).not.toContain("CANCELLED");
     expect(VALID_TRANSITIONS.OUT_FOR_DELIVERY).not.toContain("CANCELLED");
   });
@@ -198,8 +179,6 @@ describe("the write itself is guarded", () => {
       ADMIN,
     );
 
-    // The UPDATE only matches while the row is still PENDING — the check
-    // above is advisory, this is what actually makes it safe.
     expect(mockedOrders.appendTimelineEntry).toHaveBeenCalledWith(
       "order_1",
       expect.objectContaining({ status: "CONFIRMED" }),
@@ -210,7 +189,7 @@ describe("the write itself is guarded", () => {
 
   it("turns a lost race into 409 rather than a silent no-op", async () => {
     mockedOrders.findById.mockResolvedValue(orderAt("PENDING"));
-    // Null means the precondition failed — someone moved the order first.
+
     mockedOrders.appendTimelineEntry.mockResolvedValue(null);
 
     await expect(
@@ -310,7 +289,7 @@ describe("financial side effects follow the status", () => {
       mockedTransactions.settleOrderTransactions.mock.invocationCallOrder[0]!;
     const notify =
       mockedNotifications.notifyOrderStatusChanged.mock.invocationCallOrder[0]!;
-    // The customer is only told about state that actually committed.
+
     expect(settle).toBeLessThan(notify);
   });
 });

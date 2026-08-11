@@ -1,10 +1,6 @@
 import type { PrismaClient, Prisma } from "../../generated/prisma/client";
 import prisma from "../../config/prisma";
 
-/**
- * Generic type helpers that extract argument and return types from any Prisma delegate.
- * These allow the BaseRepository to be fully type-safe without using `any`.
- */
 type DelegateArg<
   TDelegate,
   TMethod extends keyof TDelegate,
@@ -17,27 +13,6 @@ type DelegateReturn<
   ? Awaited<R>
   : never;
 
-/**
- * Abstract base repository providing generic, type-safe CRUD operations for
- * any Prisma model delegate.
- *
- * Subclasses select the delegate in the constructor:
- *   class UserRepository extends BaseRepository<PrismaClient["user"]> {
- *     constructor() { super(prisma.user); }
- *   }
- *
- * Each method is a thin wrapper around the Prisma delegate. Business logic
- * (authorization, transformations, cross-entity operations) belongs in the
- * service layer, not here.
- *
- * Note on type-safety: the PUBLIC surface is fully typed — every method's
- * arguments and return type are derived from the concrete delegate via
- * `DelegateArg`/`DelegateReturn`, so SUBCLASSES and callers need no manual
- * assertions. The internal `as unknown as { … }` casts below are a deliberate,
- * localized implementation detail: TypeScript can't structurally call a method
- * across the generic `TDelegate` union, so we erase-then-restore the type at
- * the call boundary only. The casts never leak past this base class.
- */
 export abstract class BaseRepository<
   TDelegate extends {
     findUnique: (args: never) => unknown;
@@ -140,13 +115,6 @@ export abstract class BaseRepository<
     return prisma.$transaction(callback);
   }
 
-  /**
-   * Paginated list helper — returns items with pagination metadata.
-   * Meant to be used with PaginationQuery from src/shared/schemas/pagination.schema.ts
-   *
-   * Note: subclasses may want to override this to add model-specific default
-   * ordering or default `include` relations.
-   */
   async findPaginated(args: {
     page: number;
     limit: number;

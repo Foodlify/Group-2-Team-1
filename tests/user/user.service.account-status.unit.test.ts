@@ -1,9 +1,3 @@
-/**
- * User Service — email-verification + account-status unit tests.
- *
- * The repositories, OTP service, and password helper are mocked so each test
- * asserts pure service logic with no database and no real hashing.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/modules/user/user.repository", () => ({

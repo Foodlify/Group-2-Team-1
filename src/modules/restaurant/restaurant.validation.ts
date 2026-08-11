@@ -28,11 +28,6 @@ export const RestaurantQuerySchema = PaginationQuerySchema.extend({
   description: "Pagination + optional name search",
 });
 
-/**
- * The official `Restaurant Details` table's payload. Field rules mirror
- * `CreateAddressRequest` so the two address shapes in this API cannot drift
- * apart for no reason.
- */
 export const RestaurantDetailsRequestSchema = z
   .object({
     phone: z
@@ -72,8 +67,6 @@ export const CreateRestaurantRequestSchema = z
 
 export const UpdateRestaurantRequestSchema = z
   .object({
-    // Optional now that there is a second thing to update. Every request that
-    // was valid before still is — this only widens what is accepted.
     name: z
       .string()
       .min(2)
@@ -85,8 +78,6 @@ export const UpdateRestaurantRequestSchema = z
     }),
   })
   .refine((data) => data.name !== undefined || data.details !== undefined, {
-    // An empty body would otherwise be a successful request that changed
-    // nothing, which reads to the caller as "your update was applied".
     message: "Provide at least one of 'name' or 'details'",
   })
   .meta({
@@ -94,13 +85,6 @@ export const UpdateRestaurantRequestSchema = z
     description: "Fields to update on a restaurant",
   });
 
-/**
- * Assigning (or clearing) the account that runs a restaurant.
- *
- * `nullable`, not `optional`: an explicit `null` is how ownership is taken
- * back, and an absent key would be indistinguishable from it. Required, so
- * `{}` is a validation error rather than a silent unassign.
- */
 export const AssignOwnerRequestSchema = z
   .object({
     ownerId: z
@@ -118,12 +102,6 @@ export const AssignOwnerRequestSchema = z
     description: "Assign or clear a restaurant's owner",
   });
 
-/**
- * Owner ids are deliberately absent from every other restaurant response —
- * those endpoints are public, and this is an internal user id, the same reason
- * `createdBy` / `updatedBy` never leave the server. It appears here only
- * because this endpoint is ADMIN-only and its whole subject is the assignment.
- */
 export const RestaurantOwnerResponseSchema = z
   .object({
     restaurantId: z.cuid2(),
@@ -166,13 +144,6 @@ export const RestaurantResponseSchema = z
   })
   .meta({ id: "RestaurantResponse" });
 
-/**
- * One restaurant, with its details. Separate from `RestaurantResponse` on
- * purpose: the listing deliberately does NOT carry details — joining them onto
- * every page of every search is exactly the cost the separate table exists to
- * avoid — and giving the list a `details` field it always filled with `null`
- * would say "this restaurant has none" when it may well have some.
- */
 export const RestaurantDetailedResponseSchema = RestaurantResponseSchema.extend(
   {
     details: RestaurantDetailsResponseSchema.nullable().meta({

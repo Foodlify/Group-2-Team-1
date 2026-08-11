@@ -9,8 +9,7 @@ import { cartService } from "../cart/cart.service";
 import { paymentService } from "../payment/payment.service";
 import { orderRepository } from "./order.repository";
 import { orderItemRepository } from "../orderItem/orderItem.repository";
-// The repository, not the service: `restaurant.service` reaches into menus and
-// caches, none of which an authorization check has any business touching.
+
 import { restaurantRepository } from "../restaurant/restaurant.repository";
 import { notificationService } from "../notification/notification.service";
 import {
@@ -40,31 +39,19 @@ import type {
   OrderListItemResponse,
 } from "./order.validation";
 
-/**
- * Who is asking to change an order.
- *
- * Required, not optional with an admin default: the whole point is that two
- * different actors reach `updateOrderStatus` and they are not interchangeable.
- * A caller that could omit this would be a caller that skips the check.
- */
 export interface OrderActor {
   userId: string;
   role: string;
 }
 
 class OrderService {
-  // ─── Place Order ──────────────────────────────────────────────
   async placeOrder(
     customerId: string,
     input: PlaceOrderInput,
   ): Promise<OrderResponse> {
-    // `customerId` is resolved by the controller via
-    // `requireCustomerIdByUserId`, so the customer is already known to exist —
-    // no redundant existence re-check here.
     await this.assertAddressBelongsToCustomer(customerId, input.addressId);
 
     const result = await orderRepository.transaction(async (tx) => {
-      // Row-level lock on the cart prevents concurrent mutations during checkout
       const cart = await cartService.lockByOwnerWithItems({ customerId }, tx);
       if (!cart) {
         throw new AppError(
@@ -91,17 +78,14 @@ class OrderService {
             orderErrors.MENU_ITEM_UNAVAILABLE.statusCode,
           );
         }
-        // Cart-snapshot price must match current menu price or the order is
-        // rejected — exact Decimal comparison (no float coercion).
+
         if (!new Prisma.Decimal(current.price).equals(cartItem.price)) {
           throw new AppError(
             orderErrors.PRICE_CHANGED.message,
             orderErrors.PRICE_CHANGED.statusCode,
           );
         }
-        // Reserve stock inside the checkout transaction with a conditional
-        // UPDATE, so two concurrent checkouts for the last unit can't both
-        // succeed. `stock === null` means the item isn't stock-tracked.
+
         if (current.stock !== null) {
           const reserved = await menuItemService.reserveStock(
             cartItem.menuItemId,
@@ -117,7 +101,6 @@ class OrderService {
         }
       }
 
-      // Accumulate the order total in Decimal for exact money arithmetic.
       const totalAmount = cart.cartItems.reduce(
         (sum, ci) => sum.plus(new Prisma.Decimal(ci.price).times(ci.quantity)),
         new Prisma.Decimal(0),
@@ -156,12 +139,8 @@ class OrderService {
       return { order, createdItems, transaction, totalAmount };
     });
 
-    // Build response directly from in-memory objects — no extra DB roundtrip
     const response = this.buildOrderResponse(result.order, result.createdItems);
 
-    // Gateway hand-off happens HERE, outside the transaction. Doing it inside
-    // would hold the cart's row lock and a pooled connection for the whole
-    // HTTPS round-trip to the provider. Cash payments no-op through this.
     const paymentUrl = await this.initiatePaymentOrCancel(
       customerId,
       input.paymentMethod,
@@ -169,7 +148,6 @@ class OrderService {
     );
     if (paymentUrl) response.paymentUrl = paymentUrl;
 
-    // After the commit: the customer is only told about state that persisted.
     await notificationService.notifyOrderPlaced(customerId, {
       id: response.id,
       totalPrice: response.totalPrice,
@@ -182,16 +160,6 @@ class OrderService {
     return response;
   }
 
-  /**
-   * Runs the gateway hand-off for a just-committed order and returns the URL
-   * the customer must visit, if the method needs one.
-   *
-   * If the hand-off fails there is a committed order holding reserved stock
-   * that can never be paid for, so it is cancelled — which releases the stock
-   * and marks the pending payment FAILED through the existing side-effect
-   * path — and the customer gets a 402 rather than an order they cannot
-   * complete.
-   */
   private async initiatePaymentOrCancel(
     customerId: string,
     method: PlaceOrderInput["paymentMethod"],
@@ -218,9 +186,6 @@ class OrderService {
       try {
         await this.cancelOrder(customerId, result.order.id);
       } catch (cancelError) {
-        // Logged, not thrown: the customer still needs the payment error, and
-        // an order stuck PENDING with no gateway session is recoverable by the
-        // cancel endpoint. Losing the 402 behind a cleanup failure is not.
         logger.error("Failed to cancel the order after a payment failure", {
           orderId: result.order.id,
           ...describeError(cancelError),
@@ -233,7 +198,6 @@ class OrderService {
     }
   }
 
-  // ─── Get My Orders (paginated) ────────────────────────────────
   async getMyOrders(
     customerId: string,
     query: OrderQuery,
@@ -257,7 +221,6 @@ class OrderService {
     };
   }
 
-  // ─── Admin: list all orders (paginated) ──────────────────────
   async listAllOrders(query: ScopedOrderQuery): Promise<{
     data: OrderListItemResponse[];
     meta: { page: number; limit: number; total: number; totalPages: number };
@@ -268,17 +231,6 @@ class OrderService {
     );
   }
 
-  // ─── Restaurants Order History ───────────────────────────────
-  /**
-   * The official `Restaurants Order History` endpoint, scoped by ownership.
-   *
-   * The owned ids are resolved here on every request rather than read from the
-   * token. An admin who reassigns or deletes a restaurant has to take effect on
-   * the next request, not fifteen minutes later when the access token expires.
-   *
-   * An owner with no restaurants gets an empty page. That is the honest answer
-   * — they have no orders — and it needs no error of its own.
-   */
   async listRestaurantOrders(
     ownerId: string,
     query: ScopedOrderQuery,
@@ -287,21 +239,13 @@ class OrderService {
     meta: { page: number; limit: number; total: number; totalPages: number };
   }> {
     const owned = await restaurantRepository.findIdsByOwnerId(ownerId);
-    // Intersect rather than trust: asking for a restaurant someone else owns
-    // narrows to nothing instead of widening past what they own.
+
     const scope = query.restaurantId
       ? owned.filter((id) => id === query.restaurantId)
       : owned;
     return this.listScopedOrders(query, scope);
   }
 
-  /**
-   * One order in full, for the owner of the restaurant that has to cook it —
-   * the list carries a count, and a kitchen needs the items.
-   *
-   * A restaurant that isn't theirs is 403, the same answer and the same message
-   * a customer gets for someone else's order.
-   */
   async getRestaurantOrder(
     ownerId: string,
     orderId: string,
@@ -320,10 +264,6 @@ class OrderService {
     return this.toOrderResponse(order);
   }
 
-  /**
-   * `restaurantIds` of `undefined` means unscoped — only the admin's unfiltered
-   * listing passes that. Everything else passes a list, possibly empty.
-   */
   private async listScopedOrders(
     query: ScopedOrderQuery,
     restaurantIds: string[] | undefined,
@@ -347,7 +287,6 @@ class OrderService {
     };
   }
 
-  // ─── Admin: get any order by ID (no ownership check) ─────────
   async getAnyOrder(orderId: string): Promise<OrderResponse> {
     const order = await orderRepository.findByIdWithDetails(orderId);
     if (!order)
@@ -358,7 +297,6 @@ class OrderService {
     return this.toOrderResponse(order);
   }
 
-  // ─── Get Order By ID ──────────────────────────────────────────
   async getOrderById(
     customerId: string,
     orderId: string,
@@ -378,7 +316,6 @@ class OrderService {
     return this.toOrderResponse(order);
   }
 
-  // ─── Cancel Order ─────────────────────────────────────────────
   async cancelOrder(
     customerId: string,
     orderId: string,
@@ -432,9 +369,6 @@ class OrderService {
       };
     });
 
-    // Gateway refunds run here, outside the transaction — an HTTPS call to the
-    // provider must not hold the order's row lock, and the refund's outcome is
-    // recorded on its own PENDING ledger row either way.
     await paymentService.refundPayments(result.pendingRefunds);
 
     await notificationService.notifyOrderStatusChanged(
@@ -445,13 +379,6 @@ class OrderService {
     return result.response;
   }
 
-  // ─── Update Order Status (admin, or the restaurant that owns it) ─────
-  /**
-   * Also the official `Cancelled Orders by Customers or Restaurants`: a
-   * restaurant cancels by moving the order to CANCELLED through this same
-   * endpoint, which means one state machine and one refund path serve both
-   * actors rather than a second cancel route that could drift from the first.
-   */
   async updateOrderStatus(
     orderId: string,
     input: UpdateStatusInput,
@@ -466,9 +393,6 @@ class OrderService {
         );
       }
 
-      // Before the transition is even considered: the role got the caller
-      // through the route guard, this decides whether this particular order is
-      // theirs. A RESTAURANT token is not a key to every restaurant's orders.
       await this.assertMayManage(order.restaurantId, actor);
 
       const currentStatus = order.status as OrderStatusValue;
@@ -514,8 +438,6 @@ class OrderService {
       };
     });
 
-    // Same rule as `cancelOrder`: the gateway call happens after the commit.
-    // An admin cancelling an order owes the customer their money just as much.
     await paymentService.refundPayments(result.pendingRefunds);
 
     await notificationService.notifyOrderStatusChanged(
@@ -526,9 +448,6 @@ class OrderService {
     return result.response;
   }
 
-  // ─── Add Order Status Tracking ────────────────────────────────
-  // Appends a delivery-tracking entry (location + ETA) to the order's
-  // timeline without changing its status.
   async addOrderStatusTracking(
     orderId: string,
     input: AddTrackingInput,
@@ -543,30 +462,12 @@ class OrderService {
     });
   }
 
-  // ─── Private Helpers ──────────────────────────────────────────
-
-  /**
-   * The ownership check, in one place so every actor-facing path shares it.
-   *
-   * ADMIN returns early and never touches the database — the platform operator
-   * is not scoped to a restaurant, and making them pay for a lookup that can
-   * only say "yes" would tax the busiest caller for nothing.
-   *
-   * Anyone else must own the restaurant. The failure is `ORDER_FORBIDDEN` —
-   * deliberately the same 403 and the same message a customer gets for another
-   * customer's order, so a probe learns nothing about who owns what.
-   */
   private async assertMayManage(
     restaurantId: string,
     actor: OrderActor,
   ): Promise<void> {
     if (actor.role === "ADMIN") return;
-    // The role is checked here as well as on the route, and not for symmetry:
-    // demoting an account does NOT clear the `Restaurant.ownerId` rows pointing
-    // at it. Without this line an ex-owner demoted to CUSTOMER would still
-    // satisfy the ownership lookup, and the only thing standing between them
-    // and the order would be the route guard — which is one edit away from
-    // being widened by someone who reads the check below as sufficient.
+
     if (actor.role !== "RESTAURANT") {
       throw new AppError(
         orderErrors.ORDER_FORBIDDEN.message,
@@ -594,17 +495,6 @@ class OrderService {
     return order;
   }
 
-  /**
-   * Applies the financial side-effect of an order entering `status`, inside
-   * the caller's transaction. Single source of truth for the status→effect
-   * mapping so every path that changes status (cancel, admin update) stays
-   * consistent. Statuses with no monetary effect are a no-op.
-   */
-  /**
-   * Returns any REFUND rows that still have to be executed against a gateway;
-   * the caller must pass them to `paymentService.refundPayments` once the
-   * transaction has committed.
-   */
   private async applyStatusSideEffects(
     orderId: string,
     status: OrderStatusValue,
@@ -615,7 +505,7 @@ class OrderService {
         orderId,
         tx,
       );
-      // Units reserved at checkout go back on the shelf.
+
       const items = await orderItemRepository.findManyByOrderIdWithTx(
         orderId,
         tx,
@@ -705,11 +595,6 @@ class OrderService {
     };
   }
 
-  /**
-   * Builds a response for an order whose status/timeline were just updated.
-   * Takes status, timeline and updatedAt straight from the update result and
-   * the rest from the base order row — avoiding an `as OrderWithDetails` cast.
-   */
   private composeOrderResponse(
     order: OrderModel,
     updated: { status: string; timeline: TimelineEntry[]; updatedAt: Date },
@@ -739,10 +624,7 @@ class OrderService {
       name: item.name,
       quantity: item.quantity,
       price: Number(item.price),
-      // Multiply in Decimal, convert once at the boundary — the same rule
-      // `cart.service.toCartResponse` and the order total already follow.
-      // `Number(price) * quantity` returned 24.450000000000003 for 8.15 x 3,
-      // and made the line subtotals disagree with `totalPrice`.
+
       subtotal: new Prisma.Decimal(item.price).times(item.quantity).toNumber(),
       createdAt: item.createdAt.toISOString(),
       updatedAt: item.updatedAt.toISOString(),

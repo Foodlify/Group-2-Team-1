@@ -16,7 +16,6 @@ export class RatingRepository extends BaseRepository<
     });
   }
 
-  /** Paginated ratings of one restaurant, newest first, with the rater's display name. */
   async findPaginatedByRestaurant(
     restaurantId: string,
     page: number,
@@ -39,7 +38,6 @@ export class RatingRepository extends BaseRepository<
     };
   }
 
-  /** Average + count computed in SQL — rating rows are never loaded into JS for this. */
   async getRestaurantStats(restaurantId: string) {
     const stats = await prisma.restaurantRate.aggregate({
       where: { restaurantId },
@@ -49,20 +47,13 @@ export class RatingRepository extends BaseRepository<
     return { averageRating: stats._avg.rating, ratingsCount: stats._count };
   }
 
-  /**
-   * Top restaurants by average rating (SQL groupBy — ties broken by ratings
-   * count). Restaurants with zero ratings never appear; `excludeRestaurantIds`
-   * powers personalised recommendations ("places you haven't tried yet").
-   */
   async topRatedRestaurants(
     limit: number,
     excludeRestaurantIds: string[] = [],
   ) {
     const grouped = await prisma.restaurantRate.groupBy({
       by: ["restaurantId"],
-      // Soft-deleted restaurants are excluded here rather than after the
-      // grouping: filtering afterwards would eat into `take`, silently
-      // returning fewer than `limit` results.
+
       where: {
         restaurant: { isDeleted: false },
         ...(excludeRestaurantIds.length > 0

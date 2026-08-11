@@ -21,7 +21,6 @@ export class SupportTicketRepository extends BaseRepository<
     });
   }
 
-  /** Admin: paginated list across all customers, optional status filter. */
   async findPaginatedAll(options: {
     page: number;
     limit: number;
@@ -51,12 +50,6 @@ export class SupportTicketRepository extends BaseRepository<
     };
   }
 
-  /**
-   * Creates the ticket and assigns it to the least-loaded agent of the
-   * matching section. The counter increment happens in the SAME transaction —
-   * G1T1's version ran this query but never incremented the counter, so every
-   * ticket in a category landed on the same agent.
-   */
   async createWithAssignment(data: {
     requestId: string;
     customerId: string;
@@ -88,7 +81,6 @@ export class SupportTicketRepository extends BaseRepository<
     return this.update({ where: { id }, data: { status } });
   }
 
-  /** Resolve the ticket and free the assigned agent's slot in one transaction. */
   async resolve(
     id: string,
     resolution: string,

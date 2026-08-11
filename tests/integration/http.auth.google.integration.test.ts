@@ -1,12 +1,3 @@
-/**
- * Google sign-in over real HTTP.
- *
- * The parts that only exist at this layer: the redirect out, the `state`
- * cookie round-trip that is the flow's entire CSRF defence, and the session
- * cookies at the end. Google itself is stubbed at the client boundary — these
- * tests must never leave the machine, and what they are about is our half of
- * the exchange.
- */
 import {
   afterAll,
   afterEach,
@@ -29,7 +20,6 @@ const PROFILE = {
   name: "Google Person",
 };
 
-/** Runs the whole flow and hands back the callback response. */
 const completeFlow = async (overrides: Partial<typeof PROFILE> = {}) => {
   vi.spyOn(googleAuthClient, "exchangeCode").mockResolvedValue({
     ...PROFILE,
@@ -63,7 +53,6 @@ afterAll(async () => {
   await disconnect();
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("starting the flow", () => {
   it("redirects to Google and sets a state cookie", async () => {
     const res = await api().get("/api/v1/auth/google");
@@ -85,8 +74,7 @@ describe("starting the flow", () => {
     const state = decodeURIComponent(
       cookie.split(";")[0]!.split("=").slice(1).join("="),
     );
-    // The cookie and the URL have to carry the same value or the callback can
-    // never match them — the defence would fail closed on every real sign-in.
+
     expect(res.headers.location).toContain(encodeURIComponent(state));
   });
 
@@ -96,8 +84,7 @@ describe("starting the flow", () => {
     const url = new URL(res.headers.location as string);
     const scopes = (url.searchParams.get("scope") ?? "").split(" ");
     expect(scopes.sort()).toEqual(["email", "openid", "profile"]);
-    // No offline access: a refresh token from Google would let us act on
-    // somebody's account later, and we have no reason to.
+
     expect(url.searchParams.get("access_type")).not.toBe("offline");
   });
 
@@ -118,12 +105,11 @@ describe("starting the flow", () => {
     const cookie = (res.headers["set-cookie"] as unknown as string[]).find(
       (entry) => entry.startsWith("oauthState="),
     )!;
-    // Readable from script, it stops being a secret the attacker cannot supply.
+
     expect(cookie.toLowerCase()).toContain("httponly");
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("the state round-trip", () => {
   it("refuses a callback carrying no state at all", async () => {
     const res = await api().get("/api/v1/auth/google/callback?code=abc");
@@ -138,9 +124,6 @@ describe("the state round-trip", () => {
       .get("/api/v1/auth/google/callback?code=abc&state=attacker-state")
       .set("Cookie", "oauthState=our-state");
 
-    // This is the attack: a link to our callback carrying the attacker's own
-    // authorization code, which would otherwise sign the victim into the
-    // attacker's account.
     expect(res.status).toBe(400);
     expect(exchange).not.toHaveBeenCalled();
     expect(await prisma.user.count()).toBe(0);
@@ -157,10 +140,6 @@ describe("the state round-trip", () => {
   it("refuses a wrong state of exactly the right length", async () => {
     const exchange = vi.spyOn(googleAuthClient, "exchangeCode");
 
-    // Every other case here differs in length, and the length check alone
-    // rejects those — so a comparison that always returned true would have
-    // passed them all. Found by mutation: this is the only case that reaches
-    // the value comparison at all.
     const res = await api()
       .get(`/api/v1/auth/google/callback?code=abc&state=${"b".repeat(43)}`)
       .set("Cookie", `oauthState=${"a".repeat(43)}`);
@@ -170,8 +149,6 @@ describe("the state round-trip", () => {
   });
 
   it("accepts a state that matches exactly", async () => {
-    // The other side of the same coin: a check that rejected everything would
-    // pass every test above and break every real sign-in.
     const { callback } = await completeFlow();
 
     expect(callback.status).toBe(200);
@@ -205,7 +182,6 @@ describe("the state round-trip", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("signing in", () => {
   it("creates a customer with no password and no phone", async () => {
     const { callback } = await completeFlow();
@@ -217,7 +193,7 @@ describe("signing in", () => {
     });
     expect(user.password).toBeNull();
     expect(user.googleId).toBe(PROFILE.googleId);
-    // Google verified the address, so there is nothing for an OTP to prove.
+
     expect(user.emailVerifiedAt).not.toBeNull();
     expect(user.customer?.phone).toBeNull();
   });
@@ -263,14 +239,12 @@ describe("signing in", () => {
     const user = await prisma.user.findUniqueOrThrow({
       where: { email: PROFILE.email },
     });
-    // The subject is an identifier, not a credential. Everything else Google
-    // returned — access token, any refresh token — is dropped on the floor.
+
     expect(JSON.stringify(user)).not.toContain("ya29.");
     expect(user.googleId).toBe(PROFILE.googleId);
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("meeting an account that already exists", () => {
   const registerPasswordAccount = async (isActive = true) =>
     prisma.user.create({
@@ -295,7 +269,7 @@ describe("meeting an account that already exists", () => {
       where: { id: existing.id },
     });
     expect(after.googleId).toBe(PROFILE.googleId);
-    // The password survives — the account now has two ways in, not one fewer.
+
     expect(after.password).not.toBeNull();
   });
 
@@ -304,8 +278,6 @@ describe("meeting an account that already exists", () => {
 
     const { callback } = await completeFlow({ emailVerified: false });
 
-    // The account-takeover path this closes: register a Google account
-    // claiming somebody else's address, sign in, own their account.
     expect(callback.status).toBe(403);
     const after = await prisma.user.findUniqueOrThrow({
       where: { id: existing.id },
@@ -332,9 +304,6 @@ describe("meeting an account that already exists", () => {
       .post("/api/v1/auth/login")
       .send({ email: PROFILE.email, password: "Passw0rd!23" });
 
-    // There is no password to match. It must read as wrong credentials, not
-    // as a crash — a 500 unique to these accounts would tell an attacker
-    // which addresses sign in with Google.
     expect(res.status).toBe(401);
   });
 });

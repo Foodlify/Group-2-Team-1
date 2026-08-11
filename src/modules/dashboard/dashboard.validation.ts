@@ -2,10 +2,6 @@ import { z } from "zod";
 import { schemaRegistry } from "../../openapi/registry";
 import { REPORT_GRANULARITIES } from "./dashboard.model";
 
-// ═══════════════════════════════════════════════════════════════
-// Request Schemas (inputs)
-// ═══════════════════════════════════════════════════════════════
-
 export const ReportQuerySchema = z
   .object({
     granularity: z.enum(REPORT_GRANULARITIES).default("day").meta({
@@ -36,10 +32,6 @@ export const RestaurantIdParamsSchema = z
     restaurantId: z.cuid2().meta({ description: "Restaurant ID" }),
   })
   .meta({ id: "DashboardRestaurantIdParams" });
-
-// ═══════════════════════════════════════════════════════════════
-// Response Schemas (outputs)
-// ═══════════════════════════════════════════════════════════════
 
 const MoneySchema = z.object({
   payments: z
@@ -191,10 +183,6 @@ export const RestaurantReportSuccessResponseSchema = z
   })
   .meta({ id: "RestaurantReportSuccessResponse" });
 
-// ═══════════════════════════════════════════════════════════════
-// Registry
-// ═══════════════════════════════════════════════════════════════
-
 schemaRegistry.register("ReportQuery", ReportQuerySchema);
 schemaRegistry.register(
   "DashboardRestaurantIdParams",
@@ -215,10 +203,6 @@ schemaRegistry.register(
   "RestaurantReportSuccessResponse",
   RestaurantReportSuccessResponseSchema,
 );
-
-// ═══════════════════════════════════════════════════════════════
-// TypeScript Types
-// ═══════════════════════════════════════════════════════════════
 
 export type ReportQuery = z.infer<typeof ReportQuerySchema>;
 export type RestaurantIdParams = z.infer<typeof RestaurantIdParamsSchema>;

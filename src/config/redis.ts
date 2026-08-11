@@ -2,11 +2,6 @@ import { createClient, type RedisClientType } from "redis";
 import env from "./env";
 import logger from "./logger";
 
-/**
- * Redis is OPTIONAL, exactly like SMTP: with `REDIS_URL` unset the app runs
- * with caching disabled instead of refusing to boot. That keeps local dev and
- * the test suite dependency-free while production gets the cache.
- */
 export const isRedisEnabled = (): boolean => Boolean(env.REDIS_URL);
 
 let client: RedisClientType | null = null;
@@ -20,8 +15,7 @@ export const connectRedis = async (): Promise<void> => {
   }
 
   const redis: RedisClientType = createClient({ url: env.REDIS_URL });
-  // Without a listener an emitted 'error' would crash the process; a cache
-  // outage must never do that.
+
   redis.on("error", (error: unknown) => {
     logger.error("Redis client error", { error });
   });

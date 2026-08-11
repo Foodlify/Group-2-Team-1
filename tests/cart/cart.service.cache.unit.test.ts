@@ -1,10 +1,3 @@
-/**
- * Cart Service — cache-aside behaviour unit tests.
- *
- * The cache helper and repository are mocked, so these assert the caching
- * contract itself: hits skip the database, misses populate the cache, and
- * every mutation drops the key before the response is rebuilt.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/shared/cache/cache", () => ({
@@ -135,7 +128,7 @@ describe("invalidation on mutation", () => {
     });
 
     expect(mockedCache.del).toHaveBeenCalledWith("cart:customer:cust_1");
-    // Invalidate first, then re-read — so the refill can't store stale data.
+
     const delCall = mockedCache.del.mock.invocationCallOrder[0]!;
     const readCall =
       mockedCarts.findByOwnerWithItems.mock.invocationCallOrder[0]!;

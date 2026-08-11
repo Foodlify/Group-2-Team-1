@@ -10,10 +10,6 @@ import {
   TICKET_STATUSES,
 } from "./support.model";
 
-// ═══════════════════════════════════════════════════════════════
-// Request Schemas (inputs)
-// ═══════════════════════════════════════════════════════════════
-
 export const CreateTicketRequestSchema = z
   .object({
     orderId: z.cuid2().optional().meta({
@@ -67,10 +63,6 @@ export const ResolveTicketRequestSchema = z
   })
   .meta({ id: "ResolveTicketRequest" });
 
-// ═══════════════════════════════════════════════════════════════
-// Response Schemas (outputs)
-// ═══════════════════════════════════════════════════════════════
-
 export const TicketResponseSchema = z
   .object({
     id: z.cuid2(),
@@ -115,10 +107,6 @@ export const TicketPaginatedSuccessResponseSchema = z
   })
   .meta({ id: "TicketPaginatedSuccessResponse" });
 
-// ═══════════════════════════════════════════════════════════════
-// Registry
-// ═══════════════════════════════════════════════════════════════
-
 schemaRegistry.register("CreateTicketRequest", CreateTicketRequestSchema);
 schemaRegistry.register("TicketRequestIdParams", TicketRequestIdParamsSchema);
 schemaRegistry.register("AdminTicketQuery", AdminTicketQuerySchema);
@@ -137,10 +125,6 @@ schemaRegistry.register(
   "TicketPaginatedSuccessResponse",
   TicketPaginatedSuccessResponseSchema,
 );
-
-// ═══════════════════════════════════════════════════════════════
-// TypeScript Types
-// ═══════════════════════════════════════════════════════════════
 
 export type CreateTicketInput = z.infer<typeof CreateTicketRequestSchema>;
 export type TicketRequestIdParams = z.infer<typeof TicketRequestIdParamsSchema>;

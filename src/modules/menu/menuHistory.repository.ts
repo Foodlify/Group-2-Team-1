@@ -13,11 +13,6 @@ export class MenuHistoryRepository extends BaseRepository<
     super(prisma.menuChangeLog);
   }
 
-  /**
-   * Appends one audit entry — called by the menu/menuItem services after a
-   * mutation. `changedBy` is the id of the User behind it: the snapshot says
-   * what the row became, this says who made it so.
-   */
   async log(entry: {
     menuId: string;
     entity: MenuChangeEntityValue;
@@ -29,7 +24,6 @@ export class MenuHistoryRepository extends BaseRepository<
     return this.create({ data: entry });
   }
 
-  /** Paginated history of one menu, newest first. */
   async findPaginatedByMenu(menuId: string, page: number, limit: number) {
     const skip = (page - 1) * limit;
     const [data, total] = await Promise.all([

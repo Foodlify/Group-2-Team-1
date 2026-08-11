@@ -1,12 +1,3 @@
-/**
- * Order Service — money arithmetic.
- *
- * Every amount the API reports has to be exact. Binary floats are not: at the
- * prices this app actually charges, `8.15 * 3` is 24.450000000000003 and
- * `29.99 * 7` is 209.92999999999998. The values below are chosen precisely
- * because they break under float multiplication — with `Prisma.Decimal` they
- * come out right, so these tests fail the moment someone reaches for `*`.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/modules/order/order.repository", () => ({
@@ -44,7 +35,7 @@ vi.mock("../../src/modules/address/address.service", () => ({
 vi.mock("../../src/modules/payment/payment.service", () => ({
   paymentService: {
     processPayment: vi.fn(),
-    // Cash has no gateway phase; armed in `beforeEach` to return nothing.
+
     initiatePayment: vi.fn(),
     refundPayments: vi.fn(),
   },
@@ -85,7 +76,6 @@ const tx = {} as never;
 const now = new Date("2026-08-06T10:00:00.000Z");
 const input = { addressId: "addr_1", paymentMethod: "CASH" as const };
 
-/** A cart line whose price × quantity is wrong in float arithmetic. */
 const cartLine = (id: string, price: string, quantity: number) => ({
   id,
   cartId: "cart_1",
@@ -118,7 +108,6 @@ const cartWith = (lines: ReturnType<typeof cartLine>[]) => ({
   cartItems: lines,
 });
 
-/** Whatever `createOrder` was called with, echoed back as the persisted row. */
 const echoCreatedOrder = () => {
   mockedOrders.createOrder.mockImplementation(
     async (data: { totalAmount: Prisma.Decimal | number }) =>
@@ -139,7 +128,7 @@ const echoCreatedOrder = () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // Cash never reaches a gateway, so the post-commit phase returns nothing.
+
   mockedPayment.initiatePayment.mockResolvedValue({});
   mockedOrders.transaction.mockImplementation(
     async (cb: (client: never) => Promise<unknown>) => cb(tx),
@@ -155,8 +144,6 @@ beforeEach(() => {
 
 describe("order total", () => {
   it("is exact for prices that float multiplication gets wrong", async () => {
-    // 8.15 * 3 = 24.450000000000003 in float. 29.99 * 7 = 209.92999999999998.
-    // Together: 234.38 exactly, or 234.38000000000002 the wrong way.
     mockedCart.lockByOwnerWithItems.mockResolvedValue(
       cartWith([cartLine("a", "8.15", 3), cartLine("b", "29.99", 7)]) as never,
     );
@@ -181,7 +168,7 @@ describe("order total", () => {
     await orderService.placeOrder("cust_1", input);
 
     const [data] = mockedOrders.createOrder.mock.calls[0]!;
-    // The type matters: handing Prisma a float here would persist the drift.
+
     expect(Prisma.Decimal.isDecimal(data.totalAmount)).toBe(true);
     expect((data.totalAmount as Prisma.Decimal).toString()).toBe("0.3");
   });
@@ -196,8 +183,6 @@ describe("order total", () => {
 
     const result = await orderService.placeOrder("cust_1", input);
 
-    // 1.1 * 3 = 3.3000000000000003 in float — the customer must not be
-    // charged a different number from the one shown on the order.
     expect(mockedPayment.processPayment).toHaveBeenCalledWith(
       "CASH",
       3.3,
@@ -208,7 +193,6 @@ describe("order total", () => {
   });
 
   it("totals an empty-priced edge case without drift across many lines", async () => {
-    // 11 lines of 0.07 — float summation drifts, Decimal doesn't.
     const lines = Array.from({ length: 11 }, (_, i) =>
       cartLine(`l${i}`, "0.07", 1),
     );
@@ -241,7 +225,6 @@ describe("line subtotals", () => {
 
     const result = await orderService.placeOrder("cust_1", input);
 
-    // Was 24.450000000000003 before the Decimal fix.
     expect(result.items[0]!.subtotal).toBe(24.45);
   });
 
@@ -259,17 +242,11 @@ describe("line subtotals", () => {
 
     const result = await orderService.placeOrder("cust_1", input);
 
-    // Compared as decimal STRINGS, not numbers. Summing the two broken
-    // subtotals as Decimals and calling `.toNumber()` lands back on the same
-    // double as 234.38 — the drift is smaller than the float spacing there, so
-    // a numeric comparison would pass while the API still served
-    // 24.450000000000003 to the customer. The string is what JSON carries.
     expect(result.items.map((i) => String(i.subtotal))).toEqual([
       "24.45",
       "209.93",
     ]);
 
-    // And the lines must explain the total exactly.
     const summed = result.items.reduce(
       (sum, i) => sum.plus(new Prisma.Decimal(String(i.subtotal))),
       new Prisma.Decimal(0),
@@ -291,8 +268,6 @@ describe("price-change detection", () => {
   };
 
   it("treats differing decimal representations of the same amount as equal", async () => {
-    // "30.00" and "30" are the same money. A string or float comparison would
-    // reject this order for a price change that never happened.
     cartAt("30.00");
     menuAt("30");
 

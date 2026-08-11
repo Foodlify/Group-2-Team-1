@@ -2,20 +2,9 @@ import prisma from "../src/config/prisma";
 import logger from "../src/config/logger";
 import { hashPassword } from "../src/shared/auth/password.helper";
 
-/**
- * Seeds the database with the minimum data needed for cart testing:
- * - 1 User
- * - 1 Customer (linked to the user)
- * - 1 Restaurant
- * - 1 Menu
- * - 3 MenuItems
- *
- * Safe to run multiple times — uses upsert on stable identifiers.
- */
 const seed = async (): Promise<void> => {
   logger.info("🌱 Starting seed...");
 
-  // ─── Test User (CUSTOMER) ───────────────────────────
   const customerPasswordHash = await hashPassword("Password123!");
   const testUser = await prisma.user.upsert({
     where: { email: "test@example.com" },
@@ -28,15 +17,12 @@ const seed = async (): Promise<void> => {
     },
   });
 
-  // ─── Customer (1:1 with User) ───────────────────────
   const testCustomer = await prisma.customer.upsert({
     where: { userId: testUser.id },
     update: {},
     create: { userId: testUser.id, phone: "+201000000000" },
   });
 
-  // ─── Address (for the test customer) ────────────────
-  // Enables placing an order end-to-end (placeOrder needs a valid addressId).
   let testAddress = await prisma.address.findFirst({
     where: { customerId: testCustomer.id },
   });
@@ -52,7 +38,6 @@ const seed = async (): Promise<void> => {
     });
   }
 
-  // ─── Admin User (for dashboard auth testing) ────────
   const adminPasswordHash = await hashPassword("Admin123!");
   const adminUser = await prisma.user.upsert({
     where: { email: "admin@example.com" },
@@ -65,8 +50,6 @@ const seed = async (): Promise<void> => {
     },
   });
 
-  // ─── Restaurant ─────────────────────────────────────
-  // Restaurant.name is not unique, so we find-or-create manually
   let restaurant = await prisma.restaurant.findFirst({
     where: { name: "Pizza Place" },
   });
@@ -78,7 +61,6 @@ const seed = async (): Promise<void> => {
     });
   }
 
-  // ─── Menu ───────────────────────────────────────────
   let menu = await prisma.menu.findFirst({
     where: { restaurantId: restaurant.id },
   });
@@ -88,7 +70,6 @@ const seed = async (): Promise<void> => {
     });
   }
 
-  // ─── Menu Items ─────────────────────────────────────
   const itemsToCreate = [
     { name: "Margherita Pizza", price: 12.99 },
     { name: "Pepperoni Pizza", price: 14.99 },

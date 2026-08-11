@@ -1,11 +1,3 @@
-/**
- * Order Service — the gateway hand-off after checkout commits.
- *
- * A card order commits with stock already reserved and a payment that has not
- * happened yet. That leaves one dangerous window: if creating the checkout
- * session fails, there is a committed order holding units nobody can buy and a
- * customer with no way to pay. These tests pin the cleanup.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/modules/order/order.repository", () => ({
@@ -151,8 +143,7 @@ beforeEach(() => {
     timeline: [],
     updatedAt: now,
   } as never);
-  // Re-armed each test: `clearAllMocks` clears calls, not implementations, so
-  // the rejection used below would otherwise leak into every later test.
+
   mockedPayment.processPayment.mockResolvedValue({ id: "txn_1" } as never);
   mockedPayment.initiatePayment.mockResolvedValue({
     externalRef: "cs_test_1",
@@ -172,8 +163,6 @@ describe("a card order returns the URL the customer must visit", () => {
   it("leaves the order PENDING — the redirect is not payment", async () => {
     const result = await orderService.placeOrder("cust_1", cardInput);
 
-    // Being handed a checkout URL says nothing about money moving. Only the
-    // webhook may confirm the order.
     expect(result.status).toBe("PENDING");
   });
 
@@ -191,8 +180,6 @@ describe("a card order returns the URL the customer must visit", () => {
   it("reserves the stock before the customer is sent to pay", async () => {
     await orderService.placeOrder("cust_1", cardInput);
 
-    // The alternative — reserve on payment success — lets 500 people pay for
-    // 50 units and disappoints 450 of them after taking their money.
     const reserve = mockedMenuItems.reserveStock.mock.invocationCallOrder[0]!;
     const initiate = mockedPayment.initiatePayment.mock.invocationCallOrder[0]!;
     expect(reserve).toBeLessThan(initiate);
@@ -209,8 +196,6 @@ describe("when the gateway hand-off fails", () => {
       orderService.placeOrder("cust_1", cardInput),
     ).rejects.toThrow();
 
-    // The transaction already committed, so a rollback is not available —
-    // the order has to be actively cancelled.
     expect(mockedOrders.appendTimelineEntry).toHaveBeenCalledWith(
       "order_1",
       expect.objectContaining({ status: "CANCELLED" }),
@@ -224,7 +209,6 @@ describe("when the gateway hand-off fails", () => {
       orderService.placeOrder("cust_1", cardInput),
     ).rejects.toThrow();
 
-    // Without this the stock is held hostage by an order nobody can pay for.
     expect(mockedMenuItems.releaseStock).toHaveBeenCalledWith("item_1", 2, tx);
   });
 
@@ -257,11 +241,8 @@ describe("when the gateway hand-off fails", () => {
   });
 
   it("still reports the payment error when the cleanup itself fails", async () => {
-    // Cancellation lost the race — the order was already moved on.
     mockedOrders.appendTimelineEntry.mockResolvedValue(null as never);
 
-    // The customer must get the payment error either way; hiding it behind a
-    // cleanup failure tells them nothing about what went wrong.
     await expect(
       orderService.placeOrder("cust_1", cardInput),
     ).rejects.toMatchObject({

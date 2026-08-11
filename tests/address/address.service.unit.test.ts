@@ -1,9 +1,3 @@
-/**
- * Address Service — unit tests (default-address rules).
- *
- * The repository is mocked so each test asserts pure service logic —
- * "IF the repository returns X, THEN the service does Y" — with no database.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/modules/address/address.repository", () => ({
@@ -119,7 +113,7 @@ describe("setDefault", () => {
 
 describe("remove", () => {
   it("tells the repository whether the deleted address was the default", async () => {
-    mocked.findById.mockResolvedValue(addressRow); // isDefault: true
+    mocked.findById.mockResolvedValue(addressRow);
     mocked.deleteAndReassignDefault.mockResolvedValue(undefined);
 
     await addressService.remove("cust_1", "addr_1");

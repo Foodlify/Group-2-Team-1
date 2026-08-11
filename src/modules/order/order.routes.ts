@@ -14,10 +14,7 @@ import {
 
 const router: Router = Router();
 
-// All order routes require an authenticated user.
 router.use(authenticate);
-
-// ─── Handlers ────────────────────────────────────────────
 
 router.post(
   "/",
@@ -27,8 +24,6 @@ router.post(
 
 router.get("/", validate({ query: OrderQuerySchema }), controller.getMyOrders);
 
-// Admin order management (declared before "/:orderId" so "/admin" isn't
-// captured as an order id).
 router.get(
   "/admin",
   authorize("ADMIN"),
@@ -54,9 +49,6 @@ router.delete(
   controller.cancelOrder,
 );
 
-// Status changes are operational. The role gets a caller as far as the
-// handler; whether THIS order is theirs is decided in the service, against the
-// ownership rows — a RESTAURANT token is not a key to every restaurant.
 router.patch(
   "/:orderId/status",
   authorize("ADMIN", "RESTAURANT"),
@@ -70,8 +62,6 @@ router.post(
   validate({ params: OrderIdParamsSchema, body: AddTrackingRequestSchema }),
   controller.addOrderStatusTracking,
 );
-
-// ─── OpenAPI Documentation ───────────────────────────────
 
 const tag = "Orders";
 const errorRef = { $ref: "#/components/schemas/ErrorResponse" };

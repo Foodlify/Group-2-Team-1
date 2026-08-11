@@ -3,12 +3,6 @@ import jwt from "jsonwebtoken";
 import type { SignOptions } from "jsonwebtoken";
 import env from "../../config/env";
 
-/**
- * Payload carried by the short-lived access token. Mirrors the shape the
- * `authenticate` middleware attaches to `req.user`. The `type` discriminator
- * prevents a refresh token from being accepted where an access token is
- * required (and vice-versa) even when both share the same signing secret.
- */
 export interface AccessTokenPayload {
   id: string;
   email: string;
@@ -16,7 +10,6 @@ export interface AccessTokenPayload {
   type: "access";
 }
 
-/** Minimal payload for the long-lived refresh token. */
 export interface RefreshTokenPayload {
   id: string;
   type: "refresh";
@@ -26,12 +19,6 @@ const refreshSecret = env.JWT_REFRESH_SECRET ?? env.JWT_SECRET;
 const accessExpires = env.JWT_ACCESS_EXPIRES as SignOptions["expiresIn"];
 const refreshExpires = env.JWT_REFRESH_EXPIRES as SignOptions["expiresIn"];
 
-/**
- * Parses a JWT-style duration ("15m", "7d", "12h", "3600") into milliseconds.
- * Single source of truth so cookie `maxAge` stays in lockstep with token
- * expiry — a bare number is treated as seconds (matching `expiresIn` numeric
- * semantics). Throws on an unrecognised format so misconfig fails fast.
- */
 export const parseDurationMs = (value: string): number => {
   const match = /^(\d+)\s*(ms|s|m|h|d)?$/.exec(value.trim());
   if (!match) {
@@ -49,7 +36,6 @@ export const parseDurationMs = (value: string): number => {
   return amount * factor[unit];
 };
 
-/** Cookie lifetimes derived from the same env values used to sign the tokens. */
 export const ACCESS_TOKEN_TTL_MS = parseDurationMs(env.JWT_ACCESS_EXPIRES);
 export const REFRESH_TOKEN_TTL_MS = parseDurationMs(env.JWT_REFRESH_EXPIRES);
 
@@ -62,18 +48,6 @@ export const signAccessToken = (payload: {
     expiresIn: accessExpires,
   });
 
-/**
- * Signs a refresh token.
- *
- * The `jti` is not decoration — without it this function returns **the same
- * string** for the same user twice in one second. `iat` is the only varying
- * claim and it has one-second resolution, so two logins in the same second
- * produce byte-identical JWTs, identical SHA-256 hashes, and the second one
- * violates the unique index on `RefreshToken.tokenHash` — a 500 for a customer
- * who did nothing worse than double-click Sign in.
- *
- * Found by driving 20 logins at one account: 14 of them failed that way.
- */
 export const signRefreshToken = (payload: { id: string }): string =>
   jwt.sign(
     { ...payload, type: "refresh", jti: crypto.randomUUID() },
@@ -84,11 +58,6 @@ export const signRefreshToken = (payload: { id: string }): string =>
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
-/**
- * Verifies an access token AND asserts it is actually an access token with the
- * expected payload shape. Rejects refresh tokens, malformed payloads, and
- * anything missing `id/email/role`.
- */
 export const verifyAccessToken = (token: string): AccessTokenPayload => {
   const decoded = jwt.verify(token, env.JWT_SECRET);
   if (
@@ -108,7 +77,6 @@ export const verifyAccessToken = (token: string): AccessTokenPayload => {
   };
 };
 
-/** Verifies a refresh token and asserts the `type: "refresh"` discriminator. */
 export const verifyRefreshToken = (token: string): RefreshTokenPayload => {
   const decoded = jwt.verify(token, refreshSecret);
   if (
@@ -121,10 +89,5 @@ export const verifyRefreshToken = (token: string): RefreshTokenPayload => {
   return { id: decoded.id, type: "refresh" };
 };
 
-/**
- * SHA-256 hash of a refresh token for at-rest storage. The token is already
- * high-entropy (a signed JWT), so a fast cryptographic hash is sufficient and
- * lets a DB leak no longer expose usable refresh tokens.
- */
 export const hashToken = (token: string): string =>
   crypto.createHash("sha256").update(token).digest("hex");

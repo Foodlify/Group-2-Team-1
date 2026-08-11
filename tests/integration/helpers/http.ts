@@ -8,18 +8,10 @@ import {
 } from "../../../src/shared/auth/jwt.helper";
 import { ACCESS_COOKIE } from "../../../src/shared/auth/cookie.helper";
 
-/**
- * Supertest bound to the real Express app — every middleware in the real order.
- *
- * These tests drive HTTP, not services, because that is the only place routing,
- * `validate`, `authenticate`/`authorize`, the 404 handler and the error
- * middleware actually run. A service test calls past all of them.
- */
 export const api = () => request(app);
 
 export const TEST_PASSWORD = "Passw0rd!23";
 
-/** Seven stable digits from a suffix, so each account gets its own phone. */
 const hashSuffix = (suffix: string): string => {
   let hash = 0;
   for (const char of suffix)
@@ -27,7 +19,6 @@ const hashSuffix = (suffix: string): string => {
   return String(hash).padStart(7, "0");
 };
 
-/** A real account with a real bcrypt hash, so `/auth/login` genuinely works. */
 export async function createAccount(
   role: "CUSTOMER" | "ADMIN" | "RESTAURANT" = "CUSTOMER",
   overrides: { isActive?: boolean; suffix?: string } = {},
@@ -46,8 +37,6 @@ export async function createAccount(
   const customer =
     role === "CUSTOMER"
       ? await prisma.customer.create({
-          // Derived from the suffix, not the clock: `phone` is unique, and two
-          // accounts created in the same millisecond collided on it.
           data: { userId: user.id, phone: `0100${hashSuffix(suffix)}` },
         })
       : null;
@@ -64,5 +53,4 @@ export const accessTokenFor = (user: {
 export const refreshTokenFor = (user: { id: string }): string =>
   signRefreshToken({ id: user.id });
 
-/** The primary transport: the httpOnly cookie the app actually sets. */
 export const asCookie = (token: string): string => `${ACCESS_COOKIE}=${token}`;

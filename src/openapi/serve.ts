@@ -6,13 +6,10 @@ import { buildOpenApiDocument } from "./document";
 export const serveOpenApi = (app: Application): void => {
   const document = buildOpenApiDocument();
 
-  // Raw spec
   app.get("/openapi.json", (_req, res) => {
     res.json(document);
   });
 
-  // Swagger UI (classic) — MUST be registered BEFORE Scalar
-  // because Scalar's /api-docs would otherwise match /api-docs/swagger too
   app.use(
     "/api-docs/swagger",
     swaggerUi.serve,
@@ -21,7 +18,6 @@ export const serveOpenApi = (app: Application): void => {
     }),
   );
 
-  // Scalar UI (modern) — registered last so it handles only /api-docs
   app.use(
     "/api-docs",
     apiReference({

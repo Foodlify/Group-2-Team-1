@@ -1,13 +1,3 @@
-/**
- * The receipt.
- *
- * A receipt is a financial document, so two things decide whether it is
- * trustworthy: the numbers add up exactly, and it describes the past rather
- * than the present. Both are easy to get wrong in ways that look fine — float
- * arithmetic reads correctly until a customer sees `24.450000000000003`, and
- * reading a name from the live catalog looks tidier right up until the
- * restaurant renames the dish.
- */
 import { describe, expect, it } from "vitest";
 import { Prisma } from "../../src/generated/prisma/client";
 import { buildReceipt } from "../../src/modules/transaction/receipt.builder";
@@ -61,8 +51,6 @@ describe("the arithmetic", () => {
   it("multiplies a line total exactly", () => {
     const receipt = buildReceipt(source(), ISSUED_AT);
 
-    // 8.15 x 3 in JS floats is 24.450000000000003. This project has already
-    // shipped that number once, in the order line subtotals.
     expect(receipt.items[0]!.lineTotal).toBe(24.45);
   });
 
@@ -81,17 +69,12 @@ describe("the arithmetic", () => {
       ISSUED_AT,
     );
 
-    // 24.45 + 0.30 + 0.20. Accumulating these as numbers drifts on the second
-    // addition — 0.1 x 3 is 0.30000000000000004 before it is even added.
     expect(receipt.order.itemsTotal).toBe(24.95);
   });
 
   it("reports the order's frozen total alongside the computed one", () => {
     const receipt = buildReceipt(source(), ISSUED_AT);
 
-    // Both are shown on purpose. They agree for anything placed through
-    // checkout, and if they ever disagree the receipt should make that visible
-    // rather than quietly pick one.
     expect(receipt.order.orderTotal).toBe(24.45);
     expect(receipt.order.itemsTotal).toBe(24.45);
   });
@@ -101,7 +84,6 @@ describe("what the document says", () => {
   it("uses the internal transaction number as the receipt reference", () => {
     const receipt = buildReceipt(source(), ISSUED_AT);
 
-    // The gateway's reference identifies a charge, not this document.
     expect(receipt.receiptNumber).toBe("TXN-0001");
     expect(receipt.transaction.externalRef).toBe("pi_123");
   });
@@ -109,8 +91,6 @@ describe("what the document says", () => {
   it("itemises the names and prices recorded at order time", () => {
     const receipt = buildReceipt(source(), ISSUED_AT);
 
-    // Read from OrderItems, which snapshots both at checkout — a receipt
-    // rebuilt from the live catalog restates history whenever a price changes.
     expect(receipt.items).toEqual([
       { name: "Koshary", quantity: 3, unitPrice: 8.15, lineTotal: 24.45 },
     ]);
@@ -131,23 +111,17 @@ describe("what the document says", () => {
   it("omits an absent address line rather than printing a gap", () => {
     const receipt = buildReceipt(source(), ISSUED_AT);
 
-    // addressLine2 is null here; a naive join leaves ", , " in the middle of
-    // an address that goes on a financial document.
     expect(receipt.deliveryAddress).not.toContain(", ,");
   });
 
   it("stamps when it was generated, separately from when the money moved", () => {
     const receipt = buildReceipt(source(), ISSUED_AT);
 
-    // Receipts are rendered on demand and never stored, so "issued" and
-    // "settled" are genuinely different facts.
     expect(receipt.issuedAt).toBe("2026-08-10T12:00:00.000Z");
     expect(receipt.transaction.settledAt).toBe("2026-08-01T09:30:00.000Z");
   });
 
   it("refuses to build one without an order", () => {
-    // The caller checks this first and returns 409; this is the backstop that
-    // keeps the builder from inventing an empty document.
     expect(() => buildReceipt(source({ order: null }), ISSUED_AT)).toThrow();
   });
 });
