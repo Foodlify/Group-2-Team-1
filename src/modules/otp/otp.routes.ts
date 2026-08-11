@@ -17,7 +17,6 @@ router.post(
   controller.verifyOtp,
 );
 
-// ─── OpenAPI ─────────────────────────────────────────────
 const tag = "OTP";
 const errorRef = { $ref: "#/components/schemas/ErrorResponse" };
 const validationErrorRef = {

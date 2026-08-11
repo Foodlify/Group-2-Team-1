@@ -1,24 +1,7 @@
-/**
- * Stripe webhook handling.
- *
- * This endpoint is public and unauthenticated by design — Stripe calls it from
- * its own servers with no session — so two properties carry the whole weight:
- *
- *   1. the signature check is the ONLY thing standing between a forged POST
- *      and an order marked paid;
- *   2. handling is idempotent, because Stripe redelivers events for up to
- *      three days and can send the same one more than once.
- *
- * The signature tests use the real SDK and real HMAC, not a mock. A mocked
- * `constructEvent` that returns whatever it is handed would pass while the
- * endpoint trusted anything — the exact failure worth testing for.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Stripe from "stripe";
 import { Prisma } from "../../src/generated/prisma/client";
 
-// `vi.hoisted` because the `vi.mock` factory below is lifted above every
-// top-level statement — a plain const would not exist yet when it runs.
 const { WEBHOOK_SECRET } = vi.hoisted(() => ({
   WEBHOOK_SECRET: "whsec_test_secret_for_unit_tests",
 }));
@@ -74,7 +57,6 @@ const mockedNotifications = vi.mocked(notificationService);
 
 const tx = { __brand: "tx" } as never;
 
-/** Builds a payload plus the header Stripe would really send for it. */
 const signedEvent = (
   type: string,
   session: Record<string, unknown>,
@@ -95,13 +77,9 @@ const signedEvent = (
 const session = {
   id: "cs_test_1",
   object: "checkout.session",
-  // Stripe sends this unexpanded, as a bare id — the shape the handler has to
-  // cope with in production.
+
   payment_intent: "pi_test_1",
-  // The three fields the settlement is checked against. They are on the
-  // fixture rather than added per test because a session without them proves
-  // nothing was paid, and every "settles the payment" test below would then be
-  // asserting against an event no real gateway would send.
+
   payment_status: "paid",
   amount_total: 2445,
   currency: "egp",
@@ -135,7 +113,6 @@ beforeEach(() => {
   );
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("the signature is the authentication", () => {
   it("accepts a body genuinely signed with our secret", () => {
     const { body, signature } = signedEvent(
@@ -150,8 +127,7 @@ describe("the signature is the authentication", () => {
 
   it("rejects a body that was altered after signing", () => {
     const { signature } = signedEvent("checkout.session.completed", session);
-    // Same signature, different payload — someone replaying a captured call
-    // against an order of their choosing.
+
     const tampered = Buffer.from(
       JSON.stringify({
         id: "evt_1",
@@ -194,14 +170,11 @@ describe("the signature is the authentication", () => {
       paymentWebhookService.constructEvent(body, "t=1,v1=deadbeef");
       expect.unreachable("should have rejected the signature");
     } catch (error) {
-      // Stripe treats 4xx as "stop retrying". A 5xx here would have it hammer
-      // the endpoint for three days over a request that will never be valid.
       expect(error).toMatchObject({ statusCode: 400 });
     }
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("a completed checkout settles the payment and confirms the order", () => {
   const completed = {
     id: "evt_1",
@@ -223,9 +196,6 @@ describe("a completed checkout settles the payment and confirms the order", () =
   it("captures the PaymentIntent id, without which no refund is possible", async () => {
     await paymentWebhookService.handleEvent(completed);
 
-    // `externalRef` holds the Checkout Session id, which Stripe's refund API
-    // rejects. If this is not stored now, refunding later means an extra
-    // round-trip to look it up — or, if the session is gone, nothing at all.
     expect(mockedTransactions.recordGatewayOutcome).toHaveBeenCalledWith(
       "txn_1",
       "SUCCESS",
@@ -239,9 +209,6 @@ describe("a completed checkout settles the payment and confirms the order", () =
   it("advances the order only from PENDING", async () => {
     await paymentWebhookService.handleEvent(completed);
 
-    // The expected-status argument is what makes this safe against a
-    // concurrent admin update: without it the webhook could drag a CANCELLED
-    // order back to CONFIRMED.
     expect(mockedOrders.appendTimelineEntry).toHaveBeenCalledWith(
       "order_1",
       expect.objectContaining({ status: "CONFIRMED" }),
@@ -253,8 +220,6 @@ describe("a completed checkout settles the payment and confirms the order", () =
   it("settles the payment and the order in one transaction", async () => {
     await paymentWebhookService.handleEvent(completed);
 
-    // Both writes must land together: a SUCCESS payment on an order still
-    // showing PENDING is a customer who paid and sees nothing happen.
     expect(mockedTransactions.recordGatewayOutcome).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
@@ -280,12 +245,10 @@ describe("a completed checkout settles the payment and confirms the order", () =
   });
 
   it("still records the payment when the order has already moved on", async () => {
-    // Conditional update matched nothing: the order is no longer PENDING.
     mockedOrders.appendTimelineEntry.mockResolvedValue(null as never);
 
     await paymentWebhookService.handleEvent(completed);
 
-    // Money arriving is a fact regardless of the order's status.
     expect(mockedTransactions.recordGatewayOutcome).toHaveBeenCalledWith(
       "txn_1",
       "SUCCESS",
@@ -306,7 +269,6 @@ describe("a completed checkout settles the payment and confirms the order", () =
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("the settled amount is checked before the payment is accepted", () => {
   const completedWith = (over: Record<string, unknown>) =>
     ({
@@ -318,8 +280,6 @@ describe("the settled amount is checked before the payment is accepted", () => {
   it("refuses to settle an order for 24.45 with a session for 0.01", async () => {
     await paymentWebhookService.handleEvent(completedWith({ amount_total: 1 }));
 
-    // The whole point. A valid signature says the event is Stripe's; it does
-    // not say the sum inside it is the one this order is owed.
     expect(mockedTransactions.recordGatewayOutcome).not.toHaveBeenCalled();
     expect(mockedOrders.appendTimelineEntry).not.toHaveBeenCalled();
     expect(mockedNotifications.notifyOrderStatusChanged).not.toHaveBeenCalled();
@@ -334,9 +294,6 @@ describe("the settled amount is checked before the payment is accepted", () => {
   it("leaves the row PENDING rather than marking it FAILED", async () => {
     await paymentWebhookService.handleEvent(completedWith({ amount_total: 1 }));
 
-    // Money did move — the signature is valid. Calling that a failure is as
-    // untrue as calling it a success, and FAILED would drop the row out of
-    // the pending views where somebody still needs to look at it.
     expect(mockedTransactions.recordGatewayOutcome).not.toHaveBeenCalled();
     expect(mockedTransactions.attachGatewayReference).toHaveBeenCalledWith(
       "txn_1",
@@ -353,8 +310,6 @@ describe("the settled amount is checked before the payment is accepted", () => {
   });
 
   it("does not throw, because redelivering will not change the numbers", async () => {
-    // A 5xx has Stripe retry for three days over an event that disagrees the
-    // same way every time.
     await expect(
       paymentWebhookService.handleEvent(completedWith({ amount_total: 1 })),
     ).resolves.toBeUndefined();
@@ -372,7 +327,6 @@ describe("the settled amount is checked before the payment is accepted", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("a completed checkout is not necessarily a paid one", () => {
   const withStatus = (payment_status: string, type: string) =>
     ({
@@ -382,8 +336,6 @@ describe("a completed checkout is not necessarily a paid one", () => {
     }) as never;
 
   it("does not settle a session Stripe reports as unpaid", async () => {
-    // Delayed methods (bank debits) finish the checkout before any money
-    // moves. Settling here records a payment that has not happened.
     await paymentWebhookService.handleEvent(
       withStatus("unpaid", "checkout.session.completed"),
     );
@@ -397,8 +349,6 @@ describe("a completed checkout is not necessarily a paid one", () => {
       withStatus("unpaid", "checkout.session.completed"),
     );
 
-    // It is a normal waiting state, not an alarm. Marking the row would send
-    // somebody chasing a payment that is simply still in flight.
     expect(mockedTransactions.attachGatewayReference).not.toHaveBeenCalled();
   });
 
@@ -407,8 +357,6 @@ describe("a completed checkout is not necessarily a paid one", () => {
       withStatus("paid", "checkout.session.async_payment_succeeded"),
     );
 
-    // Without this event such a payment would sit PENDING forever, even
-    // though the money arrived.
     expect(mockedTransactions.recordGatewayOutcome).toHaveBeenCalledWith(
       "txn_1",
       "SUCCESS",
@@ -428,7 +376,6 @@ describe("a completed checkout is not necessarily a paid one", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("redelivery cannot apply the same event twice", () => {
   const completed = {
     id: "evt_1",
@@ -437,7 +384,6 @@ describe("redelivery cannot apply the same event twice", () => {
   } as never;
 
   it("does nothing on a replayed completion", async () => {
-    // What the second delivery sees: the payment is no longer pending.
     mockedTransactions.findPendingGatewayPayment.mockResolvedValue(null);
 
     await paymentWebhookService.handleEvent(completed);
@@ -450,8 +396,6 @@ describe("redelivery cannot apply the same event twice", () => {
   it("does not throw on a replay, so Stripe stops retrying", async () => {
     mockedTransactions.findPendingGatewayPayment.mockResolvedValue(null);
 
-    // A throw here becomes a 500, which Stripe reads as "not delivered" and
-    // retries — forever, on an event that is already applied.
     await expect(
       paymentWebhookService.handleEvent(completed),
     ).resolves.toBeUndefined();
@@ -470,7 +414,6 @@ describe("redelivery cannot apply the same event twice", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("an unpaid checkout releases what the order was holding", () => {
   const expired = {
     id: "evt_4",
@@ -481,8 +424,6 @@ describe("an unpaid checkout releases what the order was holding", () => {
   it("cancels the order, which returns the reserved stock", async () => {
     await paymentWebhookService.handleEvent(expired);
 
-    // Cancelling is reused rather than reimplemented precisely because it
-    // already releases stock and marks the pending payment FAILED.
     expect(mockedOrderService.cancelOrder).toHaveBeenCalledWith(
       "cust_1",
       "order_1",
@@ -523,7 +464,6 @@ describe("an unpaid checkout releases what the order was holding", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("refund events keep our ledger honest", () => {
   const refundEvent = (status: string, id = "re_1") =>
     ({
@@ -574,12 +514,10 @@ describe("refund events keep our ledger honest", () => {
 
     await paymentWebhookService.handleEvent(refundEvent("pending"));
 
-    // Already PENDING — writing the same status again is pointless churn.
     expect(mockedTransactions.recordGatewayOutcome).not.toHaveBeenCalled();
   });
 
   it("ignores a refund issued outside this system", async () => {
-    // Someone refunded from the Stripe dashboard: no matching ledger row.
     mockedTransactions.findByExternalRef.mockResolvedValue(null);
 
     await paymentWebhookService.handleEvent(refundEvent("succeeded", "re_x"));
@@ -588,7 +526,6 @@ describe("refund events keep our ledger honest", () => {
   });
 
   it("refuses to treat a payment row as a refund", async () => {
-    // An externalRef collision must not let a refund event flip a PAYMENT.
     mockedTransactions.findByExternalRef.mockResolvedValue({
       id: "txn_1",
       type: "ORDER_PAYMENT",
@@ -612,7 +549,6 @@ describe("refund events keep our ledger honest", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("unrecognised events", () => {
   it("acknowledges without touching anything", async () => {
     await expect(

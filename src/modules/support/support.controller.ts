@@ -9,8 +9,6 @@ import type {
   TicketRequestIdParams,
 } from "./support.validation";
 
-// ─── Customer ─────────────────────────────────────────────
-
 export const createTicket = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const customerId = await customerService.requireCustomerIdByUserId(
@@ -43,8 +41,6 @@ export const getMyTicket = asyncHandler(
     sendSuccess(res, ticket, "Support ticket retrieved");
   },
 );
-
-// ─── Admin ────────────────────────────────────────────────
 
 export const adminListTickets = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {

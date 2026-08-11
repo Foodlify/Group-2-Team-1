@@ -1,10 +1,3 @@
-/**
- * Listing transactions, and who is allowed to see which.
- *
- * A transaction has no customer of its own — ownership runs through its order.
- * That indirection is the whole risk here: a filter that forgets it returns
- * the entire ledger to whoever asks, and the response looks perfectly normal.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/modules/transaction/transaction.repository", async () => {
@@ -36,8 +29,6 @@ describe("a customer's own transactions", () => {
   it("filters through the order's owner", async () => {
     await transactionService.listForCustomer("cust_1", query);
 
-    // Not `where: {}` and not a customerId on the transaction itself — the
-    // only link is the order relation.
     expect(mockedRepo.findPage).toHaveBeenCalledWith(
       expect.objectContaining({ order: { customerId: "cust_1" } }),
       0,
@@ -49,9 +40,6 @@ describe("a customer's own transactions", () => {
   it("does not load the gateway details", async () => {
     await transactionService.listForCustomer("cust_1", query);
 
-    // Session and PaymentIntent ids, raw provider statuses and failure text are
-    // facts about our integration. A customer is owed none of them about their
-    // own payment, and the join is not paid for on their behalf.
     const [, , , withDetails] = mockedRepo.findPage.mock.calls[0]!;
     expect(withDetails).toBe(false);
   });
@@ -63,8 +51,6 @@ describe("a customer's own transactions", () => {
       status: "SUCCESS",
     });
 
-    // Spreading a filter object over the scope is exactly how the owner clause
-    // gets dropped by accident.
     expect(mockedRepo.findPage).toHaveBeenCalledWith(
       {
         order: { customerId: "cust_1" },
@@ -111,8 +97,6 @@ describe("the admin listing", () => {
   it("loads the gateway details", async () => {
     await transactionService.listAll(query);
 
-    // The admin view is where "which PaymentIntent was this, and what did
-    // Stripe actually say" has to be answerable.
     const [, , , withDetails] = mockedRepo.findPage.mock.calls[0]!;
     expect(withDetails).toBe(true);
   });
@@ -137,8 +121,6 @@ describe("fetching the row a receipt is built from", () => {
   it("hides it from anyone else", async () => {
     mockedRepo.findForReceipt.mockResolvedValue(row("cust_1"));
 
-    // Null rather than a distinct error: confirming the id exists is itself a
-    // leak to someone who has no business knowing.
     expect(await transactionService.findReceiptSource("txn_1", "cust_2")).toBe(
       null,
     );
@@ -147,7 +129,6 @@ describe("fetching the row a receipt is built from", () => {
   it("hides an order-less transaction from a customer", async () => {
     mockedRepo.findForReceipt.mockResolvedValue(row(null));
 
-    // Nobody owns it, so no customer may read it.
     expect(await transactionService.findReceiptSource("txn_1", "cust_1")).toBe(
       null,
     );

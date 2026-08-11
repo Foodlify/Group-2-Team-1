@@ -35,7 +35,6 @@ export const OtpSentResponseSchema = z
     success: z.literal(true),
     message: z.string(),
     data: z.object({
-      /// When the emailed code stops being accepted.
       expiresAt: z.iso.datetime(),
     }),
   })

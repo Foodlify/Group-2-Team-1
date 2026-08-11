@@ -25,7 +25,6 @@ export const getMenuItem = asyncHandler(
   },
 );
 
-// ─── Admin management (ADMIN only) ───────────────────────
 export const createMenuItem = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const item = await menuItemService.create(

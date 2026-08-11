@@ -1,10 +1,3 @@
-/**
- * Order Service — stock reservation unit tests.
- *
- * Every collaborator is mocked, and `transaction` runs its callback inline
- * with a fake tx client, so these assert the checkout/cancel logic itself:
- * what gets reserved, what gets released, and what blocks the order.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/modules/order/order.repository", () => ({
@@ -47,7 +40,7 @@ vi.mock("../../src/modules/address/address.service", () => ({
 vi.mock("../../src/modules/payment/payment.service", () => ({
   paymentService: {
     processPayment: vi.fn(),
-    // Cash has no gateway phase; armed in `beforeEach` to return nothing.
+
     initiatePayment: vi.fn(),
     refundPayments: vi.fn(),
   },
@@ -60,8 +53,6 @@ vi.mock("../../src/modules/transaction/transaction.service", () => ({
   },
 }));
 
-// Notifications are fire-and-forget side effects — mocked out so these tests
-// stay about stock, and so no real mailer/DB lookup is attempted.
 vi.mock("../../src/modules/notification/notification.service", () => ({
   notificationService: {
     notifyOrderPlaced: vi.fn(),
@@ -140,7 +131,7 @@ const placeOrderInput = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // Cash never reaches a gateway, so the post-commit phase returns nothing.
+
   vi.mocked(paymentService).initiatePayment.mockResolvedValue({});
   mockedOrders.transaction.mockImplementation(
     async (cb: (client: never) => Promise<unknown>) => cb(tx),
@@ -173,7 +164,6 @@ describe("placeOrder stock reservation", () => {
   });
 
   it("rejects the order with 409 when the reservation loses the race", async () => {
-    // The conditional UPDATE matched zero rows — someone else took the units.
     mockedMenuItems.reserveStock.mockResolvedValue(false);
 
     await expect(
@@ -182,7 +172,7 @@ describe("placeOrder stock reservation", () => {
       message: orderErrors.OUT_OF_STOCK.message,
       statusCode: orderErrors.OUT_OF_STOCK.statusCode,
     });
-    // The whole checkout is abandoned — no order row, no cart clearing.
+
     expect(mockedOrders.createOrder).not.toHaveBeenCalled();
     expect(mockedCart.clearCart).not.toHaveBeenCalled();
   });
@@ -240,7 +230,7 @@ describe("cancelOrder stock release", () => {
       2,
       tx,
     );
-    // Untracked items are filtered by the repository, so the call is harmless.
+
     expect(mockedMenuItems.releaseStock).toHaveBeenCalledWith(
       "item_untracked",
       1,
@@ -249,7 +239,6 @@ describe("cancelOrder stock release", () => {
   });
 
   it("does not release stock when the order is not cancellable", async () => {
-    // A null result means the status precondition (PENDING) didn't hold.
     mockedOrders.appendTimelineEntry.mockResolvedValue(null);
 
     await expect(

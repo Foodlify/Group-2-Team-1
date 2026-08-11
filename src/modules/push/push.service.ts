@@ -8,8 +8,6 @@ import type {
   PushSubscriptionResponse,
 } from "./push.validation";
 
-/** What a browser is told when an order changes. Kept small on purpose — a */
-/** push payload has a hard size limit, and the client re-fetches the order. */
 export interface PushMessage {
   title: string;
   body: string;
@@ -17,13 +15,6 @@ export interface PushMessage {
 }
 
 class PushService {
-  /**
-   * The key a browser needs before it can subscribe.
-   *
-   * 404 rather than an empty string when push is off: a client that receives
-   * "" would call `subscribe()` with it and fail deep inside the browser with
-   * an error nobody can act on.
-   */
   publicKey(): string {
     const key = pushTransport.publicKey;
     if (!key) {
@@ -68,16 +59,6 @@ class PushService {
     return rows.map((row) => this.toResponse(row));
   }
 
-  /**
-   * Pushes one message to every browser this customer has registered.
-   *
-   * Never throws — like the mailer, this is called after an order has already
-   * committed, and a browser that has stopped listening is not a reason to fail
-   * anything. The one thing it does act on is a `gone` verdict: those rows are
-   * deleted, because a push service that says an endpoint no longer exists is
-   * never going to change its mind, and keeping it means retrying a dead
-   * address on every future order forever.
-   */
   async notifyCustomer(
     customerId: string,
     message: PushMessage,
@@ -112,11 +93,6 @@ class PushService {
     });
   }
 
-  /**
-   * The keys never come back out. They are the browser's half of the payload
-   * encryption, and a customer listing their devices has no use for them —
-   * only somebody copying a subscription elsewhere would.
-   */
   private toResponse(row: {
     id: string;
     endpoint: string;

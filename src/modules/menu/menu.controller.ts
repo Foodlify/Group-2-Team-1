@@ -16,7 +16,6 @@ export const getMenu = asyncHandler(
   },
 );
 
-/** See `restaurant.controller` — the flag only applies to admins. */
 const wantsDeleted = (req: Request): boolean =>
   req.user?.role === "ADMIN" &&
   (req.query as { includeDeleted?: boolean }).includeDeleted === true;
@@ -31,7 +30,6 @@ export const getMenuItems = asyncHandler(
   },
 );
 
-// ─── Admin management (ADMIN only) ───────────────────────
 export const createMenu = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const menu = await menuService.create(

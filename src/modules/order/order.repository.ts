@@ -20,7 +20,6 @@ export class OrderRepository extends BaseRepository<PrismaClient["order"]> {
     });
   }
 
-  /** Distinct restaurants the customer has ever ordered from. */
   async distinctRestaurantIdsForCustomer(
     customerId: string,
   ): Promise<string[]> {
@@ -54,15 +53,6 @@ export class OrderRepository extends BaseRepository<PrismaClient["order"]> {
     });
   }
 
-  /**
-   * Atomically appends an entry to `timeline` and mirrors its status onto
-   * the `status` scalar in a single UPDATE — no read-modify-write race, no
-   * lost-update under concurrent callers (Postgres jsonb || is atomic).
-   *
-   * Pass `expectedStatus` to enforce the update only succeeds when the order
-   * is currently in that state, eliminating an extra read roundtrip.
-   * Returns `null` when no row matched (e.g. status precondition failed).
-   */
   async appendTimelineEntry(
     id: string,
     entry: TimelineEntry,
@@ -74,9 +64,7 @@ export class OrderRepository extends BaseRepository<PrismaClient["order"]> {
     updatedAt: Date;
   } | null> {
     const client = tx ?? prisma;
-    // Tagged-template `$queryRaw` (not the `Unsafe` variant): every interpolated
-    // value is a bound parameter, and the optional precondition is composed with
-    // `Prisma.sql`/`Prisma.empty` rather than string concatenation.
+
     const statusPrecondition = expectedStatus
       ? Prisma.sql`AND status = ${expectedStatus}::"OrderStatus"`
       : Prisma.empty;
@@ -125,16 +113,6 @@ export class OrderRepository extends BaseRepository<PrismaClient["order"]> {
     );
   }
 
-  /**
-   * Admin: paginated list across all customers, same optional filters, plus an
-   * optional narrowing to given restaurants.
-   *
-   * `restaurantIds` is also how the restaurant owner's history is served — the
-   * caller passes the ids it owns. An **empty array is not "no filter"**: it
-   * means "these restaurants", of which there are none, and must return
-   * nothing. Reading it as "unfiltered" would hand an owner with no restaurants
-   * the whole platform's orders.
-   */
   async findPaginatedAll(options: {
     page: number;
     limit: number;
@@ -162,8 +140,7 @@ export class OrderRepository extends BaseRepository<PrismaClient["order"]> {
     const where: Prisma.OrderWhereInput = {};
     if (customerId) where.customerId = customerId;
     if (options.status) where.status = options.status;
-    // Deliberately `!== undefined` rather than a truthiness or length check:
-    // see `findPaginatedAll` on why an empty array must still filter.
+
     if (options.restaurantIds !== undefined) {
       where.restaurantId = { in: options.restaurantIds };
     }

@@ -1,9 +1,3 @@
-/**
- * Support Service — unit tests.
- *
- * Repositories are mocked so each test asserts pure service logic —
- * "IF the repository returns X, THEN the service does Y" — with no database.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/modules/support/support.repository", () => ({

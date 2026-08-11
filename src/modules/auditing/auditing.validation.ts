@@ -6,10 +6,6 @@ import {
 } from "../../shared/schemas/pagination.schema";
 import { AUDIT_ACTIONS, AUDITED_ENTITIES } from "./auditing.model";
 
-// ═══════════════════════════════════════════════════════════════
-// Request Schemas (inputs)
-// ═══════════════════════════════════════════════════════════════
-
 export const AuditListQuerySchema = PaginationQuerySchema.extend({
   entity: z.enum(AUDITED_ENTITIES).optional().meta({
     description: "Which kind of row the entries describe",
@@ -23,8 +19,7 @@ export const AuditListQuerySchema = PaginationQuerySchema.extend({
     description: "Only creates, only status changes, ...",
     example: "STATUS_CHANGED",
   }),
-  // Not a cuid2: entries written by a webhook or a scheduled job have no actor,
-  // and the id here is whatever the User table holds.
+
   actorId: z.string().min(1).optional().meta({
     description: "Everything one account did",
   }),
@@ -32,10 +27,6 @@ export const AuditListQuerySchema = PaginationQuerySchema.extend({
   id: "AuditListQuery",
   description: "Filters for the audit trail",
 });
-
-// ═══════════════════════════════════════════════════════════════
-// Response Schemas (outputs)
-// ═══════════════════════════════════════════════════════════════
 
 export const AuditEventResponseSchema = z
   .object({
@@ -73,10 +64,6 @@ export const AuditListSuccessResponseSchema = z
     meta: PaginationMetaSchema,
   })
   .meta({ id: "AuditListSuccessResponse" });
-
-// ═══════════════════════════════════════════════════════════════
-// Registry
-// ═══════════════════════════════════════════════════════════════
 
 schemaRegistry.register("AuditListQuery", AuditListQuerySchema);
 schemaRegistry.register("AuditEvent", AuditEventResponseSchema);

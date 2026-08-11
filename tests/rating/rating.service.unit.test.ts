@@ -1,9 +1,3 @@
-/**
- * Rating Service — unit tests.
- *
- * Repositories are mocked so each test asserts pure service logic —
- * "IF the repository returns X, THEN the service does Y" — with no database.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/modules/rating/rating.repository", () => ({
@@ -84,7 +78,7 @@ describe("rateOrder", () => {
     expect(mockedRates.create).toHaveBeenCalledWith({
       data: {
         orderId: "order_1",
-        // Derived from the order row — the client never supplies it.
+
         restaurantId: "rest_1",
         customerId: "cust_1",
         rating: 5,
@@ -141,7 +135,7 @@ describe("rateOrder", () => {
 
   it("translates the DB unique violation into ALREADY_RATED (409)", async () => {
     mockedOrders.findById.mockResolvedValue(deliveredOrder);
-    // Shape matched by `isUniqueViolation` (Prisma P2002).
+
     mockedRates.create.mockRejectedValue({ code: "P2002" });
 
     await expect(

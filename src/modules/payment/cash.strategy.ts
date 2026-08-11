@@ -4,11 +4,6 @@ import type {
   PaymentStrategy,
 } from "./payment.strategy";
 
-/**
- * Cash-on-delivery: no external gateway. The transaction stays PENDING
- * until the courier collects payment, at which point it transitions to
- * SUCCESS (handled elsewhere — e.g. when order status moves to DELIVERED).
- */
 export class CashOnDeliveryStrategy implements PaymentStrategy {
   readonly method = "CASH" as const;
 

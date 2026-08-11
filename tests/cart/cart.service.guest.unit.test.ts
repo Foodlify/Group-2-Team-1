@@ -1,11 +1,3 @@
-/**
- * Cart Service — guest cart + merge unit tests.
- *
- * The repositories are mocked so each test asserts pure service logic —
- * "IF the repository returns X, THEN the service does Y" — with no database.
- * `transaction` is stubbed to run the callback with a fake tx client, so the
- * merge flow's ordering is asserted without a real transaction.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/modules/cart/cart.repository", () => ({
@@ -51,7 +43,7 @@ const mockedMenuItems = vi.mocked(menuItemService);
 
 const tx = {} as never;
 const now = new Date("2026-08-06T10:00:00.000Z");
-// Prices are Decimal in the DB rows the repositories hand back.
+
 const price30 = new Prisma.Decimal(30);
 
 const guestCartRow = {
@@ -91,7 +83,7 @@ type CartRow = Awaited<ReturnType<typeof cartRepository.findByOwner>>;
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // Run transaction callbacks inline with a dummy tx client.
+
   mockedCarts.transaction.mockImplementation(
     async (cb: (client: never) => Promise<unknown>) => cb(tx),
   );
@@ -150,7 +142,7 @@ describe("mergeGuestCart", () => {
       "cust_1",
       tx,
     );
-    // Nothing is copied and nothing is deleted — the same row changes hands.
+
     expect(mockedItems.createWithTx).not.toHaveBeenCalled();
     expect(mockedCarts.deleteByOwner).not.toHaveBeenCalled();
   });
@@ -195,7 +187,7 @@ describe("mergeGuestCart", () => {
           cartId: "cart_cust",
           menuItemId: "item_1",
           quantity: 2,
-          // Price and name keep the guest cart's snapshot.
+
           name: "Koshary",
           price: price30,
         },

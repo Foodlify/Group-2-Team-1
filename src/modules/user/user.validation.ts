@@ -6,27 +6,8 @@ import {
 } from "../../shared/schemas/pagination.schema";
 import { MAX_PASSWORD_BYTES } from "../../shared/auth/password.helper";
 
-// Role values kept as a tuple for z.enum (mirrors the Prisma `Role` enum).
-// RESTAURANT accounts are created and promoted here like any other; what they
-// can reach comes from `Restaurant.ownerId`, which an admin assigns separately
-// via `PATCH /restaurants/{id}/owner`. The role on its own grants nothing.
 export const ROLES = ["CUSTOMER", "ADMIN", "RESTAURANT"] as const;
 
-/**
- * A password the hasher will actually read in full.
- *
- * bcrypt reads at most 72 **bytes** and discards the rest without error, so a
- * longer password silently authenticates on its prefix alone — the tail is
- * decoration. The cap has to live here because nothing downstream can report
- * the problem.
- *
- * Bytes, not characters: an Arabic letter costs two bytes and an emoji four, so
- * a `.max(72)` on string length would wave through a 72-character password
- * weighing 144 bytes and hand back the same silent truncation. The `.max()`
- * below is documentation for the OpenAPI schema — every string over 72
- * characters is already over 72 bytes, so it never rejects anything the byte
- * check would accept.
- */
 const passwordSchema = (minLength: number) =>
   z
     .string()
@@ -36,24 +17,9 @@ const passwordSchema = (minLength: number) =>
       message: `Password must be at most ${MAX_PASSWORD_BYTES} bytes`,
     });
 
-/** For every endpoint that *sets* a password. */
 const newPasswordSchema = () => passwordSchema(8);
 
-/**
- * For the two login endpoints.
- *
- * The cap applies here too. Every path that sets a password now enforces it, so
- * a stored password longer than 72 bytes cannot exist — which makes rejecting
- * one at the door free, and closes the case where such a password is submitted
- * and quietly matched on its prefix. The minimum stays at 1: login must not
- * restate the registration policy, or it tells an attacker which passwords are
- * worth trying.
- */
 const loginPasswordSchema = () => passwordSchema(1);
-
-// ═══════════════════════════════════════════════════════════════
-// Request Schemas (inputs)
-// ═══════════════════════════════════════════════════════════════
 
 export const RegisterRequestSchema = z
   .object({
@@ -123,10 +89,6 @@ export const UserIdParamsSchema = z
   })
   .meta({ id: "UserIdParams" });
 
-// ═══════════════════════════════════════════════════════════════
-// Response Schemas (outputs)
-// ═══════════════════════════════════════════════════════════════
-
 export const UserResponseSchema = z
   .object({
     id: z.cuid2(),
@@ -146,7 +108,6 @@ export const UserResponseSchema = z
   })
   .meta({ id: "UserResponse" });
 
-/** Auth endpoints return only the user; tokens travel in httpOnly cookies. */
 export const AuthUserResponseSchema = z
   .object({
     success: z.literal(true),
@@ -172,8 +133,6 @@ export const UserListSuccessResponseSchema = z
   })
   .meta({ id: "UserListSuccessResponse" });
 
-// ─── Email verification + account status ─────────────────
-
 export const VerifyEmailRequestSchema = z
   .object({
     email: z.email().meta({ example: "jane@example.com" }),
@@ -198,8 +157,6 @@ export const UpdateUserStatusRequestSchema = z
     }),
   })
   .meta({ id: "UpdateUserStatusRequest" });
-
-// ─── Password reset (forgot password) ────────────────────
 
 export const ForgotPasswordRequestSchema = z
   .object({
@@ -231,10 +188,6 @@ export const ResetPasswordRequestSchema = z
     description: "Complete the forgot-password flow with the emailed code",
   });
 
-// ═══════════════════════════════════════════════════════════════
-// Registry
-// ═══════════════════════════════════════════════════════════════
-
 schemaRegistry.register("ForgotPasswordRequest", ForgotPasswordRequestSchema);
 schemaRegistry.register("ResetPasswordRequest", ResetPasswordRequestSchema);
 schemaRegistry.register("VerifyEmailRequest", VerifyEmailRequestSchema);
@@ -255,10 +208,6 @@ schemaRegistry.register(
   "UserListSuccessResponse",
   UserListSuccessResponseSchema,
 );
-
-// ═══════════════════════════════════════════════════════════════
-// TypeScript Types
-// ═══════════════════════════════════════════════════════════════
 
 export type RegisterInput = z.infer<typeof RegisterRequestSchema>;
 export type ForgotPasswordInput = z.infer<typeof ForgotPasswordRequestSchema>;

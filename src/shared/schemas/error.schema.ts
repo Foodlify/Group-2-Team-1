@@ -1,10 +1,6 @@
 import { z } from "zod";
 import { schemaRegistry } from "../../openapi/registry";
 
-/**
- * Standard error response shape used across all endpoints.
- * Matches the shape produced by `errorMiddleware` in src/middlewares/error.middleware.ts
- */
 export const ErrorResponseSchema = z
   .object({
     success: z.literal(false).meta({
@@ -21,10 +17,6 @@ export const ErrorResponseSchema = z
     description: "Standard error response",
   });
 
-/**
- * Validation error response — returned by the `validate` middleware when
- * a request fails Zod validation.
- */
 export const ValidationErrorResponseSchema = z
   .object({
     success: z.literal(false),
@@ -47,14 +39,12 @@ export const ValidationErrorResponseSchema = z
     description: "Validation error with per-field details",
   });
 
-// Register with OpenAPI components
 schemaRegistry.register("ErrorResponse", ErrorResponseSchema);
 schemaRegistry.register(
   "ValidationErrorResponse",
   ValidationErrorResponseSchema,
 );
 
-// TypeScript types inferred from schemas
 export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
 export type ValidationErrorResponse = z.infer<
   typeof ValidationErrorResponseSchema

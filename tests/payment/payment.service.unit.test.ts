@@ -1,17 +1,5 @@
-/**
- * Payment service — strategy routing and the two-phase split.
- *
- * The rule this file defends: the API must never advertise a payment method it
- * cannot process. `SUPPORTED_PAYMENT_METHODS` (what request validation accepts)
- * and the registered strategies (what actually runs) are derived from the same
- * condition, and a drift between them is a 500 in a customer's checkout.
- */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// The kill switch reads a table. Mocked to "enabled" here so these tests keep
-// asserting what they were written for — that a payment routes to the right
-// strategy — rather than turning into tests of the integration lookup. Its own
-// behaviour is covered in integration.service.unit.test.ts.
 vi.mock("../../src/modules/payment/integration.service", () => ({
   paymentIntegrationService: {
     assertMethodEnabled: vi.fn().mockResolvedValue(undefined),
@@ -41,14 +29,6 @@ beforeEach(() => {
 });
 
 describe("the advertised methods match the registered strategies", () => {
-  /**
-   * Loads both modules fresh under a given Stripe configuration.
-   *
-   * They read `env` once at import time, so the branch under test has to be
-   * chosen before the import — and the environment must be stubbed rather than
-   * inherited, or this suite would pass or fail depending on whether the
-   * developer running it happens to have Stripe keys in their own `.env`.
-   */
   const loadWith = async (stripeConfigured: boolean) => {
     vi.stubEnv("STRIPE_SECRET_KEY", stripeConfigured ? "sk_test_unit" : "");
     vi.stubEnv("STRIPE_WEBHOOK_SECRET", stripeConfigured ? "whsec_unit" : "");
@@ -66,10 +46,6 @@ describe("the advertised methods match the registered strategies", () => {
     vi.resetModules();
   });
 
-  // The invariant, checked in BOTH configurations: whatever the environment
-  // enables, request validation and execution must agree. A mismatch is a
-  // method the API advertises with no strategy behind it — a 500 in the middle
-  // of a customer's checkout — or a strategy nobody can reach.
   it.each([
     ["without Stripe", false],
     ["with Stripe configured", true],
@@ -94,7 +70,6 @@ describe("the advertised methods match the registered strategies", () => {
   });
 
   it("always supports cash on delivery, in either configuration", async () => {
-    // Cash needs no configuration, so no missing key can switch it off.
     expect((await loadWith(false)).svc.supportedMethods()).toContain("CASH");
     expect((await loadWith(true)).svc.supportedMethods()).toContain("CASH");
   });
@@ -149,8 +124,7 @@ describe("initiatePayment is a no-op without a gateway", () => {
 
     expect(result).toEqual({});
     expect(result.redirectUrl).toBeUndefined();
-    // No gateway means no reference to record — an update here would be a
-    // pointless write on every single cash order.
+
     expect(mockedTransactions.attachGatewayReference).not.toHaveBeenCalled();
   });
 });
@@ -158,7 +132,6 @@ describe("initiatePayment is a no-op without a gateway", () => {
 describe("initiatePayment persists what the gateway returned", () => {
   const transaction = { id: "txn_1" } as never;
 
-  /** Registers a throwaway gateway strategy for the duration of a test. */
   const registerFakeGateway = (
     initiate: (...args: never[]) => Promise<unknown>,
   ) => {
@@ -183,8 +156,6 @@ describe("initiatePayment persists what the gateway returned", () => {
       context,
     );
 
-    // Losing the reference means a payment we cannot reconcile against the
-    // provider's ledger, so it is written immediately rather than on callback.
     expect(mockedTransactions.attachGatewayReference).toHaveBeenCalledWith(
       "txn_1",
       { externalRef: "cs_test_9", metadata: { gateway: "fake" } },
@@ -197,7 +168,6 @@ describe("initiatePayment persists what the gateway returned", () => {
       throw new Error("gateway unreachable");
     });
 
-    // Swallowing this would hand the customer an order they can never pay for.
     await expect(
       paymentService.initiatePayment("WALLET", transaction, 60, context),
     ).rejects.toThrow("gateway unreachable");

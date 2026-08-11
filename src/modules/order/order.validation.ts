@@ -7,10 +7,6 @@ import {
   PaginationQuerySchema,
 } from "../../shared/schemas/pagination.schema";
 
-// ═══════════════════════════════════════════════════════════════
-// Request Schemas (inputs)
-// ═══════════════════════════════════════════════════════════════
-
 export const PlaceOrderRequestSchema = z
   .object({
     addressId: z.cuid2().meta({
@@ -68,7 +64,6 @@ export const OrderIdParamsSchema = z
   })
   .meta({ id: "OrderIdParams" });
 
-/** Shared by every order listing, whoever is asking. */
 const orderFilterShape = {
   from: z.iso.datetime().optional().meta({
     description: "Filter orders created on or after this date (ISO 8601)",
@@ -84,7 +79,6 @@ const orderFilterShape = {
   }),
 };
 
-/** A range that runs backwards returns nothing; say so instead of returning it. */
 const orderedDateRange = (data: { from?: string; to?: string }): boolean =>
   !data.from || !data.to || new Date(data.from) <= new Date(data.to);
 const orderedDateRangeError = {
@@ -99,14 +93,6 @@ export const OrderQuerySchema = PaginationQuerySchema.extend(orderFilterShape)
     description: "Pagination + optional date range filter for orders",
   });
 
-/**
- * The same filters plus a restaurant, for the two listings that span more than
- * one customer: the admin's platform-wide list and the owner's order history.
- *
- * A separate schema rather than one more optional field on `OrderQuery`,
- * because a customer's own listing has no use for it — documenting a parameter
- * on `GET /orders` that the handler ignores is worse than not having it.
- */
 export const ScopedOrderQuerySchema = PaginationQuerySchema.extend({
   ...orderFilterShape,
   restaurantId: z
@@ -125,10 +111,6 @@ export const ScopedOrderQuerySchema = PaginationQuerySchema.extend({
     id: "ScopedOrderQuery",
     description: "Order filters, narrowed to a restaurant",
   });
-
-// ═══════════════════════════════════════════════════════════════
-// Response Schemas (outputs)
-// ═══════════════════════════════════════════════════════════════
 
 export const OrderItemResponseSchema = z
   .object({
@@ -222,10 +204,6 @@ export const OrderListSuccessResponseSchema = z
   })
   .meta({ id: "OrderListSuccessResponse" });
 
-// ═══════════════════════════════════════════════════════════════
-// Registry
-// ═══════════════════════════════════════════════════════════════
-
 schemaRegistry.register("PlaceOrderRequest", PlaceOrderRequestSchema);
 schemaRegistry.register("UpdateStatusRequest", UpdateStatusRequestSchema);
 schemaRegistry.register("AddTrackingRequest", AddTrackingRequestSchema);
@@ -241,10 +219,6 @@ schemaRegistry.register(
   "OrderListSuccessResponse",
   OrderListSuccessResponseSchema,
 );
-
-// ═══════════════════════════════════════════════════════════════
-// TypeScript Types
-// ═══════════════════════════════════════════════════════════════
 
 export type PlaceOrderInput = z.infer<typeof PlaceOrderRequestSchema>;
 export type UpdateStatusInput = z.infer<typeof UpdateStatusRequestSchema>;

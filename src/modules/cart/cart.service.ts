@@ -18,12 +18,6 @@ import type {
 import { Prisma } from "../../generated/prisma/client";
 
 class CartService {
-  // ─── Read ─────────────────────────────────────────────
-  /**
-   * Cache-aside: the cart is the hottest read in the app and changes only
-   * through this service, so every mutation below drops the key and this
-   * read refills it. A cache outage just means every call hits PostgreSQL.
-   */
   async getMyCart(owner: CartOwner): Promise<CartResponse | null> {
     const key = this.cacheKey(owner);
     const cached = await cache.get<CartResponse>(key);
@@ -38,12 +32,10 @@ class CartService {
     return response;
   }
 
-  /** Opaque, unguessable identifier for an anonymous visitor's cart. */
   newGuestToken(): string {
     return crypto.randomBytes(24).toString("base64url");
   }
 
-  // ─── Add Item (upsert behavior) ───────────────────────
   async addItem(
     owner: CartOwner,
     input: AddCartItemInput,
@@ -67,7 +59,6 @@ class CartService {
     return cart;
   }
 
-  // ─── Update Quantity ──────────────────────────────────
   async updateItem(
     owner: CartOwner,
     itemId: string,
@@ -90,7 +81,6 @@ class CartService {
     return cart;
   }
 
-  // ─── Remove Item ──────────────────────────────────────
   async removeItem(owner: CartOwner, itemId: string): Promise<CartResponse> {
     await this.assertItemBelongsToOwner(owner, itemId);
 
@@ -106,7 +96,6 @@ class CartService {
     return cart;
   }
 
-  // ─── Clear Cart ───────────────────────────────────────
   async clearCart(
     owner: CartOwner,
     tx?: Prisma.TransactionClient,
@@ -115,19 +104,6 @@ class CartService {
     await this.invalidate(owner);
   }
 
-  // ─── Merge a guest cart into the customer's cart ──────
-  /**
-   * Called right after login with the guest's `X-Cart-Token`.
-   * - customer has no cart → the guest row is handed over as-is (items keep
-   *   their snapshot prices, nothing is copied);
-   * - same restaurant → quantities are summed per menu item;
-   * - different restaurant → 400, exactly like adding an item from another
-   *   restaurant. The client clears one side and retries.
-   *
-   * Everything runs in one transaction under the same row locks the add-item
-   * flow takes, so a concurrent add can't be lost mid-merge. A missing or
-   * already-merged token is a no-op — merge is safe to retry.
-   */
   async mergeGuestCart(
     customerId: string,
     guestToken: string,
@@ -165,25 +141,15 @@ class CartService {
           tx,
         );
       }
-      // The guest row (and its items, by cascade) is gone once merged.
+
       await cartRepository.deleteByOwner({ guestToken }, tx);
     });
 
-    // Both identities changed: the guest cart is gone, the customer's grew.
     await this.invalidate({ guestToken });
     await this.invalidate({ customerId });
     return this.getMyCart({ customerId });
   }
 
-  // ─── Housekeeping ─────────────────────────────────────
-  /**
-   * Deletes carts nobody has touched in a while: guest carts after
-   * `CART_GUEST_TTL_HOURS` (they're disposable — the visitor is gone and the
-   * token with them) and customer carts after `CART_CUSTOMER_TTL_DAYS` (saved
-   * state, so a far longer grace period). Returns how many were removed.
-   *
-   * Run periodically by the sweeper job and on demand by admins.
-   */
   async sweepAbandoned(): Promise<{ deleted: number }> {
     const now = Date.now();
     const deleted = await cartRepository.deleteAbandoned({
@@ -202,17 +168,9 @@ class CartService {
     return { deleted };
   }
 
-  /**
-   * Acquires a row-level lock on the cart and returns it with items.
-   * Must be called inside a Prisma transaction — the lock is released
-   * when the transaction commits or rolls back.
-   * Used by checkout flow to prevent concurrent cart mutations.
-   */
   async lockByOwnerWithItems(owner: CartOwner, tx: Prisma.TransactionClient) {
     return cartRepository.lockByOwnerWithItems(owner, tx);
   }
-
-  // ─── Private Helpers ──────────────────────────────────
 
   private cacheKey(owner: CartOwner): string {
     return isGuestOwner(owner)
@@ -220,11 +178,6 @@ class CartService {
       : cacheKeys.cartOfCustomer(owner.customerId);
   }
 
-  /**
-   * Drops the cached cart. Called before the post-mutation re-read, which
-   * repopulates it — invalidate-then-refill rather than patching the cached
-   * value, so the cache can never drift from the database.
-   */
   private async invalidate(owner: CartOwner): Promise<void> {
     await cache.del(this.cacheKey(owner));
   }
@@ -247,12 +200,6 @@ class CartService {
     restaurantId: string,
     tx: Prisma.TransactionClient,
   ) {
-    // Lock the cart row up-front (no-op UPDATE) so a concurrent checkout can't
-    // read-and-clear the cart while we add an item — which would otherwise drop
-    // the just-added item via clearCart's cascade. The lock is held until this
-    // transaction commits. A `false` result means there's no cart yet (or it was
-    // checked out while we waited on the lock) — fall through and create a fresh
-    // one; the read below runs under the held lock so it can't race a checkout.
     const cartExists = await cartRepository.lockByOwner(owner, tx);
     if (cartExists) {
       const existingCart = await cartRepository.findByOwner(owner, tx);
@@ -304,10 +251,6 @@ class CartService {
     }
   }
 
-  /**
-   * Ensures a cart item exists AND belongs to the given owner.
-   * Throws 404 if not found, 403 if it belongs to someone else.
-   */
   private async assertItemBelongsToOwner(
     owner: CartOwner,
     itemId: string,
@@ -331,13 +274,7 @@ class CartService {
     }
   }
 
-  /**
-   * Maps a cart-with-items DB record to the API response shape,
-   * computing derived fields (totalPrice, itemCount).
-   */
   private toCartResponse(cart: CartWithItems): CartResponse {
-    // Accumulate in Decimal to avoid binary-float rounding drift, converting to
-    // Number only at the response boundary (totalPrice is a JSON number).
     const totalPrice = cart.cartItems
       .reduce(
         (sum, item) =>

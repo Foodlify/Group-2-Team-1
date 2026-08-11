@@ -1,12 +1,3 @@
-/**
- * `Restaurant Details`, over HTTP and against a real database.
- *
- * The table is one-to-one with `Restaurant` and optional, which is where the
- * interesting cases are: a restaurant with no details is a real state rather
- * than a broken one, the details must not be silently wiped by an unrelated
- * update, and the one-to-one has to be enforced by the database rather than by
- * hoping two requests never overlap.
- */
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import prisma from "../../src/config/prisma";
 import { disconnect, resetDatabase } from "./helpers/db";
@@ -43,7 +34,6 @@ afterAll(async () => {
   await disconnect();
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("registering a restaurant with its details", () => {
   it("stores both and returns them", async () => {
     const created = await createRestaurant({ name: "Koshary", details });
@@ -64,8 +54,6 @@ describe("registering a restaurant with its details", () => {
   it("registers one without details at all", async () => {
     const created = await createRestaurant({ name: "Bare" });
 
-    // Optional by design: a restaurant can be registered before anyone knows
-    // its phone number, and a blank row would be worse than none.
     expect(created.details).toBeNull();
     expect(await prisma.restaurantDetails.count()).toBe(0);
   });
@@ -77,13 +65,11 @@ describe("registering a restaurant with its details", () => {
       .send({ name: "Half", details: { phone: "+2010", city: "Cairo" } });
 
     expect(res.status).toBe(400);
-    // Validation runs before anything is written, so there is no half-created
-    // restaurant left behind.
+
     expect(await prisma.restaurant.count()).toBe(0);
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("adding and changing details later", () => {
   it("adds them to a restaurant that had none", async () => {
     const created = await createRestaurant({ name: "Bare" });
@@ -105,8 +91,6 @@ describe("adding and changing details later", () => {
       .set("Cookie", asCookie(adminToken))
       .send({ details });
 
-    // Asserted against the row, not the response: a name the update wrote as
-    // undefined would come back looking fine either way.
     const row = await prisma.restaurant.findUniqueOrThrow({
       where: { id: created.id },
     });
@@ -129,8 +113,6 @@ describe("adding and changing details later", () => {
         },
       });
 
-    // The omitted optional fields are cleared, not carried over. Keeping them
-    // would leave "Floor 2" attached to an address that no longer has one.
     expect(res.body.data.details).toEqual({
       phone: "+201111111111",
       email: null,
@@ -151,7 +133,6 @@ describe("adding and changing details later", () => {
       .set("Cookie", asCookie(adminToken))
       .send({ name: "Koshary El Tahrir" });
 
-    // Renaming a restaurant must not wipe its address.
     expect(res.body.data.name).toBe("Koshary El Tahrir");
     expect(res.body.data.details).toEqual(details);
   });
@@ -166,8 +147,6 @@ describe("adding and changing details later", () => {
         .send({ details: { ...details, city } });
     }
 
-    // The unique index on restaurantId is what makes this one-to-one; the
-    // upsert is what stops the third write becoming a constraint violation.
     expect(await prisma.restaurantDetails.count()).toBe(1);
     const row = await prisma.restaurantDetails.findFirstOrThrow();
     expect(row.city).toBe("Cairo");
@@ -211,7 +190,6 @@ describe("adding and changing details later", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("what the listing carries", () => {
   it("leaves details out of the paginated list", async () => {
     await createRestaurant({ name: "Koshary", details });
@@ -220,13 +198,11 @@ describe("what the listing carries", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveLength(1);
-    // The whole reason the details live in their own table: this query runs on
-    // every search and browse, and joining them onto it would undo that.
+
     expect(res.body.data[0]).not.toHaveProperty("details");
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("the details row's lifetime", () => {
   it("survives a soft delete, because the restaurant's rows stay put", async () => {
     const created = await createRestaurant({ name: "Koshary", details });
@@ -257,7 +233,6 @@ describe("the details row's lifetime", () => {
 
     await prisma.restaurant.delete({ where: { id: created.id } });
 
-    // `onDelete: Cascade`. A details row with no restaurant describes nothing.
     expect(await prisma.restaurantDetails.count()).toBe(0);
   });
 });

@@ -12,22 +12,6 @@ import type {
   RefundOutcome,
 } from "./payment.strategy";
 
-/**
- * Card payments via Stripe Checkout.
- *
- * Stripe hosts the payment page, so no card data ever reaches this server —
- * that is the whole reason for choosing Checkout over Payment Intents here.
- *
- * The flow is two-phase by necessity:
- *   `pay()`      — inside the checkout transaction, records the payment as
- *                  PENDING. Purely local.
- *   `initiate()` — after the commit, creates the Checkout Session and hands
- *                  back the URL the customer must visit.
- *
- * Nothing here marks a payment SUCCESS. That only ever happens when Stripe
- * calls the webhook back, because the customer's browser reaching the success
- * page proves nothing — they can close the tab, or forge the redirect.
- */
 export class StripeCardStrategy implements PaymentStrategy {
   readonly method = "CREDIT_CARD" as const;
 
@@ -51,8 +35,7 @@ export class StripeCardStrategy implements PaymentStrategy {
         mode: "payment",
         success_url: env.STRIPE_SUCCESS_URL,
         cancel_url: env.STRIPE_CANCEL_URL,
-        // The webhook has nothing but this metadata to tie Stripe's event back
-        // to our data, so both ids travel with the session.
+
         metadata: {
           orderId: context.orderId,
           transactionId: transaction.id,
@@ -69,18 +52,13 @@ export class StripeCardStrategy implements PaymentStrategy {
         ],
       },
       {
-        // Retrying a checkout for the same transaction must never create a
-        // second session (and a second chance to be charged). Our transaction
-        // id is unique per payment attempt, which is exactly the right key.
         idempotencyKey: `order-payment-${transaction.id}`,
       },
     );
 
     return {
       externalRef: session.id,
-      // `url` is null only for sessions in `ui_mode: 'embedded'`, which this
-      // is not — but the type is nullable, so it is normalised rather than
-      // asserted away with `!`.
+
       redirectUrl: session.url ?? undefined,
       metadata: {
         gateway: "stripe",
@@ -91,20 +69,6 @@ export class StripeCardStrategy implements PaymentStrategy {
     };
   }
 
-  /**
-   * Returns money for `refundTransaction`, or reports the refund that already
-   * exists for it.
-   *
-   * The lookup at the top is what makes retrying safe. The idempotency key
-   * below stops a *duplicate request* becoming a duplicate refund, but Stripe
-   * expires those keys after 24 hours — and a retry is by definition later than
-   * the attempt it is retrying. Without this check, retrying a refund that
-   * actually succeeded (and whose result we failed to record) the next day
-   * would send the customer their money a second time.
-   *
-   * One extra round-trip on a rare operation buys "cannot double-refund" as a
-   * property of the code rather than a hope about timing.
-   */
   async refund(
     refundTransaction: TransactionModel,
     originalPayment: TransactionModel,
@@ -126,8 +90,7 @@ export class StripeCardStrategy implements PaymentStrategy {
           refundId: existing.id,
           refundStatus: existing.status,
           paymentIntentId,
-          // Recorded so the ledger shows this row was reconciled with a refund
-          // Stripe had already made, not that a new one was sent.
+
           reconciled: true,
         },
       };
@@ -144,9 +107,6 @@ export class StripeCardStrategy implements PaymentStrategy {
         },
       },
       {
-        // Keyed on our REFUND row, which exists exactly once per refund. A
-        // retried request therefore returns the original refund instead of
-        // sending the customer's money back a second time.
         idempotencyKey: `refund-${refundTransaction.id}`,
       },
     );
@@ -163,19 +123,6 @@ export class StripeCardStrategy implements PaymentStrategy {
     };
   }
 
-  /**
-   * A refund Stripe already holds for this payment that we issued for this
-   * exact ledger row, or null.
-   *
-   * Matched on our own `refundTransactionId` metadata rather than on the
-   * amount: two separate refunds of the same order for the same amount are
-   * indistinguishable by value, and adopting the wrong one would mark a second
-   * obligation settled by the first one's money.
-   *
-   * A refund issued from the Stripe dashboard carries no such metadata and is
-   * deliberately NOT matched — a human refunding by hand is not evidence that
-   * *this* row was paid.
-   */
   private async findExistingRefund(
     paymentIntentId: string,
     refundTransactionId: string,
@@ -192,31 +139,14 @@ export class StripeCardStrategy implements PaymentStrategy {
     );
   }
 
-  /**
-   * Stripe refunds a PaymentIntent, not a Checkout Session, so the session id
-   * in `externalRef` cannot be used directly.
-   *
-   * The id is normally recorded on the payment's metadata by the webhook that
-   * confirmed it. Payments settled before that was stored — and any whose
-   * metadata was lost — fall back to reading it off the session, so an old
-   * order is still refundable rather than silently unrefundable.
-   */
   static async resolvePaymentIntentId(
     payment: TransactionModel & {
       details?: { paymentIntentId: string | null } | null;
     },
   ): Promise<string> {
-    // The typed column first — written by the same webhook that used to put
-    // this in the metadata blob, and it cannot be misspelled. Read off the row
-    // the caller already loaded rather than fetched here: a strategy that
-    // queries the database on its own is a strategy you cannot unit test
-    // without one.
     if (payment.details?.paymentIntentId)
       return payment.details.paymentIntentId;
 
-    // Then the blob, for payments settled before `TransactionDetails` existed.
-    // Their facts are still in there and are still correct; dropping this would
-    // make every old order unrefundable without a round trip.
     const metadata = payment.metadata as { paymentIntentId?: unknown } | null;
     if (typeof metadata?.paymentIntentId === "string") {
       return metadata.paymentIntentId;
@@ -241,12 +171,6 @@ export class StripeCardStrategy implements PaymentStrategy {
     return id;
   }
 
-  /**
-   * Stripe's refund lifecycle mapped onto our three states. `pending` and
-   * `requires_action` stay PENDING deliberately: the money has not reached the
-   * customer yet, and calling that SUCCESS would put a lie in the ledger. Those
-   * settle later via the refund webhook.
-   */
   static toTransactionStatus(refundStatus: string | null): TransactionStatus {
     switch (refundStatus) {
       case "succeeded":
@@ -259,17 +183,9 @@ export class StripeCardStrategy implements PaymentStrategy {
     }
   }
 
-  /**
-   * Stripe takes amounts as integers in the currency's minor unit — 45.50 EGP
-   * is 4550 piastres. Rounding a float here is how gateways end up charging
-   * 4549: `45.5 * 100` is fine, but `19.99 * 100` is 1998.9999999999998. The
-   * amount is therefore scaled as a Decimal and only then made an integer.
-   */
   static toMinorUnits(amount: number): number {
     const minor = new Prisma.Decimal(amount).times(100);
     if (!minor.isInteger()) {
-      // A price with sub-piastre precision cannot be charged as-is. Failing
-      // loudly beats silently rounding someone's money.
       throw new Error(
         `Amount ${amount} cannot be represented in minor units without rounding`,
       );

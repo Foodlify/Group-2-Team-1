@@ -18,12 +18,8 @@ import env from "../../config/env";
 import { userService } from "./user.service";
 import type { UserIdParams, UserQuery } from "./user.validation";
 
-// ─── Auth (customer + admin) ──────────────────────────────
-
 export const register = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
-    // No cookies here on purpose — the account is unusable until the emailed
-    // code is verified, which is what logs the customer in.
     const { user } = await userService.register(req.body);
     sendSuccess(
       res,
@@ -58,17 +54,6 @@ export const adminLogin = asyncHandler(
   },
 );
 
-// ─── Social Media Authentication (Google) ─────────────────
-
-/**
- * Compares the state Google handed back with the one we set on the way out.
- *
- * Constant-time, and length-checked first because `timingSafeEqual` throws on
- * a length mismatch. A plain `===` would leak the value a character at a time
- * to anyone able to measure — a small risk for a short-lived nonce, but this
- * is the one comparison standing between a user and being signed into somebody
- * else's account, so it is not the place to save three lines.
- */
 const stateMatches = (sent: unknown, received: unknown): boolean => {
   if (typeof sent !== "string" || typeof received !== "string") return false;
   const a = Buffer.from(sent);
@@ -79,12 +64,8 @@ const stateMatches = (sent: unknown, received: unknown): boolean => {
 
 export const googleRedirect = asyncHandler(
   async (_req: Request, res: Response): Promise<void> => {
-    // 256 bits of randomness: this is the only thing an attacker would have to
-    // guess to make a forged callback look like ours.
     const state = randomBytes(32).toString("base64url");
-    // The URL is built first: an unconfigured deployment throws here, and a
-    // 404 with no cookie set is tidier than a cookie for a flow that cannot
-    // start.
+
     const url = googleAuthClient.authorizationUrl(state);
     setOAuthStateCookie(res, state);
     res.redirect(url);
@@ -95,12 +76,9 @@ export const googleCallback = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const { code, state, error } = req.query;
 
-    // The state cookie is single-use whatever happens next — a value that
-    // survives one failed attempt is a value an attacker gets to retry.
     const expectedState = req.cookies?.[OAUTH_STATE_COOKIE] as unknown;
     clearOAuthStateCookie(res);
 
-    // Google reports a declined consent screen this way rather than by failing.
     if (typeof error === "string" && error) {
       throw new AppError(
         userErrors.GOOGLE_EXCHANGE_FAILED.message,
@@ -124,9 +102,6 @@ export const googleCallback = asyncHandler(
     const { user, tokens } = await userService.loginWithGoogle(profile);
     setAuthCookies(res, tokens);
 
-    // With a frontend configured, hand the browser back to it — the session is
-    // in the cookies, so nothing sensitive rides in the URL. Without one, the
-    // JSON is what makes this flow demonstrable against a bare backend.
     if (env.GOOGLE_POST_LOGIN_REDIRECT) {
       res.redirect(env.GOOGLE_POST_LOGIN_REDIRECT);
       return;
@@ -146,8 +121,6 @@ export const refresh = asyncHandler(
 
 export const logout = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
-    // Revoke via the refresh cookie so logout works even if the access token
-    // has already expired. Always clear cookies regardless.
     const token = req.cookies?.[REFRESH_COOKIE] as string | undefined;
     await userService.logout(token);
     clearAuthCookies(res);
@@ -158,7 +131,7 @@ export const logout = asyncHandler(
 export const forgotPassword = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     await userService.forgotPassword(req.body.email);
-    // Identical response whether or not the account exists.
+
     sendSuccess(
       res,
       null,
@@ -173,8 +146,6 @@ export const resetPassword = asyncHandler(
     sendSuccess(res, null, "Password reset successfully — please log in again");
   },
 );
-
-// ─── Account status ───────────────────────────────────────
 
 export const setUserStatus = asyncHandler(
   async (req: Request<UserIdParams>, res: Response): Promise<void> => {
@@ -194,8 +165,6 @@ export const deactivateMyAccount = asyncHandler(
     sendSuccess(res, null, "Account deactivated");
   },
 );
-
-// ─── Admin user management (CRUD) ─────────────────────────
 
 export const listUsers = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {

@@ -8,8 +8,7 @@ import { userErrors } from "../../shared/exceptions/user.errors";
 import { userRepository } from "../user/user.repository";
 import { cache, cacheKeys } from "../../shared/cache/cache";
 import { menuService } from "../menu/menu.service";
-// Imported as repositories (not services) to avoid a circular dependency:
-// menu.service already imports restaurant.repository.
+
 import { menuRepository } from "../menu/menu.repository";
 import { menuItemRepository } from "../menuItem/menuItem.repository";
 import { restaurantRepository } from "./restaurant.repository";
@@ -24,11 +23,6 @@ import type {
 import type { MenuResponse } from "../menu/menu.validation";
 
 class RestaurantService {
-  /**
-   * `includeDeleted` is the admin's window onto soft-deleted rows — without it
-   * there would be no way to find the id of something to restore. The caller
-   * decides whether the requester is allowed to ask (see the controller).
-   */
   async list(
     query: RestaurantQuery,
     includeDeleted = false,
@@ -63,8 +57,6 @@ class RestaurantService {
     restaurantId: string,
     includeDeleted = false,
   ): Promise<MenuResponse[]> {
-    // An admin listing deleted menus has to be able to reach them through a
-    // deleted restaurant too — the cascade put them there together.
     const restaurant = includeDeleted
       ? await restaurantRepository.findByIdIncludingDeleted(restaurantId)
       : await restaurantRepository.findById(restaurantId);
@@ -77,12 +69,6 @@ class RestaurantService {
     return menuService.listByRestaurant(restaurantId, includeDeleted);
   }
 
-  // ─── Admin management (CRUD) ──────────────────────────
-  /**
-   * One transaction for both rows. A restaurant that exists while its details
-   * insert failed is a half-registered restaurant nobody asked for — and the
-   * admin who sent one request would have no way to tell which half landed.
-   */
   async create(
     input: CreateRestaurantInput,
     actorId: string,
@@ -117,9 +103,6 @@ class RestaurantService {
     }
 
     return restaurantRepository.transaction(async (tx) => {
-      // `updatedBy` is stamped even when only the details changed: from the
-      // catalog's point of view this restaurant was touched, and the auditing
-      // column exists to answer "by whom" for exactly that.
       const restaurant = await restaurantRepository.updateById(
         id,
         {
@@ -135,15 +118,6 @@ class RestaurantService {
     });
   }
 
-  /**
-   * Soft delete, cascading down to menus and items — the same reach the old
-   * `onDelete: Cascade` had, just expressed as a flag. Without the cascade a
-   * deleted restaurant's items would keep surfacing in the catalog-wide search.
-   *
-   * One transaction, so the restaurant is never flagged while its catalog
-   * isn't. Menu caches are dropped afterwards for the same reason a hard
-   * delete had to: a cached menu blob outlives the row it came from.
-   */
   async remove(id: string, actorId: string): Promise<void> {
     await this.assertExists(id);
     const menuIds = await restaurantRepository.transaction(async (tx) => {
@@ -156,11 +130,6 @@ class RestaurantService {
     await this.invalidateMenus(menuIds);
   }
 
-  /**
-   * Undoes `remove`, cascading the same way. Note the asymmetry worth knowing
-   * about: an item deleted on its own *before* the restaurant was deleted comes
-   * back too, because the flag doesn't record which delete set it.
-   */
   async restore(
     id: string,
     actorId: string,
@@ -186,22 +155,10 @@ class RestaurantService {
       return ids;
     });
     await this.invalidateMenus(menuIds);
-    // Re-read rather than reconstruct: the restored row now has details to
-    // report, and this endpoint documents the same shape as the other reads.
+
     return this.getByIdOrThrow(id);
   }
 
-  // ─── Ownership ────────────────────────────────────────
-  /**
-   * Hands a restaurant to the account that runs it, or takes it back with a
-   * null. An admin action, and the only way ownership is ever established —
-   * there is no self-registration for restaurant owners, because the official
-   * scope map has no such endpoint and inventing one would mean deciding, with
-   * no source to go on, who is allowed to claim a restaurant.
-   *
-   * A restaurant may change hands, so this is a plain assignment rather than a
-   * one-time grant.
-   */
   async assignOwner(
     restaurantId: string,
     ownerId: string | null,
@@ -249,11 +206,6 @@ class RestaurantService {
     return restaurant;
   }
 
-  /**
-   * `createdBy` / `updatedBy` stay out of the response on purpose: these
-   * endpoints are public, and the columns hold internal admin user ids. The
-   * audit trail is read through the menu history (ADMIN-only), not here.
-   */
   private toRestaurantResponse(r: RestaurantModel): RestaurantResponse {
     return {
       id: r.id,
@@ -264,15 +216,6 @@ class RestaurantService {
     };
   }
 
-  /**
-   * The single-restaurant shape. `details` is null when the restaurant has
-   * none — which is a real state, not a placeholder: registration does not
-   * require them and every restaurant that predates the table has none.
-   *
-   * The details row's own `id` and timestamps are left out. They belong to a
-   * one-to-one row the caller can neither address nor update on its own, so
-   * exposing them would only invite someone to try.
-   */
   private toDetailedResponse(
     r: RestaurantModel,
     details: RestaurantDetailsModel | null,

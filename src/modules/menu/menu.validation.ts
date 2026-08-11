@@ -49,7 +49,6 @@ export const MenuResponseSchema = z
   })
   .meta({ id: "MenuResponse" });
 
-/** Shared by the endpoints that let an ADMIN look at soft-deleted rows. */
 export const IncludeDeletedQuerySchema = z
   .object({
     includeDeleted: z.stringbool().optional().meta({
@@ -79,8 +78,6 @@ export const MenuListSuccessResponseSchema = z
     data: z.array(MenuResponseSchema),
   })
   .meta({ id: "MenuListSuccessResponse" });
-
-// ─── Menu history (official "View History List of Menu") ─
 
 export const MenuHistoryQuerySchema = PaginationQuerySchema.meta({
   id: "MenuHistoryQuery",

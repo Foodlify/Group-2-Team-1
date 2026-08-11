@@ -1,7 +1,6 @@
 import { Prisma } from "../../generated/prisma/client";
 import type { ReceiptResponse } from "./transaction.validation";
 
-/** What `findForReceipt` returns — the row plus everything a receipt states. */
 type ReceiptSource = NonNullable<
   Awaited<
     ReturnType<
@@ -10,23 +9,6 @@ type ReceiptSource = NonNullable<
   >
 >;
 
-/**
- * Builds a receipt from a settled transaction.
- *
- * Two rules hold this together.
- *
- * **Everything is read from the order's own snapshots.** `OrderItems` carries
- * the name and price as they were at checkout, and `Order.totalAmount` is
- * frozen there too. A receipt rebuilt from the live catalog would quietly
- * restate history every time a restaurant edits a price — the document has to
- * say what the customer actually paid.
- *
- * **The arithmetic stays in `Decimal` to the last step.** Line totals are
- * `price × quantity` summed across items, and doing that in JS `number` is the
- * bug this codebase has already fixed twice — `8.15 × 3` served
- * `24.450000000000003`. `Number()` is called once, at the response boundary,
- * and never before.
- */
 export const buildReceipt = (
   transaction: ReceiptSource,
   issuedAt: Date,
@@ -53,9 +35,6 @@ export const buildReceipt = (
   );
 
   return {
-    // The receipt's own reference is the internal transaction number, which is
-    // unique and already printed on nothing else — the gateway's reference is
-    // reported separately because it identifies the charge, not the document.
     receiptNumber: transaction.internalTxNumber,
     issuedAt: issuedAt.toISOString(),
     transaction: {
@@ -73,9 +52,7 @@ export const buildReceipt = (
       status: order.status,
       orderedAt: order.orderDate.toISOString(),
       restaurant: order.restaurant.name,
-      // Snapshot total, not a recomputation: if these ever disagree the
-      // receipt should show the order's own figure and the difference should
-      // be visible rather than smoothed over.
+
       orderTotal: Number(order.totalAmount),
       itemsTotal: Number(itemsTotal),
     },

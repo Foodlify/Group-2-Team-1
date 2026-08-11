@@ -1,11 +1,3 @@
-/**
- * The `Auditing` table, against a real database and over real HTTP.
- *
- * The claims worth proving are the ones a unit test structurally cannot reach:
- * that an entry lands in the same database transaction as the change it
- * describes, that it is attributed to whoever actually made the request, and
- * that it survives the row and the account it describes.
- */
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import prisma from "../../src/config/prisma";
 import { transactionRepository } from "../../src/modules/transaction/transaction.repository";
@@ -18,7 +10,6 @@ import {
 } from "./helpers/db";
 import { api, asCookie, createAccount } from "./helpers/http";
 
-/** A customer with an address and a cart, ready to check out over HTTP. */
 const readyToCheckout = async (suffix = "buyer") => {
   const { user, customer, token } = await createAccount("CUSTOMER", { suffix });
   const { restaurant, menuItem } = await createCatalog({ price: "8.15" });
@@ -45,7 +36,6 @@ const checkout = async (token: string, addressId: string) => {
   return res.body.data;
 };
 
-/** Walks an order to DELIVERED, which is what settles a cash payment. */
 const deliver = async (adminToken: string, orderId: string) => {
   for (const status of [
     "CONFIRMED",
@@ -69,7 +59,6 @@ afterAll(async () => {
   await disconnect();
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("what checkout leaves in the trail", () => {
   it("records the payment, attributed to the customer who made the request", async () => {
     const buyer = await readyToCheckout();
@@ -84,8 +73,7 @@ describe("what checkout leaves in the trail", () => {
       actorRole: "CUSTOMER",
       route: "POST /api/v1/orders",
     });
-    // Captured ambiently — no call site between the controller and the write
-    // passes any of it.
+
     expect(entry!.ip).toBeTruthy();
   });
 
@@ -94,7 +82,6 @@ describe("what checkout leaves in the trail", () => {
 
     await checkout(buyer.token, buyer.address.id);
 
-    // 8.15 x 3. As a JS number this is 24.450000000000003.
     const [entry] = await prisma.auditingEvent.findMany();
     expect(entry!.changes).toMatchObject({ amount: "24.45" });
   });
@@ -110,7 +97,6 @@ describe("what checkout leaves in the trail", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("what settling the payment leaves in the trail", () => {
   it("records the transition, attributed to the admin rather than the buyer", async () => {
     const buyer = await readyToCheckout();
@@ -122,8 +108,7 @@ describe("what settling the payment leaves in the trail", () => {
     const settlement = await prisma.auditingEvent.findFirstOrThrow({
       where: { action: "STATUS_CHANGED" },
     });
-    // The buyer placed the order; the admin is who moved the money. Attributing
-    // this to the order's customer would be the easy, wrong answer.
+
     expect(settlement).toMatchObject({
       actorId: admin.id,
       actorRole: "ADMIN",
@@ -145,7 +130,6 @@ describe("what settling the payment leaves in the trail", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("the entry and the change commit together", () => {
   it("writes both when the caller has no transaction of its own", async () => {
     await transactionRepository.createTransaction({
@@ -175,14 +159,11 @@ describe("the entry and the change commit together", () => {
       }),
     ).rejects.toThrow();
 
-    // The pairing is the whole design. An entry written outside the
-    // transaction would survive here and claim a payment that never existed.
     expect(await prisma.transaction.count()).toBe(0);
     expect(await prisma.auditingEvent.count()).toBe(0);
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("the gateway hand-off, kept separate from the money", () => {
   const pendingCardPayment = () =>
     transactionRepository.createTransaction({
@@ -202,10 +183,7 @@ describe("the gateway hand-off, kept separate from the money", () => {
     const entry = await prisma.auditingEvent.findFirstOrThrow({
       where: { action: { not: "CREATED" } },
     });
-    // An auditor filtering for STATUS_CHANGED is asking when money moved.
-    // Handing the payment to Stripe is not that — the row is still PENDING —
-    // and recording it under the same action would put a non-event in the
-    // answer.
+
     expect(entry.action).toBe("UPDATED");
     expect(entry.changes).toEqual({
       externalRef: { from: null, to: "pi_123" },
@@ -239,14 +217,11 @@ describe("the gateway hand-off, kept separate from the money", () => {
       metadata: { card: { last4: "4242" }, raw: "whatever Stripe sent" },
     });
 
-    // The blob is on the transaction row for anyone who needs it. It has no
-    // business in a table nothing ever prunes.
     const trail = await prisma.auditingEvent.findMany();
     expect(JSON.stringify(trail)).not.toContain("4242");
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("under concurrent writes to the same transaction", () => {
   it("records a chain of transitions rather than two claiming the same start", async () => {
     const created = await transactionRepository.createTransaction({
@@ -256,7 +231,6 @@ describe("under concurrent writes to the same transaction", () => {
       paymentMethod: "CASH",
     });
 
-    // A redelivered webhook racing a refund — the real shape of this.
     await Promise.all([
       transactionRepository.updateStatus(created.id, "SUCCESS"),
       transactionRepository.updateStatus(created.id, "FAILED"),
@@ -267,11 +241,6 @@ describe("under concurrent writes to the same transaction", () => {
     });
     expect(trail).toHaveLength(2);
 
-    // Exactly one of them started from PENDING; the other must have seen the
-    // first one's result. Without the row lock in `lockForAudit` both read the
-    // same MVCC snapshot and both claim `from: PENDING` — a trail that reports
-    // a transition which never happened, which is worse than no trail because
-    // it is believed.
     const fromPending = trail.filter(
       (e) =>
         (e.changes as { status: { from: string } }).status.from === "PENDING",
@@ -280,28 +249,22 @@ describe("under concurrent writes to the same transaction", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("what the trail outlives", () => {
   it("survives the account that wrote it", async () => {
     const buyer = await readyToCheckout();
     await checkout(buyer.token, buyer.address.id);
 
-    // Cascades through Customer, Cart, Address — everything the buyer owns.
-    // The order itself is `onDelete: Restrict`, so remove it first.
     await prisma.orderItems.deleteMany();
     await prisma.transaction.deleteMany();
     await prisma.order.deleteMany();
     await prisma.user.delete({ where: { id: buyer.user.id } });
 
     const [entry] = await prisma.auditingEvent.findMany();
-    // `actorId` is deliberately not a foreign key: deleting an account must
-    // not delete the record of what that account did.
+
     expect(entry?.actorId).toBe(buyer.user.id);
   });
 
   it("records no actor when nothing human was behind the write", async () => {
-    // A gateway webhook or a scheduled sweep. Null is the truth here, and a
-    // placeholder actor would be a lie in the one table that must not lie.
     await transactionRepository.createTransaction({
       type: "ORDER_PAYMENT",
       amount: 10,
@@ -335,7 +298,6 @@ describe("what the trail outlives", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("reading the trail over HTTP", () => {
   const seedTrail = async () => {
     const buyer = await readyToCheckout();
@@ -360,7 +322,7 @@ describe("reading the trail over HTTP", () => {
 
   it("filters down to one transaction's trail", async () => {
     const { adminToken } = await seedTrail();
-    // A second, unrelated transaction that must not appear.
+
     await transactionRepository.createTransaction({
       type: "ORDER_PAYMENT",
       amount: 5,
@@ -398,8 +360,6 @@ describe("reading the trail over HTTP", () => {
   it("403s a customer", async () => {
     const { buyer } = await seedTrail();
 
-    // The trail records every customer's payments. It is an admin surface or
-    // it is a leak.
     const res = await api()
       .get("/api/v1/audit-events")
       .set("Cookie", asCookie(buyer.token));
@@ -415,8 +375,6 @@ describe("reading the trail over HTTP", () => {
   it("400s an unknown entity rather than returning an empty page", async () => {
     const { adminToken } = await seedTrail();
 
-    // An empty page would read as "nothing ever happened to it", which is a
-    // dangerous answer to a typo.
     const res = await api()
       .get("/api/v1/audit-events?entity=Trasnaction")
       .set("Cookie", asCookie(adminToken));
@@ -427,7 +385,6 @@ describe("reading the trail over HTTP", () => {
   it("exposes no way to write to the trail", async () => {
     const { adminToken } = await seedTrail();
 
-    // An append-only table with a write endpoint is a suggestion box.
     for (const send of [
       api().post("/api/v1/audit-events"),
       api().delete("/api/v1/audit-events"),

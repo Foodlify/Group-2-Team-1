@@ -20,18 +20,12 @@ import type {
 } from "./rating.validation";
 
 class RatingService {
-  /**
-   * Customer rates the restaurant of one of their DELIVERED orders.
-   * The restaurantId comes from the order row, never from the client, so a
-   * rating can never point at a different restaurant than the one that
-   * actually served the order.
-   */
   async rateOrder(
     customerId: string,
     input: CreateRatingInput,
   ): Promise<RatingResponse> {
     const order = await orderRepository.findById(input.orderId);
-    // 404 (not 403) for someone else's order — don't reveal the id exists.
+
     if (!order || order.customerId !== customerId) {
       throw appError(ratingErrors.ORDER_NOT_FOUND);
     }
@@ -51,8 +45,6 @@ class RatingService {
       });
       return this.toRatingResponse(rate);
     } catch (e) {
-      // The unique orderId makes the DB the arbiter of "already rated" —
-      // no read-then-insert race.
       if (isUniqueViolation(e)) throw appError(ratingErrors.ALREADY_RATED);
       throw e;
     }
@@ -63,7 +55,6 @@ class RatingService {
     return rates.map((r) => this.toRatingResponse(r));
   }
 
-  /** Public: SQL-aggregated summary + paginated comments, newest first. */
   async listForRestaurant(
     restaurantId: string,
     query: PaginationQuery,
@@ -97,18 +88,11 @@ class RatingService {
     };
   }
 
-  // ─── Discovery ────────────────────────────────────────
-  /** Official "Top Rating Restaurants" — public. */
   async topRated(query: DiscoveryQuery): Promise<TopRatedRestaurant[]> {
     const rows = await ratingRepository.topRatedRestaurants(query.limit);
     return rows.map((r) => this.toTopRated(r));
   }
 
-  /**
-   * Official "Restaurants Recommendations" — the top-rated restaurants the
-   * customer hasn't ordered from yet. A customer with no order history just
-   * gets the plain top-rated list.
-   */
   async recommendationsFor(
     customerId: string,
     query: DiscoveryQuery,
@@ -122,7 +106,6 @@ class RatingService {
     return rows.map((r) => this.toTopRated(r));
   }
 
-  // ─── Private helpers ──────────────────────────────────
   private toTopRated(r: {
     restaurantId: string;
     name: string;

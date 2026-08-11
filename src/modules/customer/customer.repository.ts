@@ -9,20 +9,14 @@ export class CustomerRepository extends BaseRepository<
     super(prisma.customer);
   }
 
-  /**
-   * Convenience method — find by primary key id.
-   * Entity-specific query methods should be added here as the application grows.
-   */
   async findById(id: string) {
     return this.findUnique({ where: { id } });
   }
 
-  /** Resolves the customer linked to a user account (1:1 via userId). */
   async findByUserId(userId: string) {
     return this.findUnique({ where: { userId } });
   }
 
-  /** Just enough to address an email to the customer. */
   async findContactById(id: string) {
     return prisma.customer.findUnique({
       where: { id },
@@ -30,7 +24,6 @@ export class CustomerRepository extends BaseRepository<
     });
   }
 
-  /** Customer with linked user, cart presence, and address/order counts. */
   async findByUserIdWithDetails(userId: string) {
     return prisma.customer.findUnique({
       where: { userId },
@@ -42,10 +35,6 @@ export class CustomerRepository extends BaseRepository<
     });
   }
 
-  /**
-   * Updates the customer's phone and/or the linked user's name in one
-   * transaction (name lives on User, phone on Customer).
-   */
   async updateProfile(params: {
     customerId: string;
     userId: string;

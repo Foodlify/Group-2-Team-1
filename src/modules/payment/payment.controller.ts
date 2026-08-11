@@ -17,12 +17,6 @@ import type {
   TransactionIdParams,
 } from "./payment.validation";
 
-/**
- * Stripe's webhook endpoint.
- *
- * Deliberately not wrapped in `sendSuccess`: Stripe does not read our response
- * envelope, it reads the status code. Anything outside 2xx is a retry signal.
- */
 export const listOutstandingRefunds = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const query = req.query as unknown as OutstandingRefundsQuery;
@@ -40,8 +34,6 @@ export const retryRefund = asyncHandler(
 
 export const stripeWebhook = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
-    // `express.raw` on this route leaves the body as a Buffer — the signature
-    // is computed over exactly these bytes.
     const event = paymentWebhookService.constructEvent(
       req.body as Buffer,
       req.headers["stripe-signature"] as string | undefined,
@@ -50,9 +42,6 @@ export const stripeWebhook = asyncHandler(
     try {
       await paymentWebhookService.handleEvent(event);
     } catch (error) {
-      // Answer 500 so Stripe retries: a handler that failed halfway (a lost
-      // database connection, say) means the event has NOT been applied, and
-      // silently acknowledging it would strand a paid order as PENDING.
       logger.error("Stripe webhook handler failed", {
         eventId: event.id,
         type: event.type,
@@ -68,8 +57,6 @@ export const stripeWebhook = asyncHandler(
     res.status(StatusCodes.OK).json({ received: true });
   },
 );
-
-// ─── Payment integrations (ADMIN) ─────────────────────────
 
 export const listIntegrations = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {

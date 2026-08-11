@@ -11,11 +11,6 @@ export const IntegrationCodeParamsSchema = z
   })
   .meta({ id: "IntegrationCodeParams" });
 
-/**
- * Everything an admin may change. Note what is absent: there is no field for a
- * secret key, because none is stored. `secretKeyEnvVar` names the environment
- * variable that holds it.
- */
 export const UpdateIntegrationRequestSchema = z
   .object({
     isEnabled: z.boolean().optional().meta({
@@ -64,7 +59,7 @@ export const IntegrationResponseSchema = z
         isTestMode: z.boolean(),
         secretKeyEnvVar: z.string().nullable(),
         webhookSecretEnvVar: z.string().nullable(),
-        /// Derived, not stored — see the mapper.
+
         secretConfigured: z.boolean().meta({
           description:
             "Whether the named environment variable actually has a value on this deployment. The value itself is never returned.",

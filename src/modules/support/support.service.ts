@@ -13,16 +13,10 @@ import type {
   UpdateTicketStatusInput,
 } from "./support.validation";
 
-/** Unambiguous alphabet (no O/0/I/1/L confusion) for quotable references. */
 const REQUEST_ID_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const REQUEST_ID_LENGTH = 10;
 
 class SupportService {
-  /**
-   * Customer raises a complaint / asks for help. When the ticket references
-   * an order, ownership is verified first (404 — never reveal foreign order
-   * ids). Assignment goes to the least-loaded agent of the matching section.
-   */
   async create(
     customerId: string,
     input: CreateTicketInput,
@@ -34,8 +28,6 @@ class SupportService {
       }
     }
 
-    // Retry on the (astronomically unlikely) requestId collision — the DB
-    // unique constraint is the arbiter.
     for (let attempt = 1; ; attempt++) {
       try {
         const ticket = await supportTicketRepository.createWithAssignment({
@@ -59,7 +51,6 @@ class SupportService {
     return tickets.map((t) => this.toTicketResponse(t));
   }
 
-  /** Ownership-scoped read — a foreign requestId behaves exactly like a missing one. */
   async getMineByRequestId(
     customerId: string,
     requestId: string,
@@ -71,7 +62,6 @@ class SupportService {
     return this.toTicketResponse(ticket);
   }
 
-  // ─── Admin ────────────────────────────────────────────
   async adminList(query: AdminTicketQuery): Promise<{
     tickets: TicketResponse[];
     meta: { page: number; limit: number; total: number; totalPages: number };
@@ -115,7 +105,6 @@ class SupportService {
     return this.toTicketResponse(resolved);
   }
 
-  // ─── Private helpers ──────────────────────────────────
   private async getByRequestIdOrThrow(requestId: string) {
     const ticket = await supportTicketRepository.findByRequestId(requestId);
     if (!ticket) throw appError(supportErrors.TICKET_NOT_FOUND);

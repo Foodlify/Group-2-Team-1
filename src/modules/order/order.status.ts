@@ -1,6 +1,5 @@
 export { OrderStatus } from "../../generated/prisma/enums";
 
-// Array kept for Zod schema definitions (z.enum requires a tuple)
 export const ORDER_STATUSES = [
   "PENDING",
   "CONFIRMED",

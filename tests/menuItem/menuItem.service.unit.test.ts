@@ -1,9 +1,3 @@
-/**
- * MenuItem Service — unit tests (catalog-wide search).
- *
- * The repository is mocked so each test asserts pure service logic —
- * "IF the repository returns X, THEN the service does Y" — with no database.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/modules/menuItem/menuItem.repository", () => ({

@@ -6,13 +6,6 @@ const { combine, timestamp, json, colorize, simple } = winston.format;
 
 const isDev = env.NODE_ENV === "development";
 
-/**
- * Console first, and unconditionally: it is the only transport that works
- * everywhere. A container platform reads stdout, and a process that can only
- * report itself to a file it may not be allowed to create is a process that
- * dies before it can say why — which is exactly what happened the first time
- * this image ran as a non-root user.
- */
 const transports: winston.transport[] = [
   new winston.transports.Console({
     format: isDev
@@ -21,9 +14,6 @@ const transports: winston.transport[] = [
   }),
 ];
 
-// Empty LOG_DIR means stdout only. Anything else is a directory the rotating
-// files go in; winston creates it, so it has to be somewhere this user can
-// write — under a mounted volume, or inside the image with the ownership set.
 if (env.LOG_DIR) {
   const inDir = (name: string): string => `${env.LOG_DIR}/${name}`;
   transports.push(

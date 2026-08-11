@@ -15,19 +15,12 @@ import type {
   TransactionReportResponse,
 } from "./dashboard.validation";
 
-/**
- * Transaction types that represent money leaving again. Kept as a set so the
- * arithmetic below cannot silently miss `PARTIAL_REFUND` the way a
- * `type === "REFUND"` check would.
- */
 const REFUND_TYPES = new Set(["REFUND", "PARTIAL_REFUND"]);
 const PAYMENT_TYPE = "ORDER_PAYMENT";
 
 const ZERO = new Prisma.Decimal(0);
 
 class DashboardService {
-  // ─── System overview ──────────────────────────────────────
-
   async getOverview(): Promise<OverviewResponse> {
     const now = new Date();
     const dayStart = startOfUtcDay(now);
@@ -55,9 +48,7 @@ class DashboardService {
       dashboardRepository.countOrders({ orderDate: { gte: dayStart } }),
       dashboardRepository.countOrders({ orderDate: { gte: monthStart } }),
       dashboardRepository.countOrdersByStatus({}),
-      // The official `Daily Cancelled Orders` / `Monthly Cancelled Orders`.
-      // Counted with their own query rather than read off `ordersByStatus`,
-      // which is all-time and cannot be narrowed after the fact.
+
       dashboardRepository.countOrders({
         status: "CANCELLED",
         orderDate: { gte: dayStart },
@@ -103,8 +94,6 @@ class DashboardService {
     };
   }
 
-  // ─── Transaction report ───────────────────────────────────
-
   async getTransactionReport(
     query: ReportQuery,
   ): Promise<TransactionReportResponse> {
@@ -117,8 +106,6 @@ class DashboardService {
     return this.buildReport(query.granularity, from, to, rows);
   }
 
-  // ─── Per-restaurant report ────────────────────────────────
-
   async getRestaurantReport(
     restaurantId: string,
     query: ReportQuery,
@@ -128,8 +115,7 @@ class DashboardService {
 
     const { from, to } = resolveRange(query);
     const scoped = { restaurantId };
-    // Same boundaries the system overview uses, so the two screens agree on
-    // what "today" means. Both declare UTC.
+
     const now = new Date();
     const dayStart = startOfUtcDay(now);
     const monthStart = startOfUtcMonth(now);
@@ -152,10 +138,7 @@ class DashboardService {
         orderDate: { gte: from, lt: to },
       }),
       dashboardRepository.countOrdersByStatus(scoped),
-      // The five counters the scope map names under Dashboard → Restaurants.
-      // Fixed to today and this month, unlike `ordersInRange` above, which
-      // follows the caller's window — the map asks for the day and the month,
-      // and a number that moves with a query parameter is not that.
+
       dashboardRepository.countOrders({
         ...scoped,
         orderDate: { gte: dayStart },
@@ -179,8 +162,7 @@ class DashboardService {
         status: { notIn: [...NOT_DELIVERED_STATUSES_EXCLUDED] },
         orderDate: { gte: dayStart },
       }),
-      // Transactions belong to orders, so a restaurant's money is reached
-      // through the order relation rather than stored on the transaction.
+
       dashboardRepository.sumByType({
         status: "SUCCESS",
         order: { restaurantId },
@@ -213,16 +195,6 @@ class DashboardService {
     };
   }
 
-  // ─── Shared assembly ──────────────────────────────────────
-
-  /**
-   * Folds the raw per-(bucket, type) rows into one entry per bucket, with
-   * refunds subtracted from payments.
-   *
-   * Adding every transaction together would report a busy refund day as a
-   * record month — the refund rows carry positive amounts, because the ledger
-   * records what moved, not which direction.
-   */
   private buildReport(
     granularity: ReportGranularity,
     from: Date,
@@ -262,8 +234,6 @@ class DashboardService {
       }),
     }));
 
-    // Totals are re-summed from the buckets rather than queried again, so the
-    // header can never disagree with the rows underneath it.
     const totals = series.reduce<MoneyTotals>(
       (acc, row) => ({
         payments: acc.payments.plus(row.payments),
@@ -286,9 +256,6 @@ class DashboardService {
   }
 }
 
-// ─── Helpers ────────────────────────────────────────────────
-
-/** Payments minus refunds, all still exact. */
 const netTotals = (sums: Map<string, Prisma.Decimal>): MoneyTotals => {
   const payments = sums.get(PAYMENT_TYPE) ?? ZERO;
   const refunds = [...sums.entries()]
@@ -297,10 +264,6 @@ const netTotals = (sums: Map<string, Prisma.Decimal>): MoneyTotals => {
   return { payments, refunds, net: payments.minus(refunds) };
 };
 
-/**
- * The single place Decimal becomes `number`, at the JSON boundary — matching
- * how the order and cart responses already do it.
- */
 const toMoneyResponse = (
   totals: MoneyTotals,
 ): { payments: number; refunds: number; net: number } => ({
@@ -324,11 +287,6 @@ const startOfUtcDay = (now: Date): Date =>
 const startOfUtcMonth = (now: Date): Date =>
   new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0));
 
-/**
- * Resolves the reporting window. `to` is treated as **exclusive** so adjacent
- * ranges never double-count the transaction that lands exactly on the
- * boundary. Defaults to the last 30 days ending now.
- */
 const resolveRange = (query: ReportQuery): { from: Date; to: Date } => {
   const to = query.to ? new Date(query.to) : new Date();
   const from = query.from

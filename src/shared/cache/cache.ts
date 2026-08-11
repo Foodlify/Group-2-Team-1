@@ -2,15 +2,6 @@ import env from "../../config/env";
 import logger from "../../config/logger";
 import { getRedisClient } from "../../config/redis";
 
-/**
- * Thin cache-aside helper over Redis.
- *
- * Two rules the rest of the code depends on:
- * 1. **Never throws.** A cache miss and a cache outage look identical to
- *    callers, so a Redis problem degrades performance, never correctness.
- * 2. **Never the source of truth.** Reads fall back to the database and
- *    writes invalidate the key rather than trying to patch it.
- */
 class Cache {
   async get<T>(key: string): Promise<T | null> {
     const client = getRedisClient();
@@ -52,10 +43,6 @@ class Cache {
     }
   }
 
-  /**
-   * Invalidates a whole key family (e.g. every cached menu of a restaurant).
-   * Uses SCAN, not KEYS — KEYS blocks the Redis event loop for the whole scan.
-   */
   async delByPrefix(prefix: string): Promise<void> {
     const client = getRedisClient();
     if (!client) return;
@@ -76,7 +63,6 @@ class Cache {
 
 export const cache = new Cache();
 
-/** Key builders — one place, so a rename can't leave stale keys behind. */
 export const cacheKeys = {
   cartOfCustomer: (customerId: string): string => `cart:customer:${customerId}`,
   cartOfGuest: (guestToken: string): string => `cart:guest:${guestToken}`,

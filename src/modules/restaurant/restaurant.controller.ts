@@ -2,9 +2,7 @@ import type { Request, Response } from "express";
 import { asyncHandler } from "../../utils/asyncHandler";
 import { sendSuccess } from "../../utils/response";
 import { restaurantService } from "./restaurant.service";
-// The order history lives on `/restaurants/me/orders` because that is where the
-// scope map puts it, but the reading of orders stays in the order service —
-// this module owns the route, not the query.
+
 import { orderService } from "../order/order.service";
 import type {
   OrderIdParams,
@@ -18,11 +16,6 @@ import type {
   UpdateRestaurantInput,
 } from "./restaurant.validation";
 
-/**
- * The route uses `optionalAuthenticate`, so `req.user` is present only when a
- * token was sent. `includeDeleted` is granted from that — asking for it without
- * an admin token is not an error, it just doesn't apply.
- */
 const wantsDeleted = (req: Request): boolean =>
   req.user?.role === "ADMIN" &&
   (req.query as { includeDeleted?: boolean }).includeDeleted === true;
@@ -56,7 +49,6 @@ export const getRestaurantMenus = asyncHandler(
   },
 );
 
-// ─── Admin management (ADMIN only) ───────────────────────
 export const createRestaurant = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const restaurant = await restaurantService.create(
@@ -105,10 +97,6 @@ export const assignRestaurantOwner = asyncHandler(
     sendSuccess(res, result, "Restaurant owner updated");
   },
 );
-
-// ─── Restaurant owner (RESTAURANT role) ──────────────────
-// `me` throughout: the owner never names a restaurant id to be scoped by one.
-// The scope comes from the ownership rows, so there is no id to tamper with.
 
 export const getMyRestaurantOrders = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {

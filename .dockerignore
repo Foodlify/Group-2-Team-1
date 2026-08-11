@@ -1,23 +1,18 @@
-# Version control
 .git
 .gitignore
 .gitattributes
 
-# Dependencies
 node_modules
 jspm_packages
 
-# Build output
 dist
 build
 *.tsbuildinfo
 
-# Environment & secrets
 .env
 .env.*
 !.env.example
 
-# Logs
 logs
 *.log
 npm-debug.log*
@@ -25,13 +20,11 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Testing & coverage
 coverage
 .nyc_output
 *.lcov
 tests
 
-# Caches
 .npm
 .eslintcache
 .cache
@@ -41,31 +34,25 @@ tests
 .rts2_cache_umd
 .fusebox
 
-# Editor & IDE
 .vscode
 .idea
 *.swp
 *.swo
 
-# OS metadata
 .DS_Store
 Thumbs.db
 
-# Docker
 Dockerfile
 .dockerignore
 docker-compose.yml
 docker-compose.*.yml
 
-# Docs
 README.md
 docs
 Project\ Structure.md
 
-# Prisma generated output
 src/generated
 
-# Runtime
 pids
 *.pid
 *.seed

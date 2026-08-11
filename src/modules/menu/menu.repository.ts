@@ -2,7 +2,6 @@ import type { Prisma, PrismaClient } from "../../generated/prisma/client";
 import { BaseRepository } from "../../shared/repositories/base.repository";
 import prisma from "../../config/prisma";
 
-/** See `menuItem.repository` — same rule: every read hides soft-deleted rows. */
 const notDeleted = { isDeleted: false } as const;
 
 export class MenuRepository extends BaseRepository<PrismaClient["menu"]> {
@@ -10,20 +9,14 @@ export class MenuRepository extends BaseRepository<PrismaClient["menu"]> {
     super(prisma.menu);
   }
 
-  /**
-   * Convenience method — find by primary key id.
-   * Entity-specific query methods should be added here as the application grows.
-   */
   async findById(id: string) {
     return prisma.menu.findFirst({ where: { id, ...notDeleted } });
   }
 
-  /** Restore is the only caller that legitimately wants a deleted row. */
   async findByIdIncludingDeleted(id: string) {
     return this.findUnique({ where: { id } });
   }
 
-  /** Menus belonging to a restaurant, oldest first. */
   async findByRestaurantId(restaurantId: string, includeDeleted = false) {
     return prisma.menu.findMany({
       where: { restaurantId, ...(includeDeleted ? {} : notDeleted) },
@@ -31,7 +24,6 @@ export class MenuRepository extends BaseRepository<PrismaClient["menu"]> {
     });
   }
 
-  /** Ids only — the cascade needs them to reach the items in one query. */
   async findIdsByRestaurantId(
     restaurantId: string,
     tx: Prisma.TransactionClient,
@@ -43,7 +35,6 @@ export class MenuRepository extends BaseRepository<PrismaClient["menu"]> {
     return menus.map((m) => m.id);
   }
 
-  /** Menu with its items eagerly loaded — deleted items are left out. */
   async findByIdWithItems(id: string, includeDeleted = false) {
     const where = includeDeleted ? { id } : { id, ...notDeleted };
     return prisma.menu.findFirst({
@@ -57,7 +48,6 @@ export class MenuRepository extends BaseRepository<PrismaClient["menu"]> {
     });
   }
 
-  // ─── Soft delete ──────────────────────────────────────
   async softDeleteById(
     id: string,
     actorId: string,
@@ -69,7 +59,6 @@ export class MenuRepository extends BaseRepository<PrismaClient["menu"]> {
     });
   }
 
-  /** Cascade step — flags every live menu of a restaurant. */
   async softDeleteByRestaurantId(
     restaurantId: string,
     actorId: string,

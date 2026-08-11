@@ -1,13 +1,3 @@
-/**
- * Smoke-checks the generated OpenAPI document.
- *
- * Routes register themselves as an import side effect, so a module that fails
- * to load — or a schema `$ref` pointing at something never registered — only
- * shows up when the document is actually built. `tsc` cannot catch either.
- * Run against `dist/`, so it doubles as a check that the build output boots.
- *
- * Usage: npm run build && npm run verify:openapi
- */
 const { buildOpenApiDocument } = require("../dist/openapi/document");
 
 const document = buildOpenApiDocument();
@@ -19,7 +9,6 @@ if (paths.length === 0) {
   process.exit(1);
 }
 
-// Every $ref in the document must resolve to a registered component schema.
 const missing = new Set();
 const walk = (node) => {
   if (Array.isArray(node)) {

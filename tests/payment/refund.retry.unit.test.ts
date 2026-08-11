@@ -1,15 +1,3 @@
-/**
- * Retrying an unsettled refund.
- *
- * There is exactly one way this feature can be catastrophic: paying a customer
- * twice. That happens when a refund actually succeeded at the gateway, we
- * failed to record it, and the retry sends another one.
- *
- * Stripe's idempotency key does not save us — it expires after 24 hours, and a
- * retry is by definition later than the attempt it retries. So the strategy
- * asks the gateway what it already holds before creating anything, and most of
- * this file exists to prove that lookup is really there and really used.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const createRefund = vi.fn();
@@ -87,7 +75,6 @@ beforeEach(() => {
   mockedTransactions.findPaymentForRefund.mockResolvedValue(paymentRow);
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("a retry can never pay the customer twice", () => {
   it("asks the gateway what it already holds before creating anything", async () => {
     await stripeCardStrategy.refund(refundRow(), paymentRow, 91);
@@ -102,8 +89,6 @@ describe("a retry can never pay the customer twice", () => {
   });
 
   it("adopts an existing refund instead of sending a second one", async () => {
-    // What a retry sees when the first attempt actually worked and we simply
-    // failed to write down that it had.
     listRefunds.mockResolvedValue({
       data: [
         {
@@ -142,14 +127,10 @@ describe("a retry can never pay the customer twice", () => {
       91,
     );
 
-    // The ledger should show this money was already gone, not that we moved it.
     expect(outcome.metadata).toMatchObject({ reconciled: true });
   });
 
   it("ignores a refund belonging to a different ledger row", async () => {
-    // Two refunds of the same order for the same amount are identical by
-    // value. Matching on anything but our own id would settle one obligation
-    // with the other one's money.
     listRefunds.mockResolvedValue({
       data: [
         {
@@ -166,8 +147,6 @@ describe("a retry can never pay the customer twice", () => {
   });
 
   it("ignores a refund issued by hand from the dashboard", async () => {
-    // No metadata: a human refunding manually is not evidence that THIS row
-    // was paid, and adopting it would close an obligation nobody settled.
     listRefunds.mockResolvedValue({
       data: [{ id: "re_manual", status: "succeeded", metadata: {} }],
     });
@@ -180,14 +159,11 @@ describe("a retry can never pay the customer twice", () => {
   it("still keys the create request for idempotency", async () => {
     await stripeCardStrategy.refund(refundRow(), paymentRow, 91);
 
-    // Belt and braces: the lookup covers retries days later, the key covers
-    // two requests racing within the same window.
     const [, options] = createRefund.mock.calls[0]!;
     expect(options.idempotencyKey).toBe("refund-txn_ref_1");
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("retrying through the service", () => {
   it("settles the refund and reports its new state", async () => {
     mockedTransactions.findById
@@ -198,8 +174,6 @@ describe("retrying through the service", () => {
 
     const result = await paymentService.retryRefund("txn_ref_1");
 
-    // Re-read after the attempt — returning the row we started with would tell
-    // the admin nothing changed.
     expect(result.status).toBe("SUCCESS");
     expect(result.externalRef).toBe("re_new");
   });
@@ -211,8 +185,6 @@ describe("retrying through the service", () => {
 
     const result = await paymentService.retryRefund("txn_ref_1");
 
-    // Lifted out of the metadata blob: "why is this still owed" is the whole
-    // reason someone is looking at it.
     expect(result.error).toBe("card network unavailable");
   });
 
@@ -247,8 +219,6 @@ describe("retrying through the service", () => {
   });
 
   it("retries a PENDING refund, not just a FAILED one", async () => {
-    // A refund stuck PENDING for days is as much an unpaid obligation as a
-    // failed one, and the gateway lookup makes chasing it safe.
     mockedTransactions.findById.mockResolvedValue(
       refundRow({ status: "PENDING" }),
     );
@@ -264,8 +234,7 @@ describe("retrying through the service", () => {
     await expect(paymentService.retryRefund("txn_ref_1")).rejects.toMatchObject(
       { statusCode: paymentErrors.REFUND_NO_PAYMENT.statusCode },
     );
-    // Recorded, not just refused: there is no money to return, and the row
-    // should stop looking like something a retry could fix.
+
     expect(mockedTransactions.recordGatewayOutcome).toHaveBeenCalledWith(
       "txn_ref_1",
       "FAILED",
@@ -278,7 +247,6 @@ describe("retrying through the service", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("the outstanding list", () => {
   it("returns unsettled refunds in API shape", async () => {
     mockedTransactions.findOutstandingRefunds.mockResolvedValue([

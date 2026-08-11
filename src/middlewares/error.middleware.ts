@@ -15,22 +15,11 @@ export class AppError extends Error {
   }
 }
 
-/** Builds an `AppError` from a `{ message, statusCode }` error definition. */
 export const appError = (def: {
   message: string;
   statusCode: number;
 }): AppError => new AppError(def.message, def.statusCode);
 
-/**
- * Recognises a failure the *caller* caused, raised by middleware we did not
- * write — chiefly the body parsers: malformed JSON (`400`) and a payload over
- * the limit (`413`). They arrive as `http-errors`, carrying their own status
- * and `expose: true` to mark the message safe to send back.
- *
- * Without this they land in the 500 branch below, which tells the caller their
- * own broken request was a server fault and files it in the log as an
- * unexpected error — an incident that never happened.
- */
 const asClientError = (
   err: unknown,
 ): { status: number; message: string } | null => {
@@ -54,8 +43,7 @@ export const errorMiddleware = (
   err: Error | AppError,
   req: Request,
   res: Response,
-  // Required for Express to recognise this as an error handler (4-arg arity),
-  // even though it is unused.
+
   _next: NextFunction,
 ): void => {
   if (err instanceof AppError) {

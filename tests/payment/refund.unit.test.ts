@@ -1,14 +1,3 @@
-/**
- * Refunds — returning money through the gateway.
- *
- * The risk here is the opposite of the one at checkout. There, a failure means
- * a customer cannot pay us. Here, a failure means we keep money that is not
- * ours — and the worst version of that is a ledger row saying the money went
- * back when it did not. So these tests care about two things above all:
- *
- *   1. a REFUND is never SUCCESS until the gateway confirms it;
- *   2. a failure is always *recorded*, never swallowed.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/modules/transaction/transaction.service", () => ({
@@ -43,7 +32,6 @@ const refundRow = {
   amount: 60,
 } as never;
 
-/** Registers a throwaway gateway whose refund behaviour the test controls. */
 const registerGateway = (refund?: (...args: never[]) => Promise<unknown>) => {
   paymentService.register({
     method: "WALLET",
@@ -92,8 +80,6 @@ describe("a successful refund is recorded with the gateway's reference", () => {
 
     await paymentService.refundPayments([{ refund: refundRow, payment }]);
 
-    // The customer does not have their money yet. Saying SUCCESS here would be
-    // a lie the ledger never recovers from.
     expect(mockedTransactions.recordGatewayOutcome).toHaveBeenCalledWith(
       "txn_ref_1",
       "PENDING",
@@ -126,9 +112,6 @@ describe("a failed refund is never silent", () => {
       throw new Error("boom");
     });
 
-    // Throwing would fail the customer's cancel request even though the order
-    // IS cancelled and the stock IS back. The refund is a separate obligation,
-    // tracked by its own row.
     await expect(
       paymentService.refundPayments([{ refund: refundRow, payment }]),
     ).resolves.toBeUndefined();
@@ -165,13 +148,10 @@ describe("a failed refund is never silent", () => {
   });
 
   it("fails loudly when no strategy can return the money", async () => {
-    // Registered without a `refund` implementation at all.
     registerGateway();
 
     await paymentService.refundPayments([{ refund: refundRow, payment }]);
 
-    // Leaving it PENDING would look like work in progress forever. FAILED is
-    // what gets a human to look at it.
     expect(mockedTransactions.recordGatewayOutcome).toHaveBeenCalledWith(
       "txn_ref_1",
       "FAILED",
@@ -203,8 +183,6 @@ describe("Stripe's refund lifecycle maps onto our three states", () => {
   });
 
   it("treats an unrecognised status as PENDING, not SUCCESS", () => {
-    // Stripe types this as a plain string, so a new value is possible. The
-    // safe default is "not finished" — never "money returned".
     expect(StripeCardStrategy.toTransactionStatus("some_new_status")).toBe(
       "PENDING",
     );

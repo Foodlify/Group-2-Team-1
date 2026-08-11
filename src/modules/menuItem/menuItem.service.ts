@@ -15,7 +15,6 @@ import type {
 } from "./menuItem.validation";
 
 class MenuItemService {
-  // ─── Used internally by cart/order — keep signatures stable ──
   async findById(id: string) {
     return menuItemRepository.findById(id);
   }
@@ -28,7 +27,6 @@ class MenuItemService {
     return menuItemRepository.findManyByIds(ids);
   }
 
-  /** Atomic reservation used by checkout — see the repository for the guarantee. */
   async reserveStock(
     menuItemId: string,
     quantity: number,
@@ -37,7 +35,6 @@ class MenuItemService {
     return menuItemRepository.reserveStock(menuItemId, quantity, tx);
   }
 
-  /** Returns reserved units after a cancellation. */
   async releaseStock(
     menuItemId: string,
     quantity: number,
@@ -46,7 +43,6 @@ class MenuItemService {
     return menuItemRepository.releaseStock(menuItemId, quantity, tx);
   }
 
-  // ─── Public catalog reads ─────────────────────────────
   async getByIdOrThrow(id: string): Promise<MenuItemResponse> {
     const item = await menuItemRepository.findById(id);
     if (!item) {
@@ -66,7 +62,6 @@ class MenuItemService {
     return items.map((i) => this.toMenuItemResponse(i));
   }
 
-  /** Official "Search Menu Items" — catalog-wide, with menu + restaurant context. */
   async search(query: MenuItemSearchQuery): Promise<{
     data: MenuItemSearchResult[];
     meta: { page: number; limit: number; total: number; totalPages: number };
@@ -89,7 +84,6 @@ class MenuItemService {
     };
   }
 
-  // ─── Admin management (CRUD) ──────────────────────────
   async create(
     input: CreateMenuItemInput,
     actorId: string,
@@ -152,16 +146,10 @@ class MenuItemService {
     return this.toMenuItemResponse(item);
   }
 
-  /**
-   * Soft delete. This is the case the flag was added for: an item referenced by
-   * a past order could never be hard-deleted, so retiring it from the menu was
-   * impossible. Now it just stops being visible — and stops being sellable,
-   * because `reserveStock` filters on the same flag.
-   */
   async remove(id: string, actorId: string): Promise<void> {
     const item = await this.assertExists(id);
     await menuItemRepository.softDeleteById(id, actorId);
-    // Audit the removal with the last state the item had before deletion.
+
     await cache.del(cacheKeys.menu(item.menuId));
     await menuHistoryRepository.log({
       menuId: item.menuId,
@@ -177,11 +165,6 @@ class MenuItemService {
     });
   }
 
-  /**
-   * Undoes `remove`. Fails if the item's menu is itself deleted — restoring an
-   * item into an invisible menu would leave it unreachable and still hidden
-   * from the catalog, which reads as "restore did nothing".
-   */
   async restore(id: string, actorId: string): Promise<MenuItemResponse> {
     const item = await menuItemRepository.findByIdIncludingDeleted(id);
     if (!item) {
@@ -230,7 +213,6 @@ class MenuItemService {
     return item;
   }
 
-  /** `createdBy` / `updatedBy` stay internal — see `restaurant.service`. */
   toMenuItemResponse(item: MenuItemModel): MenuItemResponse {
     return {
       id: item.id,

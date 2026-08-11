@@ -1,12 +1,3 @@
-/**
- * The restaurant owner, over real HTTP.
- *
- * `Restaurants Order History` and `Cancelled Orders by Customers or
- * Restaurants` are both authorization features, and authorization is decided by
- * middleware, route order and a database join — none of which a service test
- * runs. Two restaurants exist in almost every test here, because a scoping bug
- * is invisible when there is only one thing to see.
- */
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import prisma from "../../src/config/prisma";
 import { orderService } from "../../src/modules/order/order.service";
@@ -19,10 +10,6 @@ import {
 } from "./helpers/db";
 import { api, asCookie, createAccount } from "./helpers/http";
 
-/**
- * Two restaurants, one run by `owner` and one by nobody, each with an order
- * placed against it by its own customer.
- */
 const twoRestaurants = async () => {
   const { user: owner, token: ownerToken } = await createAccount("RESTAURANT", {
     suffix: "owner",
@@ -72,7 +59,6 @@ afterAll(async () => {
   await disconnect();
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("assigning an owner", () => {
   it("hands a restaurant to a RESTAURANT-role account", async () => {
     const { restaurant } = await createCatalog();
@@ -99,8 +85,6 @@ describe("assigning an owner", () => {
       .set("Cookie", asCookie(adminToken))
       .send({ ownerId: user.id });
 
-    // Refused rather than stored: a row granting authority to an account that
-    // cannot reach the endpoints it grants is a lie the admin cannot see.
     expect(res.status).toBe(400);
     const row = await prisma.restaurant.findUniqueOrThrow({
       where: { id: restaurant.id },
@@ -154,7 +138,6 @@ describe("assigning an owner", () => {
     });
     const { restaurant } = await createCatalog({ ownerId: user.id });
 
-    // Owning one restaurant must not let you hand yourself another.
     const res = await api()
       .patch(`/api/v1/restaurants/${restaurant.id}/owner`)
       .set("Cookie", asCookie(token))
@@ -169,14 +152,11 @@ describe("assigning an owner", () => {
 
     const res = await api().get(`/api/v1/restaurants/${restaurant.id}`);
 
-    // Same rule as createdBy/updatedBy: this endpoint is public and the value
-    // is an internal user id.
     expect(res.status).toBe(200);
     expect(JSON.stringify(res.body)).not.toContain(user.id);
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("Restaurants Order History", () => {
   it("returns the owner's orders and not the other restaurant's", async () => {
     const { ownerToken, myOrder, theirOrder } = await twoRestaurants();
@@ -202,12 +182,6 @@ describe("Restaurants Order History", () => {
       .get("/api/v1/restaurants/me/orders")
       .set("Cookie", asCookie(ownerToken));
 
-    // An earlier version of this test claimed to prove route ordering; moving
-    // the route proved otherwise, because "/:restaurantId" is one segment and
-    // this is two. What is actually true — and what the ordering protects — is
-    // that this namespace has exactly one occupant. The day a
-    // "/:restaurantId/orders" route appears, this assertion is the one that
-    // will notice.
     expect(byId.status).toBe(404);
     expect(byMe.status).toBe(200);
   });
@@ -215,9 +189,6 @@ describe("Restaurants Order History", () => {
   it("refuses a demoted ex-owner whose ownership row still stands", async () => {
     const { owner, ownerToken, myOrder } = await twoRestaurants();
 
-    // Straight to the row: demotion through the API needs a customer profile,
-    // and the state under test is simply "the account's role no longer says
-    // RESTAURANT while `Restaurant.ownerId` still names it".
     await prisma.user.update({
       where: { id: owner.id },
       data: { role: "CUSTOMER" },
@@ -252,8 +223,6 @@ describe("Restaurants Order History", () => {
       .set("Cookie", asCookie(adminToken))
       .send({ ownerId: owner.id });
 
-    // Same token as before the reassignment — ownership is read from the rows
-    // on every request, never carried in the claim.
     const res = await api()
       .get("/api/v1/restaurants/me/orders")
       .set("Cookie", asCookie(ownerToken));
@@ -268,8 +237,6 @@ describe("Restaurants Order History", () => {
       .delete(`/api/v1/restaurants/${mine.restaurant.id}`)
       .set("Cookie", asCookie(adminToken));
 
-    // The past orders still exist and the customer can still see them; what
-    // ends is the owner's standing to act on them.
     const res = await api()
       .get("/api/v1/restaurants/me/orders")
       .set("Cookie", asCookie(ownerToken));
@@ -302,8 +269,7 @@ describe("Restaurants Order History", () => {
       .set("Cookie", asCookie(adminToken));
 
     expect(asCustomer.status).toBe(403);
-    // The admin is not refused access to orders — they have `/orders/admin`.
-    // "My restaurants" is simply not a question an admin account can answer.
+
     expect(asAdmin.status).toBe(403);
   });
 
@@ -313,7 +279,6 @@ describe("Restaurants Order History", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("one order, read by the restaurant that has to cook it", () => {
   it("returns it with its items", async () => {
     const { ownerToken, myOrder } = await twoRestaurants();
@@ -338,7 +303,6 @@ describe("one order, read by the restaurant that has to cook it", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("Cancelled Orders by Customers or Restaurants", () => {
   it("lets a restaurant cancel its own order", async () => {
     const { ownerToken, myOrder } = await twoRestaurants();
@@ -360,10 +324,6 @@ describe("Cancelled Orders by Customers or Restaurants", () => {
       .set("Cookie", asCookie(ownerToken))
       .send({ status: "CANCELLED" });
 
-    // Cash on delivery that was never collected produces no refund row — there
-    // is nothing to give back — so what proves the financial side-effect ran is
-    // the payment being closed out as FAILED. One state machine and one
-    // settlement path, whoever pulled the trigger.
     const payments = await prisma.transaction.findMany({
       where: { orderId: myOrder.id, type: "ORDER_PAYMENT" },
     });
@@ -418,17 +378,11 @@ describe("Cancelled Orders by Customers or Restaurants", () => {
       .send({ status: "CANCELLED" });
 
     expect(res.status).toBe(403);
-    // The message distinguishes WHERE the refusal happened: "Not authorized"
-    // is `authorize` on the route; the service's own refusal reads "This order
-    // does not belong to you". A customer has no business on this endpoint at
-    // all, so they are turned away before an order is ever loaded — and
-    // asserting only the status code cannot tell the two apart. Customers
-    // cancel through DELETE /orders/{id}.
+
     expect(res.body.message).toBe("Not authorized");
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("the admin's restaurant filter", () => {
   it("narrows the platform-wide listing to one restaurant", async () => {
     const { mine, myOrder } = await twoRestaurants();
@@ -454,15 +408,12 @@ describe("the admin's restaurant filter", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════
 describe("what happens to a restaurant when its owner's account goes", () => {
   it("survives, unowned, rather than being deleted with the account", async () => {
     const { owner, mine, myOrder } = await twoRestaurants();
 
     await prisma.user.delete({ where: { id: owner.id } });
 
-    // ON DELETE SET NULL. A cascade here would take the restaurant, its menus
-    // and the orders customers have already paid for.
     const restaurant = await prisma.restaurant.findUnique({
       where: { id: mine.restaurant.id },
     });
