@@ -133,7 +133,7 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/G2T1M
 # Optional auth/CORS overrides (sensible defaults applied) — see .env.example
 # JWT_ACCESS_EXPIRES=15m
 # JWT_REFRESH_EXPIRES=7d
-# CORS_ORIGIN=http://localhost:3000
+# CORS_ORIGIN=http://localhost:4444
 ```
 
 > **Generate a JWT secret:**

@@ -25,7 +25,7 @@ RUN npm ci --omit=dev --ignore-scripts
 
 FROM base AS runtime
 ENV NODE_ENV=production
-ENV PORT=3000
+ENV PORT=4444
 ENV LOG_DIR=""
 
 RUN mkdir -p /app/logs && chown app:app /app/logs
@@ -38,10 +38,10 @@ COPY --chown=app:app --chmod=755 docker-entrypoint.sh ./
 
 USER app
 
-EXPOSE 3000
+EXPOSE 4444
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-    CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+    CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||4444)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 ENTRYPOINT ["dumb-init", "--", "./docker-entrypoint.sh"]
 CMD ["node", "dist/server.js"]

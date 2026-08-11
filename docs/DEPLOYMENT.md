@@ -13,7 +13,7 @@ Internet
    │  443
    ▼
 Traefik  (Coolify's proxy — TLS from Let's Encrypt)
-   │  3000, private network
+   │  4444, private network
    ▼
 foodify-api      ←── this repository's Dockerfile
    │        │
@@ -65,13 +65,19 @@ were measured with it on.
 | ------------ | -------------------------------- |
 | Build Pack   | **Dockerfile**                   |
 | Branch       | `main`                           |
-| Port Exposes | `3000`                           |
+| Port Exposes | `4444`                           |
 | Domain       | `https://foodify.beingmomen.com` |
-| Health check | path `/health`, port `3000`      |
+| Health check | path `/health`, port `4444`      |
 
-Port `3000` is the container's own port and has nothing to do with the `4444`
-in local `.env` — Traefik reaches it on the private network, and the public
-side is `443` either way.
+`4444` is the container's own port, not the public one — Traefik reaches it on
+the private network and the outside world only ever sees `443`. Nothing about
+the deployment would break on a different number.
+
+It matches local `.env` for a reason that has nothing to do with the server:
+the port is written down in `GOOGLE_CALLBACK_URL`, in the URI registered with
+Google, and in whatever the server actually binds. Two numbers in circulation
+means those three drift, and the failure that follows is a browser sent back to
+a port with nothing on it.
 
 ### Migrations need no configuration
 

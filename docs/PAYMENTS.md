@@ -257,8 +257,8 @@ trail as an `UPDATED` entry. See [the Auditing section](../README.md#the-auditin
 ```bash
 STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
-STRIPE_SUCCESS_URL=http://localhost:3000/payment/success   # optional
-STRIPE_CANCEL_URL=http://localhost:3000/payment/cancel     # optional
+STRIPE_SUCCESS_URL=http://localhost:4444/payment/success   # optional
+STRIPE_CANCEL_URL=http://localhost:4444/payment/cancel     # optional
 ```
 
 Without `STRIPE_SECRET_KEY` the card strategy is never registered **and**
@@ -295,7 +295,7 @@ money and must never appear in this repo or in a `.env` that gets shared.
 
 ```bash
 stripe login
-# Use YOUR PORT — the one in .env. It is 4444 in this repo's setup, not 3000.
+# Use YOUR PORT — the one in .env, and the repo default: 4444.
 stripe listen --forward-to localhost:4444/api/v1/payments/stripe/webhook
 ```
 
