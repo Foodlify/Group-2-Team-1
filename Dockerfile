@@ -9,12 +9,14 @@ RUN apk add --no-cache dumb-init libc6-compat openssl \
 
 FROM base AS deps
 ENV DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres
+ENV NODE_ENV=development
 COPY package.json package-lock.json prisma.config.ts ./
 COPY prisma ./prisma
-RUN npm ci
+RUN npm ci --include=dev
 
 FROM deps AS build
 ENV DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres
+ENV NODE_ENV=development
 COPY tsconfig.json tsconfig.build.json ./
 COPY src ./src
 RUN npx tsc -p tsconfig.build.json
