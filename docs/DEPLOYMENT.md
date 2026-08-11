@@ -117,6 +117,22 @@ proxy hop. Do not raise it "to be safe": each hop you claim beyond the real
 count is a hop a client can forge an `X-Forwarded-For` through to mint itself a
 fresh identity per request, which turns the limiter off just as effectively.
 
+### Leave "Available at Buildtime" unchecked
+
+Coolify can expose a variable to the build as well as to the running
+container. Nothing here needs that, and one of them actively breaks the build.
+
+`NODE_ENV=production` reaching the build is the case to know: npm reads it and
+skips `devDependencies` on its own, so `npm ci` installs the production set,
+`typescript` and `@types/*` are absent, and `tsc` fails with sixty
+`TS7016: Could not find a declaration file` errors that look like a
+dependency problem in the repository rather than a setting in the panel.
+
+The Dockerfile no longer depends on getting this right — the build stages pin
+`NODE_ENV=development` and pass `--include=dev` — but leave the box unchecked
+anyway. A secret exposed at build time is baked into an image layer, where it
+outlives any later change to the variable.
+
 ### Generating the secrets
 
 Run this **on your own machine** and paste the results into Coolify. Do not
@@ -248,12 +264,13 @@ sends no cookie with the next request, and every authenticated route answers
 
 Recorded because each one built and pushed cleanly, and failed only when run.
 
-| What                                             | Symptom                                        |
-| ------------------------------------------------ | ---------------------------------------------- |
-| `RUN npx tsc` used the root tsconfig (no outDir) | image build failed on `COPY /app/dist`         |
-| `chown -R app:app /app`                          | a duplicate copy of every file: **+441MB**     |
-| The generated Prisma client imported `.ts` paths | built fine, `MODULE_NOT_FOUND` on boot         |
-| winston creating `logs/` as a non-root user      | `EACCES` — crash loop before the first request |
+| What                                             | Symptom                                            |
+| ------------------------------------------------ | -------------------------------------------------- |
+| `RUN npx tsc` used the root tsconfig (no outDir) | image build failed on `COPY /app/dist`             |
+| `chown -R app:app /app`                          | a duplicate copy of every file: **+441MB**         |
+| The generated Prisma client imported `.ts` paths | built fine, `MODULE_NOT_FOUND` on boot             |
+| winston creating `logs/` as a non-root user      | `EACCES` — crash loop before the first request     |
+| `NODE_ENV=production` injected into the build    | npm silently skipped devDependencies; `tsc` failed |
 
 The common thread is that none of them is visible without running the
 container. A green build is not a deployment.
