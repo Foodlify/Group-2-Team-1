@@ -255,10 +255,20 @@ receiving.
 `NODE_ENV=production` disables the demo page at `/demo/` — it is a development
 tool and nothing should be able to reach it on a deployed instance.
 
-The consequence is worth knowing in advance: **Google sign-in and Web Push have
-no click-through demonstration on the server.** The API endpoints are all
-there, and `/api-docs` still documents them; what is missing is the page that
-drove them from a browser. Demonstrate those two locally.
+**Google sign-in is unaffected.** It is a sequence of browser navigations, not
+a page: open `/api/v1/auth/google` in a browser, complete the consent screen,
+and the callback answers with the signed-in user. The demo page made that one
+button instead of one URL, and nothing more.
+
+**Web Push is the one that genuinely cannot be shown here.** A notification
+needs a browser to subscribe and a service worker to receive, and the page
+carrying both is the one production switches off. The endpoints work; there is
+nothing on the server to drive them.
+
+That is why this deployment leaves `VAPID_*` unset — a deliberate choice, not
+an oversight. `GET /push/public-key` answers `404`, which is the honest
+description of a deployment that cannot deliver a push. Push is demonstrated
+locally, where `/demo/` is served.
 
 Everything else is on: `/api-docs`, `/api-docs/swagger/`, `/openapi.json` and
 `/health` all serve in production.
