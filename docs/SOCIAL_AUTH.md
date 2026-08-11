@@ -14,12 +14,12 @@ GOOGLE_CLIENT_ID=1234567890-abcdefg.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxxxxxx
 
 # Must match your PORT and the URI registered on the OAuth client:
-GOOGLE_CALLBACK_URL=http://localhost:3000/api/v1/auth/google/callback
+GOOGLE_CALLBACK_URL=http://localhost:4444/api/v1/auth/google/callback
 
 # Optional — leave unset and the callback answers with JSON, which is what
 # makes the flow demonstrable with no frontend. Uncomment it to land on the
 # demo page instead (and to stop a reload of the callback URL 400ing):
-# GOOGLE_POST_LOGIN_REDIRECT=http://localhost:3000/demo/
+# GOOGLE_POST_LOGIN_REDIRECT=http://localhost:4444/demo/
 ```
 
 Unset credentials mean the two routes answer **404**: this deployment does not
@@ -66,7 +66,7 @@ OAuth client ID**.
   http://localhost:<PORT>/api/v1/auth/google/callback
   ```
 
-  **`<PORT>` is whatever `PORT` says in your `.env`** — 3000 in
+  **`<PORT>` is whatever `PORT` says in your `.env`** — 4444 in
   `.env.example`, but check yours. It has to match in three places at once:
   the port the server listens on, `GOOGLE_CALLBACK_URL`, and the URI
   registered here. Two out of three is a `redirect_uri_mismatch`, or a browser
