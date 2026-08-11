@@ -117,6 +117,40 @@ proxy hop. Do not raise it "to be safe": each hop you claim beyond the real
 count is a hop a client can forge an `X-Forwarded-For` through to mint itself a
 fresh identity per request, which turns the limiter off just as effectively.
 
+### Seeding the first deploy
+
+Migrations create the tables; they do not put anything in them. A freshly
+deployed instance has no restaurants, no menu, and **no administrator** — the
+API answers correctly and has nothing to say.
+
+`RUN_SEED=true` runs the seed once from the entrypoint, after migrations. It
+creates an admin, a customer with an address, and one restaurant with a menu.
+It is an upsert throughout, so running it twice changes nothing.
+
+**In production it refuses to use the credentials in this repository.** Set
+these four alongside it, or the container stops with an error naming them:
+
+| Variable                 |
+| ------------------------ |
+| `SEED_ADMIN_EMAIL`       |
+| `SEED_ADMIN_PASSWORD`    |
+| `SEED_CUSTOMER_EMAIL`    |
+| `SEED_CUSTOMER_PASSWORD` |
+
+The refusal is the point. `admin@example.com` / `Admin123!` are written in a
+public repository, and seeding them onto a public URL hands over an
+administrator account to anybody who reads the source. Outside production the
+same defaults are used unchanged, because there they are a convenience rather
+than a door.
+
+Seeded accounts get `emailVerifiedAt` set, so they can log in immediately. An
+account without it authenticates and is then refused at the verification gate,
+which reads as a broken password.
+
+Set `RUN_SEED=false` after the first successful deploy. Nothing breaks if you
+forget — the upserts are idempotent — but it also resets those two passwords to
+whatever the variables say on every boot.
+
 ### Leave "Available at Buildtime" unchecked
 
 Coolify can expose a variable to the build as well as to the running

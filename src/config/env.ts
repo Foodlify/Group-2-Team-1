@@ -53,6 +53,11 @@ const EnvSchema = z
 
     MAIL_FROM: z.string().trim().optional(),
 
+    SEED_ADMIN_EMAIL: z.string().trim().optional(),
+    SEED_ADMIN_PASSWORD: z.string().optional(),
+    SEED_CUSTOMER_EMAIL: z.string().trim().optional(),
+    SEED_CUSTOMER_PASSWORD: z.string().optional(),
+
     STRIPE_SECRET_KEY: z.string().trim().optional(),
 
     STRIPE_WEBHOOK_SECRET: z.string().trim().optional(),
