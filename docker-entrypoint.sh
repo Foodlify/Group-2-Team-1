@@ -9,4 +9,10 @@ else
   echo "==> RUN_MIGRATIONS=false — skipping migrations"
 fi
 
+if [ "${RUN_SEED:-false}" = "true" ]; then
+  echo "==> Seeding database"
+  node dist/scripts/seed.js
+  echo "==> Seed complete"
+fi
+
 exec "$@"
